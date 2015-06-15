@@ -24,7 +24,10 @@ cmplx_roots_sg.o: cmplx_roots_sg.f90
 cmplx_roots_sg_quad.o: cmplx_roots_sg_quad.f90
 	${F90} ${CFLAGS} -c cmplx_roots_sg_quad.f90
 
-${LIB}/libptmcmc.a: ${LIB} 
+ptmcmc:
+	@git clone https://github.com/JohnGBaker/ptmcmc.git
+
+${LIB}/libptmcmc.a: ${LIB} ptmcmc
 	@echo "Descending to ptMCMC"
 	${MAKE} -C ${MCMC}  ${MFLAGS} ${LIB}/libptmcmc.a
 
