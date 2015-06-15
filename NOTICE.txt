@@ -1,0 +1,34 @@
+GLEAM: Gravitational Lensing Event Analysis Machine
+Package written by John Baker at NASA-GSFC (2014-2015).
+	
+This code is currently in experimental development.  Users interested in applying the code for research applications should work in coordinated collaboration with the primary developers until the first formal release, documented in a scientific publication.  Please attribute to John Baker/NASA-GSFC as needed until release.
+
+------------------------------------------------------------------------------
+OTHER PEOPLE'S CODE:
+
+The routine cmplx_roots_sg is derived from the of Skowron and Gould (SG, see SG NOTICE below). The original versions and SG LICENSE are retained in the subdirectory cmplx_roots_sg/ with modified copies used in:
+cmplx_roots_sg.f90 (may be an unmodified copy)
+cmplx_roots_sg_quad.f90 (modified for quad_precision)
+
+
+
+Paper:  
+  Skowron & Gould 2012 
+  "General Complex Polynomial Root Solver and Its Further Optimization for Binary Microlenses"
+Please cite the paper if you are using the subroutines in the scientific work.
+
+The authors release the source codes associated with the Paper
+under terms of the GNU Lesser General Public License version 2 
+or any later version, or under the Apache License, Version 2.0
+as well as under a "customary scientific license", which implies 
+that if this code was important in the scientific process or 
+for the results of your scientific work, we ask for the 
+appropriate citation of the Paper (Skowron & Gould 2012).
+
+
+for a full text of the paper see:
+     http://www.astrouw.edu.pl/~jskowron/cmplx_roots_sg/
+     or http://arxiv.org/find/astro-ph
+     or http://www.adsabs.harvard.edu/abstract_service.html
+see also file NOTICE and LICENSE attached to the software package
+
