@@ -1,9 +1,11 @@
 # Modify these three as appropriate for the system
 
 export ROOT
-LIB = ${ROOT}/lib
-INCLUDE = ${ROOT}/include
-MCMC = ${ROOT}/ptMCMC
+export LIB = ${ROOT}/lib
+export INCLUDE = ${ROOT}/include
+MCMC = ${ROOT}/ptmcmc
+export CXX
+export CXXFLAGS
 
 ifeq ($(strip $(DISCOVER)), )
 #laptop
