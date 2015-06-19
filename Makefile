@@ -12,7 +12,7 @@ docs:
 .PHONY: clean ${LIB}/libptmcmc.a ${LIB}/libprobdist.a
 
 
-gleam: gleam.cc glens.cc glens.hh cmplx_roots_sg.o mlfit.hh ptmcmc ${MCMC}/mcmc.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a
+gleam: gleam.cc glens.cc glens.hh cmplx_roots_sg.o mlfit.hh ptmcmc ${MCMC}/mcmc.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a .ptmcmc-version
 	@echo "ROOT=",${ROOT}
 	${CXX} ${CFLAGS} -o gleam gleam.cc glens.cc cmplx_roots_sg.o -lgsl -L${GSLDIR} -I${GSLINC} -I${MCMC} -std=c++11 -lgfortran -lprobdist -lptmcmc -L${LIB} 
 
@@ -24,6 +24,9 @@ cmplx_roots_sg.o: cmplx_roots_sg.f90
 
 cmplx_roots_sg_quad.o: cmplx_roots_sg_quad.f90
 	${F90} ${CFLAGS} -c cmplx_roots_sg_quad.f90
+
+.ptmcmc-version: ${LIB}/libptmcmc.a ${LIB}/libprobdist.a
+	cd ptmcmc;git rev-parse HEAD > ../.ptmcmc-version;git status >> ../.ptmcmc-version;git diff >> ../.ptmcmc-version
 
 ptmcmc:
 	@echo "Need to check out ptmcmc from github:"
