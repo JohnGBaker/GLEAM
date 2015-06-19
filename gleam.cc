@@ -42,6 +42,9 @@ void dump_view(const string &outname,MLdata&data,state &s,double tstart,double t
 void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,double tend, int nsamples=301, int cent=-2,bool output_nlens=false);
 void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
 void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
+//Other
+proposal_distribution* new_proposal_distribution(int & Ninit,const Options &opt, sampleable_probability_function * prior=nullptr, const valarray<double>*halfwidths=nullptr);
+
 
 ///Our likelihood function class, defined below
 ///Perhaps move this into mlfit?
@@ -124,12 +127,12 @@ int main(int argc, char*argv[]){
   opt.add(Option("nchains","Number of consequtive chain runs. Default 1","1"));
   opt.add(Option("seed","Pseudo random number grenerator seed in [0,1). (Default=-1, use clock to seed.)","-1"));
   opt.add(Option("nevery","Frequency to dump chain info. Default=1000.","1000"));
+  //ptmcmc opts
   opt.add(Option("save_every","Frequency to store chain info. Default=1.","1"));
   opt.add(Option("nsteps","How long to run the chain. Default=5000.","5000"));
   opt.add(Option("nskip","Only dump every nskipth element. Default=10.","10"));
   opt.add(Option("burn_frac","Portion of chain to disregard as burn-in for some calculations. Default=0.5","0.5"));
   opt.add(Option("pt","Do parallel tempering."));
-  opt.add(Option("poly","Don't use integration method for lens magnification, use only the polynomial method."));
   opt.add(Option("pt_n","Number of parallel tempering chains. Default 20","20"));
   opt.add(Option("pt_swap_rate","Frequency of parallel tempering swap_trials. Default 0.01","0.01"));
   opt.add(Option("pt_Tmax","Max temp of parallel tempering chains. Default 100","100"));
@@ -147,6 +150,8 @@ int main(int argc, char*argv[]){
   opt.add(Option("de_reduce_gamma","Differential Evolution reduce gamma parameter by some factor from nominal value. Default=1.","1"));
   opt.add(Option("de_mixing","Differential-Evolution support mixing of parallel chains."));
   opt.add(Option("de_Tmix","Differential-Evolution degree to encourage mixing info from different temps.(default=300)","300"));
+  //end ptmcmc opts
+  opt.add(Option("poly","Don't use integration method for lens magnification, use only the polynomial method."));
   opt.add(Option("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value."));
   opt.add(Option("remap_r0","Use remapped r0 coordinate."));
   opt.add(Option("remap_q","Use remapped mass-ratio coordinate."));
@@ -181,9 +186,9 @@ int main(int argc, char*argv[]){
   //DEV:   -Bayes-estimator (Now just MCMC)
   //DEV:   -Data?
   cout<<"flags=\n"<<opt.report()<<endl;
-  double nburn_frac,reduce_gamma_by,Tmax,q0,Fn_max,tE_max,tcut,seed,swap_rate,pt_reboot_rate,pt_reboot_cut,pt_reboot_thermal,pt_reboot_blindly,pt_evolve_rate,tmixfac;
-  int proposal_option,Nchain,Nstep,Nskip,Nptc,SpecNinit,de_eps,mm_center,mm_samples,save_every,pt_reboot_every,pt_reboot_grace;
-  bool parallel_tempering,use_remapped_r0,use_remapped_q,use_log_tE,view,use_additive_noise=false,do_magmap,de_mixing=false,pt_reboot_grad;
+  double nburn_frac,Tmax,q0,Fn_max,tE_max,tcut,seed,swap_rate,pt_reboot_rate,pt_reboot_cut,pt_reboot_thermal,pt_reboot_blindly,pt_evolve_rate;
+  int Nchain,Nstep,Nskip,Nptc,mm_center,mm_samples,save_every,pt_reboot_every,pt_reboot_grace;
+  bool parallel_tempering,use_remapped_r0,use_remapped_q,use_log_tE,view,use_additive_noise=false,do_magmap,pt_reboot_grad;
   int Nsigma=1;
   int Nbest=10;
   view=opt.set("view");
@@ -209,12 +214,6 @@ int main(int argc, char*argv[]){
   pt_reboot_grad=opt.set("pt_reboot_grad");
   istringstream(opt.value("pt_swap_rate"))>>swap_rate;
   istringstream(opt.value("pt_Tmax"))>>Tmax;
-  istringstream(opt.value("prop"))>>proposal_option;
-  istringstream(opt.value("de_ni"))>>SpecNinit;
-  istringstream(opt.value("de_eps"))>>de_eps;
-  istringstream(opt.value("de_reduce_gamma"))>>reduce_gamma_by;
-  istringstream(opt.value("de_Tmix"))>>tmixfac;
-  de_mixing=opt.set("de_mixing");
   use_remapped_r0=opt.set("remap_r0");
   use_remapped_q=opt.set("remap_q");
   use_log_tE=opt.set("log_tE");
@@ -389,106 +388,8 @@ int main(int argc, char*argv[]){
   if(view)exit(0);
 	  
   //Set the proposal distribution (might want to formalize some of this, now basically copied in similar form in the for the third time in a new program...)
-  valarray<double> sigmas(halfwidths);
-  int Ninit = 1;
-  proposal_distribution* prop=nullptr;
-  //if(parallel_tempering)reduce_gamma_by*=2.0;//Turned this off since mlchain.
-  switch(proposal_option){
-  case 0:  //Draw from prior distribution   
-    cout<<"Selected draw-from-prior proposal option"<<endl;
-    prop=new draw_from_dist(prior);
-    break;
-  case 1:  //gaussian   
-    cout<<"Selected Gaussian proposal option"<<endl;
-    prop=new gaussian_prop(sigmas/8.);
-    break;
-  case 2:  {  //range of gaussians
-    int Nprop_set=4;
-    cout<<"Selected set of Gaussian proposals option"<<endl;
-    vector<proposal_distribution*> gaussN(Nprop_set,nullptr);
-    vector<double>shares(Nprop_set);
-    double fac=1;
-    for(int i=0;i<Nprop_set;i++){
-      fac*=2;
-      gaussN[i]=new gaussian_prop(sigmas/fac);
-      shares[i]=fac;
-      cout<<"  sigma="<<sigmas[0]/fac<<", weight="<<fac<<endl;
-    }
-    prop=new proposal_distribution_set(gaussN,shares);
-    break;
-  }
-  case 3:{
-    cout<<"Selected differential evolution proposal option"<<endl;
-    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
-    //prop=new differential_evolution();
-    differential_evolution *de=new differential_evolution(0.0,0.3,de_eps,0.0);
-    de->reduce_gamma(reduce_gamma_by);
-    if(de_mixing)de->support_mixing(true);
-    de->mix_temperatures_more(tmixfac);
-    prop=de;
-    
-    Ninit=SpecNinit*Npar;//Need a huge pop of samples to avoid getting stuck in a peak unless occasionally drawing from prior.
-    break;
-  }
-  case 4:{
-    cout<<"Selected differential evolution with snooker updates proposal option"<<endl;
-    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
-    differential_evolution *de=new differential_evolution(0.1,0.3,de_eps,0.0);
-    //differential_evolution *de=new differential_evolution(0.1,0.3,0.0);
-    de->reduce_gamma(reduce_gamma_by);
-    if(de_mixing)de->support_mixing(true);
-    de->mix_temperatures_more(tmixfac);
-    prop=de;
-    if(false){
-      vector<proposal_distribution*>props(1);
-      vector<double>shares(1);
-      props[0]=de;shares[0]=1.0;
-      prop=new proposal_distribution_set(props,shares);    
-    }
-    Ninit=SpecNinit*Npar;
-    break;
-  }
-  case 5:{
-    cout<<"Selected differential evolution proposal with prior draws option"<<endl;
-    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
-    //prop=new differential_evolution();
-    vector<proposal_distribution*>props(2);
-    vector<double>shares(2);
-    props[0]=new draw_from_dist(prior);
-    shares[0]=0.1;
-    differential_evolution *de=new differential_evolution(0.0,0.3,de_eps,0.0);
-    de->reduce_gamma(reduce_gamma_by);
-    if(de_mixing)de->support_mixing(true);
-    de->mix_temperatures_more(tmixfac);
-    cout<<"de="<<de<<endl;
-    props[1]=de;
-    shares[1]=0.9;
-    prop=new proposal_distribution_set(props,shares);    
-    Ninit=SpecNinit*Npar;
-    break;
-  }
-  case 6:{
-    cout<<"Selected differential evolution (with snooker updates) proposal with prior draws option"<<endl;
-    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
-    //prop=new differential_evolution();
-    vector<proposal_distribution*>props(2);
-    vector<double>shares(2);
-    props[0]=new draw_from_dist(prior);
-    shares[0]=0.1;
-    differential_evolution *de=new differential_evolution(0.1,0.3,de_eps,0.0);
-    de->reduce_gamma(reduce_gamma_by);
-    if(de_mixing)de->support_mixing(true);
-    de->mix_temperatures_more(tmixfac);
-    props[1]=de;
-    shares[1]=0.9;
-    prop=new proposal_distribution_set(props,shares);    
-    Ninit=SpecNinit*Npar;
-    break;
-  }
-  default:
-    cout<<"Unrecognized value: proposal_option="<<proposal_option<<endl;
-    exit(1);
-  }
+  int Ninit;
+  proposal_distribution *prop=new_proposal_distribution(Ninit,opt,&prior,&halfwidths);
   cout<<"Proposal distribution (at "<<prop<<") is:\n"<<prop->show()<<endl;
 
   //*************************************************
@@ -885,3 +786,124 @@ void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,do
   out<<endl;
 };
 
+///Set the proposal distribution. Calling routing responsible for deleting.
+///Also returns choice of Ninit in first arg.
+///This should eventually go to ptmcmc driver class...
+proposal_distribution* new_proposal_distribution(int &Ninit, const Options &opt, sampleable_probability_function * prior, const valarray<double>*halfwidths){
+  int proposal_option,SpecNinit;
+  double tmixfac,reduce_gamma_by,de_eps;
+  bool de_mixing=false;
+  istringstream(opt.value("prop"))>>proposal_option;
+  istringstream(opt.value("de_ni"))>>SpecNinit;
+  istringstream(opt.value("de_eps"))>>de_eps;
+  istringstream(opt.value("de_reduce_gamma"))>>reduce_gamma_by;
+  istringstream(opt.value("de_Tmix"))>>tmixfac;
+  de_mixing=opt.set("de_mixing");
+  valarray<double> sigmas;
+  if(halfwidths!=nullptr)sigmas=*halfwidths;
+  else if(proposal_option<2){
+    cout<<"new_proposal_distribution: Called without defining haflwidths. Cannot apply proposal option 0 or 1."<<endl;
+    exit(1);
+  }
+  Ninit = 1;
+  proposal_distribution* prop=nullptr;
+  
+  //if(parallel_tempering)reduce_gamma_by*=2.0;//Turned this off since mlchain.
+  switch(proposal_option){
+  case 0:  //Draw from prior distribution   
+    cout<<"Selected draw-from-prior proposal option"<<endl;
+    prop=new draw_from_dist(*prior);
+    break;
+  case 1:  //gaussian   
+    cout<<"Selected Gaussian proposal option"<<endl;
+    prop=new gaussian_prop(sigmas/8.);
+    break;
+  case 2:  {  //range of gaussians
+    int Nprop_set=4;
+    cout<<"Selected set of Gaussian proposals option"<<endl;
+    vector<proposal_distribution*> gaussN(Nprop_set,nullptr);
+    vector<double>shares(Nprop_set);
+    double fac=1;
+    for(int i=0;i<Nprop_set;i++){
+      fac*=2;
+      gaussN[i]=new gaussian_prop(sigmas/fac);
+      shares[i]=fac;
+      cout<<"  sigma="<<sigmas[0]/fac<<", weight="<<fac<<endl;
+    }
+    prop=new proposal_distribution_set(gaussN,shares);
+    break;
+  }
+  case 3:{
+    cout<<"Selected differential evolution proposal option"<<endl;
+    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
+    //prop=new differential_evolution();
+    differential_evolution *de=new differential_evolution(0.0,0.3,de_eps,0.0);
+    de->reduce_gamma(reduce_gamma_by);
+    if(de_mixing)de->support_mixing(true);
+    de->mix_temperatures_more(tmixfac);
+    prop=de;
+    
+    Ninit=SpecNinit*Npar;//Need a huge pop of samples to avoid getting stuck in a peak unless occasionally drawing from prior.
+    break;
+  }
+  case 4:{
+    cout<<"Selected differential evolution with snooker updates proposal option"<<endl;
+    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
+    differential_evolution *de=new differential_evolution(0.1,0.3,de_eps,0.0);
+    //differential_evolution *de=new differential_evolution(0.1,0.3,0.0);
+    de->reduce_gamma(reduce_gamma_by);
+    if(de_mixing)de->support_mixing(true);
+    de->mix_temperatures_more(tmixfac);
+    prop=de;
+    if(false){
+      vector<proposal_distribution*>props(1);
+      vector<double>shares(1);
+      props[0]=de;shares[0]=1.0;
+      prop=new proposal_distribution_set(props,shares);    
+    }
+    Ninit=SpecNinit*Npar;
+    break;
+  }
+  case 5:{
+    cout<<"Selected differential evolution proposal with prior draws option"<<endl;
+    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
+    //prop=new differential_evolution();
+    vector<proposal_distribution*>props(2);
+    vector<double>shares(2);
+    props[0]=new draw_from_dist(*prior);
+    shares[0]=0.1;
+    differential_evolution *de=new differential_evolution(0.0,0.3,de_eps,0.0);
+    de->reduce_gamma(reduce_gamma_by);
+    if(de_mixing)de->support_mixing(true);
+    de->mix_temperatures_more(tmixfac);
+    cout<<"de="<<de<<endl;
+    props[1]=de;
+    shares[1]=0.9;
+    prop=new proposal_distribution_set(props,shares);    
+    Ninit=SpecNinit*Npar;
+    break;
+  }
+  case 6:{
+    cout<<"Selected differential evolution (with snooker updates) proposal with prior draws option"<<endl;
+    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
+    //prop=new differential_evolution();
+    vector<proposal_distribution*>props(2);
+    vector<double>shares(2);
+    props[0]=new draw_from_dist(*prior);
+    shares[0]=0.1;
+    differential_evolution *de=new differential_evolution(0.1,0.3,de_eps,0.0);
+    de->reduce_gamma(reduce_gamma_by);
+    if(de_mixing)de->support_mixing(true);
+    de->mix_temperatures_more(tmixfac);
+    props[1]=de;
+    shares[1]=0.9;
+    prop=new proposal_distribution_set(props,shares);    
+    Ninit=SpecNinit*Npar;
+    break;
+  }
+  default:
+    cout<<"new_proposal_distribution: Unrecognized value: proposal_option="<<proposal_option<<endl;
+    exit(1);
+  }
+  return prop;
+}

@@ -117,3 +117,12 @@ string Options::print_usage()const{
   }
   return os.str();
 }
+
+///This is an interface for classes (objects?) to provide options that can be realized (e.g.) on the command line.
+class Optioned{
+public:
+  ///Add options to the program's option list.
+  virtual void addOptions(Options &opt)=0;
+  virtual void processOptions(const Options &opt)=0;
+};
+
