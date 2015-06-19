@@ -500,16 +500,16 @@ vector<Point> GLensBinary::invmap(const Point &p){
 ///define \f$\zeta=\beta_x-p_x + i(\beta_x-p_x)\f$
 ///We will solve for: \f$z=\theta_x -p_x + i(\theta_y-p_y)\f$ iteratevely. At each iteration we solve:
 /// \f[
-///    z\approx\zeta+\frac{\nu_{near}}{z^*}+\epsilon}
+///    z\approx\zeta+\frac{\nu_{near}}{z^*}+\epsilon
 /// \f]
-/// where, \f$\epslion\f$ represents the lens potential contribution from the distant lens object. 
+/// where, \f$\epsilon\f$ represents the lens potential contribution from the distant lens object. 
 /// For the zeroth iteration, we take \f$\epsilon=0\f$ and subsequently \f$\epsilon=\frac{\nu_{far}}{z+c}\f$
 /// using the most recent estimate for \f$z\f$ and \f$c=p_{x,far}-p{x,near}=\pm L\f$.
 /// At each iteration the solution is:
 /// \f[
 ///    |z|\approx\frac{|\zeta+\epsilon|}2\left(\sqrt{1+\frac{4\nu_{near}}{|\zeta+\epsilon|^2}}\pm1\right)
 /// \f]
-/// with the complex argument given such that \f$\s(\zeta+\epsilon)z^*\f$ is real.
+/// with the complex argument given such that \f$(\zeta+\epsilon)z^*\f$ is real.
 /// As usual for a single lens there two image solutions, inside and outside the Einstein ring. 
 /// These are selected above by the indicated choice of sign.  We iterate
 /// separately a series of approximate solutions with either sign.

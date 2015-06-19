@@ -7,6 +7,7 @@ quad: gleam_quad
 
 docs:
 	doxygen dox.cfg
+	cd doc/latex;pdflatex refman;pdflatex refman;cp refman.pdf ../gleam.pdf
 
 .PHONY: clean ${LIB}/libptmcmc.a ${LIB}/libprobdist.a
 
@@ -44,6 +45,6 @@ ${INCLUDE}:
 
 clean:
 	rm -f *.o gleam gleam_quad
-	rm lib/*.a
-	rm include/*.h*
+	rm -f lib/*.a
+	rm -f include/*.h*
 	${MAKE} -C ptMCMC clean

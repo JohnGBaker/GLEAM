@@ -25,3 +25,4 @@ gleam_quad
 lib
 include
 ptmcmc
+doc

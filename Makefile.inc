@@ -5,7 +5,7 @@ export LIB = ${ROOT}/lib
 export INCLUDE = ${ROOT}/include
 MCMC = ${ROOT}/ptmcmc
 export CXX
-export CXXFLAGS
+export CFLAGS
 
 ifeq ($(strip $(DISCOVER)), )
 #laptop
