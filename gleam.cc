@@ -11,13 +11,9 @@
 #include "omp.h"
 #include "options.hh"
 //#include <mcheck.h>
-#ifdef USE_PTMCMCS
-#include "ptMCMCs.hh"
-#else
-#include "mcmc.hh"
+#include "bayesian.hh"
 #include "proposal_distribution.hh"
 #include "chain.hh"
-#endif
 
 using namespace std;
 
