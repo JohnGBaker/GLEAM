@@ -7,6 +7,8 @@
 #include <sstream>
 #include <iostream>
 #include <valarray>
+#include "bayesian.hh"
+
 using namespace std;
 //#define OLD_BUGGY
 
@@ -23,7 +25,7 @@ using namespace std;
 // think more.  Maybe there is a simpler solution...
 
 //base class for data
-class MLdata {
+class MLdata : public bayes_signal{
 protected:
   vector<double>times,mags,dmags;
   double time0;
@@ -74,6 +76,10 @@ public:
   virtual double loglikelihood(vector<double>modelData,double Sn=0)=0;
   virtual double evaluate_log(valarray<double> &params,bool integrate=false)=0;
   virtual void write(ostream &out,vector<double>vparams,bool integrate=false, int nsamples=-1, double tstart=0, double tend=0)=0;
+  //This one is for the nascent "signal" interface.
+  virtual void write(ostream &out,state &st, int nsamples=-1, double tstart=0, double tend=0){
+    write(out,st.get_params_vector(),true,nsamples,tstart,tend);
+  };
   ///The following functions should probably be moved out to a "model" object
   virtual void get_model_params(valarray<double> &params, double &I0, double &Fs,double &noise_lev,double &q,double &L,double &r0,double &phi,double &tE,double &tmax)=0;
   virtual Trajectory get_trajectory(double q, double L, double r0, double phi, double tstart)=0;

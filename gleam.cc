@@ -13,7 +13,7 @@
 //#include <mcheck.h>
 #include "bayesian.hh"
 #include "proposal_distribution.hh"
-#include "chain.hh"
+#include "ptmcmc.hh"
 
 using namespace std;
 
@@ -38,24 +38,22 @@ void dump_view(const string &outname,MLdata&data,state &s,double tstart,double t
 void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,double tend, int nsamples=301, int cent=-2,bool output_nlens=false);
 void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
 void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
-//Other
-proposal_distribution* new_proposal_distribution(int & Ninit,const Options &opt, sampleable_probability_function * prior=nullptr, const valarray<double>*halfwidths=nullptr);
 
 
 ///Our likelihood function class, defined below
 ///Perhaps move this into mlfit?
 
-class MLFitProb: public probability_function{
+class MLFitProb: public bayes_likelihood{
   MLdata * data;
   sampleable_probability_function * prior;
   int count;
   double total_eval_time;
  public:
-
   double best_post;
   state best;
+
   virtual ~MLFitProb(){};//Avoid GCC warnings
-  MLFitProb(stateSpace *sp, MLdata *data, sampleable_probability_function *prior=nullptr):data(data),prior(prior),probability_function(sp){
+  MLFitProb(stateSpace *sp, MLdata *data, sampleable_probability_function *prior=nullptr):data(data),prior(prior),bayes_likelihood(sp){
     best=state(sp,Npar);
     reset();
   };
@@ -65,7 +63,9 @@ class MLFitProb: public probability_function{
     count=0;
     total_eval_time=0;
   }
-    
+  state bestState(){return best;};
+  double bestPost(){return best_post;};
+
   double evaluate_log(state &s){
     //#pragma omp critical
     //cout<<"Evaluating likelihood for params"<<s.get_string()<<endl;
@@ -118,35 +118,16 @@ int main(int argc, char*argv[]){
   string datafile;
   const int NparRead=Npar; 
 
+  //Create the sampler
+  ptmcmc_sampler mcmc;
+  bayes_sampler *s0=&mcmc;
+
   Options opt;
+
+  s0->addOptions(opt,"");
 
   opt.add(Option("nchains","Number of consequtive chain runs. Default 1","1"));
   opt.add(Option("seed","Pseudo random number grenerator seed in [0,1). (Default=-1, use clock to seed.)","-1"));
-  opt.add(Option("nevery","Frequency to dump chain info. Default=1000.","1000"));
-  //ptmcmc opts
-  opt.add(Option("save_every","Frequency to store chain info. Default=1.","1"));
-  opt.add(Option("nsteps","How long to run the chain. Default=5000.","5000"));
-  opt.add(Option("nskip","Only dump every nskipth element. Default=10.","10"));
-  opt.add(Option("burn_frac","Portion of chain to disregard as burn-in for some calculations. Default=0.5","0.5"));
-  opt.add(Option("pt","Do parallel tempering."));
-  opt.add(Option("pt_n","Number of parallel tempering chains. Default 20","20"));
-  opt.add(Option("pt_swap_rate","Frequency of parallel tempering swap_trials. Default 0.01","0.01"));
-  opt.add(Option("pt_Tmax","Max temp of parallel tempering chains. Default 100","100"));
-  opt.add(Option("pt_evolve_rate","Rate at which parallel tempering temps should be allowed to evolve. Default none.","0"));
-  opt.add(Option("pt_reboot_rate","Max frequency of rebooting poorly performing parallel tempering chains. Default 0","0"));
-  opt.add(Option("pt_reboot_every","How often to test for rebooting poorly performing parallel tempering chains. Default 0","0"));
-  opt.add(Option("pt_reboot_grace","Grace period protecting infant instances reboot. Default 0","0"));
-  opt.add(Option("pt_reboot_cut","Posterior difference cutoff defining poorly performing parallel tempering chains. Default 100","100"));
-  opt.add(Option("pt_reboot_thermal","Temperature dependent cutoff term in defining poorly performing parallel tempering chains. Default 0","0"));
-  opt.add(Option("pt_reboot_blindly","Do aggressive random rebooting at some level even if no gaps are found. Default 0","0"));
-  opt.add(Option("pt_reboot_grad","Let the reboot grace period depend linearly on temp level with given mean. (colder->longer)"));
-  opt.add(Option("prop","Proposal type (0-6). Default=4 (DE with Snooker updates w/o prior draws.)","4"));
-  opt.add(Option("de_ni","Differential-Evolution number of initialization elements per dimension. Default=10.","10"));
-  opt.add(Option("de_eps","Differential-Evolution gaussian scale. Default=1e-4.","1e-4"));
-  opt.add(Option("de_reduce_gamma","Differential Evolution reduce gamma parameter by some factor from nominal value. Default=1.","1"));
-  opt.add(Option("de_mixing","Differential-Evolution support mixing of parallel chains."));
-  opt.add(Option("de_Tmix","Differential-Evolution degree to encourage mixing info from different temps.(default=300)","300"));
-  //end ptmcmc opts
   opt.add(Option("poly","Don't use integration method for lens magnification, use only the polynomial method."));
   opt.add(Option("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value."));
   opt.add(Option("remap_r0","Use remapped r0 coordinate."));
@@ -182,34 +163,20 @@ int main(int argc, char*argv[]){
   //DEV:   -Bayes-estimator (Now just MCMC)
   //DEV:   -Data?
   cout<<"flags=\n"<<opt.report()<<endl;
-  double nburn_frac,Tmax,q0,Fn_max,tE_max,tcut,seed,swap_rate,pt_reboot_rate,pt_reboot_cut,pt_reboot_thermal,pt_reboot_blindly,pt_evolve_rate;
-  int Nchain,Nstep,Nskip,Nptc,mm_center,mm_samples,save_every,pt_reboot_every,pt_reboot_grace;
-  bool parallel_tempering,use_remapped_r0,use_remapped_q,use_log_tE,view,use_additive_noise=false,do_magmap,pt_reboot_grad;
+  
+  double nburn_frac,Tmax,q0,Fn_max,tE_max,tcut,seed;
+  int Nchain;
+  int mm_center,mm_samples,save_every;
+  bool use_remapped_r0,use_remapped_q,use_log_tE,view,use_additive_noise=false,do_magmap;
   int Nsigma=1;
   int Nbest=10;
+  *s0->optValue("nevery")>>Nevery;
   view=opt.set("view");
   istringstream(opt.value("nchains"))>>Nchain;
   istringstream(opt.value("seed"))>>seed;
   //if seed<0 set seed from clock
   if(seed<0)seed=time(NULL);
-  istringstream(opt.value("nevery"))>>Nevery;
-  istringstream(opt.value("save_every"))>>save_every;
-  istringstream(opt.value("nsteps"))>>Nstep;
-  istringstream(opt.value("nskip"))>>Nskip;
-  istringstream(opt.value("burn_frac"))>>nburn_frac;
-  parallel_tempering=opt.set("pt");
   integrate=!opt.set("poly");
-  istringstream(opt.value("pt_n"))>>Nptc;
-  istringstream(opt.value("pt_evolve_rate"))>>pt_evolve_rate;
-  istringstream(opt.value("pt_reboot_rate"))>>pt_reboot_rate;
-  istringstream(opt.value("pt_reboot_every"))>>pt_reboot_every;
-  istringstream(opt.value("pt_reboot_grace"))>>pt_reboot_grace;
-  istringstream(opt.value("pt_reboot_cut"))>>pt_reboot_cut;
-  istringstream(opt.value("pt_reboot_thermal"))>>pt_reboot_thermal;
-  istringstream(opt.value("pt_reboot_blindly"))>>pt_reboot_blindly;
-  pt_reboot_grad=opt.set("pt_reboot_grad");
-  istringstream(opt.value("pt_swap_rate"))>>swap_rate;
-  istringstream(opt.value("pt_Tmax"))>>Tmax;
   use_remapped_r0=opt.set("remap_r0");
   use_remapped_q=opt.set("remap_q");
   use_log_tE=opt.set("log_tE");
@@ -383,172 +350,26 @@ int main(int argc, char*argv[]){
   }
   if(view)exit(0);
 	  
+  //assuming mcmc:
   //Set the proposal distribution (might want to formalize some of this, now basically copied in similar form in the for the third time in a new program...)
   int Ninit;
-  proposal_distribution *prop=new_proposal_distribution(Ninit,opt,&prior,&halfwidths);
+  proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,&prior,&halfwidths);
   cout<<"Proposal distribution (at "<<prop<<") is:\n"<<prop->show()<<endl;
+  //set up the mcmc sampler (assuming mcmc)
+  mcmc.setup(Ninit,*llike,prior,*prop,output_precision);
 
-  //*************************************************
-  //if(parallel_tempering)Nchain=1;
 
   //Prepare for chain output
   ss<<"gle_"<<outname;
   string base=ss.str();
-  ss<<".dat";
-  ofstream out(ss.str().c_str());
-  out.precision(output_precision);
 
-  ss.str("");ss<<base<<"_"<<Nsigma<<"_sigma.dat";
-  ofstream out1sigma(ss.str().c_str());
-  out1sigma.precision(output_precision);
-
-  ss.str("");ss<<base<<"_PTstats.dat";
-  ofstream outp(ss.str().c_str());
-  outp.precision(output_precision);
-
-  parallel_tempering_chains *ptc=nullptr;
-  MH_chain *c=nullptr,*last_chain=nullptr;
-
-  //*************************************************
   //Loop over Nchains
   for(int ic=0;ic<Nchain;ic++){
-    proposal_distribution *chain_prop=nullptr;
-    sampleable_probability_function *chain_prior=&prior;
-    MLFitProb *chain_llike=nullptr;
-    int chain_Nstep=Nstep,chain_Ninit=Ninit,chain_nburn=Nstep*nburn_frac;
-    ofstream *chain_out=nullptr;
-    
-    //Run in non-progressive mode
-    chain_prop=prop->clone();
-    chain_prior=&prior;
-    chain_llike = llike;
-    chain_out=&out;	
-
-    //Create the Chain 
-    chain *cc=nullptr;
-    if(parallel_tempering){
-      ptc= new parallel_tempering_chains(Nptc,Tmax,swap_rate,save_every);
-      if(pt_evolve_rate>0)ptc->evolve_temps(pt_evolve_rate);
-      if(pt_reboot_rate>0)ptc->do_reboot(pt_reboot_rate,pt_reboot_cut,pt_reboot_thermal,pt_reboot_every,pt_reboot_grace,pt_reboot_grad,pt_reboot_blindly);
-      ptc->initialize(chain_llike,chain_prior,chain_Ninit);
-      //ptc->set_proposal(*chain_prop);
-      cc=ptc;
-      cout<<"cc=ptc="<<cc<<endl;
-    } else {
-      c= new MH_chain(chain_llike,chain_prior,-30,save_every);
-      chain_prop->set_chain(c);
-      c->initialize(chain_Ninit);
-      cc=c;
-    }
-    cc->set_proposal(*chain_prop);
-    
-    cout<<"\nRunning chain "<<ic<<endl;
-    //cout<<chain_llike->print_info()<<endl;
-    chain_llike->reset();
-
-    //verbose=false;
-    //if(!parallel_tempering)c->reserve(chain_Nstep);//allocate
-    for(int i=0;i<=chain_Nstep;i++){
-      //cout<<"step="<<i<<endl;
-
-      cc->step();
-      //if(parallel_tempering)
-      //ptc->step();
-      //else
-      //c->step(*chain_prop);
-	
-      //if(i>160)verbose=true;
-      //cout<<"i="<<i<<"/"<<Nevery<<endl;
-      if(0==i%Nevery){
-	cout<<"chain "<<ic<<" step "<<i<<" MaxPosterior="<<chain_llike->best_post<<endl;
-	//cout<<" capacity="<<cc->capacity()<<endl;
-	//cout<<" size="<<cc->size()<<endl;
-	//cout<<" i_after_burn="<<cc->i_after_burn()<<endl;
-	//if(i>=30000)::verbose=true;
-	/******* This isn't working right because chain-lenghts are not exactly equal to the number of steps taken.  I think that parallel-tempering swaps are recorded as 'extra' steps.  Either we decide this is wrong, or we change the use of 'i' here to something else.  Right now we assume the two are the same, resulting in significantly overlapping output series once the number of extra points exceeds Nevery **********/ 
-	cc->dumpChain(*chain_out,i-Nevery+1,Nskip);
-	//cc->dumpChain(cout,i-Nevery+1,Nskip);
-	//if(parallel_tempering)
-	//ptc->dumpChain(0,*chain_out,i-Nevery+1,Nskip);
-	//else
-	//c->dumpChain(*chain_out,i-Nevery+1,Nskip);
-	cout<<cc->status()<<endl;
-      }
-    }
-
-    if(parallel_tempering){
-      //FIXME  Want to replace this with a generic chain->report() type function...
-      ptc->dumpTempStats(outp);
-      outp<<"\n"<<endl;
-    }
-
-    *chain_out<<"\n"<<endl;
-    
-    cout<<"Finished running chain "<<ic<<"."<<endl;
-    //if(ic==1)::verbose=true;
-    //Analysis
-    //Select 1-sigma chain points
-    vector<int> idx_in_Nsigma;
-    ss.str("");ss<<base<<"_1_sigma_samples_"<<ic<<".dat";
-    ofstream outsamples(ss.str().c_str());
-    ss.str("");ss<<base<<"_1_sigma_samples_fine_"<<ic<<".dat";
-    ofstream outfinesamples(ss.str().c_str());
-    ss.str("");ss<<base<<"_best_"<<ic<<".dat";
-    ofstream outbest(ss.str().c_str());
-    ss.str("");ss<<base<<"_best_fine_"<<ic<<".dat";
-    ofstream outfinebest(ss.str().c_str());
-
-    cc->inNsigma(Nsigma,idx_in_Nsigma,chain_nburn);
-    for(int i=0;i<(int)idx_in_Nsigma.size();i+=Nskip){
-      int idx=idx_in_Nsigma[i];
-      //cout<<"i,idx="<<i<<","<<idx<<":"<<cc->getState(idx,true).get_string()<<endl;
-      //cout<<"i,idx="<<i<<","<<idx<<":"<<cc->getState(idx).get_string()<<endl;
-      out1sigma<<i<<" "<<idx<<" "<<cc->getLogPost(idx,true)<<": ";
-      valarray<double> p(cc->getState(idx,true).get_params());
-      //valarray<double> p(cc->getState(idx).get_params());
-      for(double p_j:p)out1sigma<<p_j<<" ";
-      out1sigma<<endl;
-    }
-    out1sigma<<endl;
-    outsamples.precision(output_precision);
-    outfinesamples.precision(output_precision);
-    double nfine=data.size()*2;
-    
-    for(int i=0;i<Nbest;i++){  
-      int idx=idx_in_Nsigma[(rand()*idx_in_Nsigma.size())/RAND_MAX];
-      state st=cc->getState(idx,true);
-      //state st=cc->getState(idx);
-      vector<double> p=st.get_params_vector();
-      outsamples<<"#"<<st.get_string()<<endl;
-      data.write(outsamples,p,true);
-      outsamples<<endl;
-      outfinesamples<<"#"<<st.get_string()<<endl;
-      data.write(outfinesamples,p,true,nfine,tfinestart,tfineend);
-      outfinesamples<<endl;
-    }
-
-    outbest.precision(output_precision);    
-    outfinebest.precision(output_precision);    
-    int idx=idx_in_Nsigma[0];
-    state st=cc->getState(idx,true);
-    //state st=cc->getState(idx);
-    vector<double> p=st.get_params_vector();
-    outbest<<"#"<<st.get_string()<<endl;
-    data.write(outbest,p,true);
-    outbest<<endl;
-    outfinebest<<"#"<<st.get_string()<<endl;
-    data.write(outfinebest,p,true,nfine,tfinestart,tfineend);
-    outfinebest<<endl;
-    
-    cout<<"chain "<<ic<<": best_post "<<chain_llike->best_post<<", state="<<llike->best.get_string()<<endl;
-
-    //clean up
-    if(parallel_tempering)delete ptc;
-    else delete c;
+    bayes_sampler *s=s0->clone();
+    s->initialize();
+    s->run(base,ic);
+    s->analyze(base,ic,Nsigma,Nbest,data,tfinestart,tfineend);
   }
-  
-  //oute.close();
-  out.close();  
   
   //Dump summary info
   cout<<"best_post "<<llike->best_post<<", state="<<llike->best.get_string()<<endl;
@@ -782,124 +603,3 @@ void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,do
   out<<endl;
 };
 
-///Set the proposal distribution. Calling routing responsible for deleting.
-///Also returns choice of Ninit in first arg.
-///This should eventually go to ptmcmc driver class...
-proposal_distribution* new_proposal_distribution(int &Ninit, const Options &opt, sampleable_probability_function * prior, const valarray<double>*halfwidths){
-  int proposal_option,SpecNinit;
-  double tmixfac,reduce_gamma_by,de_eps;
-  bool de_mixing=false;
-  istringstream(opt.value("prop"))>>proposal_option;
-  istringstream(opt.value("de_ni"))>>SpecNinit;
-  istringstream(opt.value("de_eps"))>>de_eps;
-  istringstream(opt.value("de_reduce_gamma"))>>reduce_gamma_by;
-  istringstream(opt.value("de_Tmix"))>>tmixfac;
-  de_mixing=opt.set("de_mixing");
-  valarray<double> sigmas;
-  if(halfwidths!=nullptr)sigmas=*halfwidths;
-  else if(proposal_option<2){
-    cout<<"new_proposal_distribution: Called without defining haflwidths. Cannot apply proposal option 0 or 1."<<endl;
-    exit(1);
-  }
-  Ninit = 1;
-  proposal_distribution* prop=nullptr;
-  
-  //if(parallel_tempering)reduce_gamma_by*=2.0;//Turned this off since mlchain.
-  switch(proposal_option){
-  case 0:  //Draw from prior distribution   
-    cout<<"Selected draw-from-prior proposal option"<<endl;
-    prop=new draw_from_dist(*prior);
-    break;
-  case 1:  //gaussian   
-    cout<<"Selected Gaussian proposal option"<<endl;
-    prop=new gaussian_prop(sigmas/8.);
-    break;
-  case 2:  {  //range of gaussians
-    int Nprop_set=4;
-    cout<<"Selected set of Gaussian proposals option"<<endl;
-    vector<proposal_distribution*> gaussN(Nprop_set,nullptr);
-    vector<double>shares(Nprop_set);
-    double fac=1;
-    for(int i=0;i<Nprop_set;i++){
-      fac*=2;
-      gaussN[i]=new gaussian_prop(sigmas/fac);
-      shares[i]=fac;
-      cout<<"  sigma="<<sigmas[0]/fac<<", weight="<<fac<<endl;
-    }
-    prop=new proposal_distribution_set(gaussN,shares);
-    break;
-  }
-  case 3:{
-    cout<<"Selected differential evolution proposal option"<<endl;
-    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
-    //prop=new differential_evolution();
-    differential_evolution *de=new differential_evolution(0.0,0.3,de_eps,0.0);
-    de->reduce_gamma(reduce_gamma_by);
-    if(de_mixing)de->support_mixing(true);
-    de->mix_temperatures_more(tmixfac);
-    prop=de;
-    
-    Ninit=SpecNinit*Npar;//Need a huge pop of samples to avoid getting stuck in a peak unless occasionally drawing from prior.
-    break;
-  }
-  case 4:{
-    cout<<"Selected differential evolution with snooker updates proposal option"<<endl;
-    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
-    differential_evolution *de=new differential_evolution(0.1,0.3,de_eps,0.0);
-    //differential_evolution *de=new differential_evolution(0.1,0.3,0.0);
-    de->reduce_gamma(reduce_gamma_by);
-    if(de_mixing)de->support_mixing(true);
-    de->mix_temperatures_more(tmixfac);
-    prop=de;
-    if(false){
-      vector<proposal_distribution*>props(1);
-      vector<double>shares(1);
-      props[0]=de;shares[0]=1.0;
-      prop=new proposal_distribution_set(props,shares);    
-    }
-    Ninit=SpecNinit*Npar;
-    break;
-  }
-  case 5:{
-    cout<<"Selected differential evolution proposal with prior draws option"<<endl;
-    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
-    //prop=new differential_evolution();
-    vector<proposal_distribution*>props(2);
-    vector<double>shares(2);
-    props[0]=new draw_from_dist(*prior);
-    shares[0]=0.1;
-    differential_evolution *de=new differential_evolution(0.0,0.3,de_eps,0.0);
-    de->reduce_gamma(reduce_gamma_by);
-    if(de_mixing)de->support_mixing(true);
-    de->mix_temperatures_more(tmixfac);
-    cout<<"de="<<de<<endl;
-    props[1]=de;
-    shares[1]=0.9;
-    prop=new proposal_distribution_set(props,shares);    
-    Ninit=SpecNinit*Npar;
-    break;
-  }
-  case 6:{
-    cout<<"Selected differential evolution (with snooker updates) proposal with prior draws option"<<endl;
-    //differential_evolution(bool snooker=false, double gamma_one_frac=0.1,double b_small=0.0001,double ignore_frac=0.3):snooker(snooker),gamma_one_frac(gamma_one_frac),b_small(b_small),ignore_frac(ignore_frac)
-    //prop=new differential_evolution();
-    vector<proposal_distribution*>props(2);
-    vector<double>shares(2);
-    props[0]=new draw_from_dist(*prior);
-    shares[0]=0.1;
-    differential_evolution *de=new differential_evolution(0.1,0.3,de_eps,0.0);
-    de->reduce_gamma(reduce_gamma_by);
-    if(de_mixing)de->support_mixing(true);
-    de->mix_temperatures_more(tmixfac);
-    props[1]=de;
-    shares[1]=0.9;
-    prop=new proposal_distribution_set(props,shares);    
-    Ninit=SpecNinit*Npar;
-    break;
-  }
-  default:
-    cout<<"new_proposal_distribution: Unrecognized value: proposal_option="<<proposal_option<<endl;
-    exit(1);
-  }
-  return prop;
-}
