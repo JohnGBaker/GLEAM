@@ -25,7 +25,7 @@ using namespace std;
 // think more.  Maybe there is a simpler solution...
 
 //base class for data
-class MLdata : public bayes_signal{
+class MLdata : public bayes_old_signal{
 protected:
   vector<double>times,mags,dmags;
   double time0;
