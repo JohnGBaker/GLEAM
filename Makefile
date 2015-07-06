@@ -12,7 +12,7 @@ docs:
 .PHONY: clean ${LIB}/libptmcmc.a ${LIB}/libprobdist.a
 
 
-gleam: gleam.cc glens.cc glens.hh cmplx_roots_sg.o mlfit.hh ptmcmc ${MCMC}/bayesian.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a .ptmcmc-version
+gleam: gleam.cc glens.cc glens.hh cmplx_roots_sg.o mlfit.hh mlsignal.hh mldata.hh mllike.hh ptmcmc ${MCMC}/bayesian.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a .ptmcmc-version
 	@echo "ROOT=",${ROOT}
 	${CXX} ${CFLAGS} -o gleam gleam.cc glens.cc cmplx_roots_sg.o -lgsl -L${GSLDIR} -I${GSLINC} -I${MCMC} -std=c++11 -lgfortran -lprobdist -lptmcmc -L${LIB} 
 
