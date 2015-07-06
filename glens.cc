@@ -100,12 +100,14 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   //vector<double> theta  -yields the resulting thetas for all sample times
   //vector<int> grid_idxs -has lenght of "times" and yield index values for the location of the corresponding results within the larger "theta" vector.
   //bool integrate (false for direct polynomial evaluation rather than integration. 
+  //  if use_integrate is set then the value it overrides integrate 
   //
   //control parameters:
   const double caustic_mag_poly_level = 1.5; //use direct polynomial eval near caustics.
   const double caustic_mag_step_level = 1.5; //take smaller steps near caustics. (for finite source)
   const double caustic_step_factor = 1.;  //take smaller steps near caustics.
   const double intTOL = 1e-10;  //control integration error tolerance
+  if(have_integrate)integrate=use_integrate;
 
   ///clear the outputs
   time_series.clear();
@@ -407,6 +409,15 @@ int GLens::GSL_integration_func_vec (double t, const double theta[], double thet
 
   return !fail?GSL_SUCCESS:3210123;
 }
+
+void GLens::addOptions(Options &opt,const string &prefix){
+  Optioned::addOptions(opt,prefix);
+  opt.add(Option("poly","Don't use integration method for lens magnification, use only the polynomial method."));
+};
+
+void GLens::setup(){
+  set_integrate(!optSet("poly"));
+};
 
 
 //
@@ -889,3 +900,4 @@ double GLensBinary::invjac(const Point &p,double &ij00,double &ij01,double &ij10
   //cout<<"Delta J="<<mu2-mu<<" = "<<mu2<<" - "<<mu<<endl;
   return mu;
 };
+

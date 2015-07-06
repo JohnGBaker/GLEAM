@@ -7,6 +7,7 @@
 #include <iostream>
 #include <cmath>
 #include <sstream>
+#include "options.hh"
 using namespace std;
 extern bool debug;
 
@@ -51,7 +52,11 @@ public:
   Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),t0(0),have_times(false){
     //cout<<"Trajectory({"<<pos0.x<<","<<pos0.y<<"},{"<<vel0.x<<","<<vel0.y<<"})"<<endl;
   };
-  ///set the required eval times.
+  virtual Trajectory* clone(){
+    return new Trajectory(*this);
+  };
+  virtual void setup(const Point &pos0, const Point &vel0){p0=pos0;v0=vel0;};
+  ///set the required eval times.  
   virtual void set_times(vector<double> times,double toff){this->times=times;t0=times[0];tf=times.back();have_times=true;this->toff=toff;};//cout<<"tf="<<tf<<", times="<<this->times.size()<<", times["<<times.size()-1<<"]="<<times[times.size()-1]<<endl;};
   virtual double t_start()const {return t0;};
   virtual double t_end()const {return tf;};
@@ -66,6 +71,9 @@ public:
 class ParallaxTrajectory : public Trajectory {
 public:
   ParallaxTrajectory(Point pos0,Point vel0, double t_end, double caden, double au, double lat,double lon, double psi0, double t0=0):Trajectory(pos0,vel0,t_end,caden,t0){};
+  virtual ParallaxTrajectory* clone(){
+    return new ParallaxTrajectory(*this);
+  };
   double t_start()const {return t0;};
   double t_end()const {return tf;};
   double get_obs_time(int ith)const {return t0+cad*ith;};
@@ -74,7 +82,7 @@ public:
 };
 
 ///This is a generic abstract base class for thin gravitational lens objects.
-class GLens {
+class GLens :public Optioned{
 protected:
   int NimageMax;
   static const double constexpr dThTol=1e-9;
@@ -86,7 +94,10 @@ protected:
   ///For use with GSL integration
   static const int kappa=.1;
   int Ntheta;
+  bool use_integrate,have_integrate;
 public:
+  GLens(){have_integrate=false;};
+  virtual GLens* clone()=0;
   ///Lens map: map returns a point in the observer plane from a point in the lens plane.
   virtual Point map(const Point &p)=0;
   ///Inverse sens map: invmap returns a set of points in the lens plane which map to some point in the observer plane.  Generally multivalued;
@@ -109,6 +120,10 @@ public:
   virtual double invjac(const Point &p,double &j00,double &j01,double &j10,double &j11)=0;
   ///compute images and magnitudes along some trajectory
   void compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<int> &index_series,vector<double>&mag_series,bool integrate=false);
+  void set_integrate(bool integrate_or_not){use_integrate=integrate_or_not;have_integrate=true;}
+  //For the Optioned interface:
+  virtual void addOptions(Options &opt,const string &prefix="");
+  virtual void setup();
 };
 
 ///A rigid binary lens implementation
@@ -123,17 +138,28 @@ class GLensBinary : public GLens{
   vector<Point> invmapWittMao(const Point &p);
   double rWide;
 public:
-  GLensBinary(double q,double L);
+  GLensBinary(double q=1,double L=1);
+  virtual GLensBinary* clone(){
+    return new GLensBinary(*this);
+  };
   Point map(const Point &p);
+  //For the GLens interface:
   vector<Point> invmap(const Point &p);
   vector<Point> invmapWideBinary(const Point &p);
   double mag(const Point &p);
   using  GLens::mag;
   double jac(const Point &p,double &j00,double &j01,double &j10,double &j11);
   double invjac(const Point &p,double &j00,double &j01,double &j10,double &j11);
+  //specific to this class:
   double get_q(){return q;};
   double get_L(){return L;};
   double set_WideBinaryR(double r){rWide=r;};
+  void setup(double q_, double L_){
+    GLens::setup();
+    q=q_;
+    L=L_;
+    nu=1/(1+q);
+  }
 };
 
 #define GLENS_HH
