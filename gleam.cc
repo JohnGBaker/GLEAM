@@ -14,6 +14,8 @@
 #include "bayesian.hh"
 #include "proposal_distribution.hh"
 #include "ptmcmc.hh"
+#include "mldata.hh"
+#include "mlsignal.hh"
 
 using namespace std;
 
@@ -121,23 +123,35 @@ int main(int argc, char*argv[]){
   //Create the sampler
   ptmcmc_sampler mcmc;
   bayes_sampler *s0=&mcmc;
-
+  //Create the model components
+  GLensBinary binarylens;
+  Trajectory linear_trajectory(Point(0,0), Point(1,0));
+  Trajectory *traj=&linear_trajectory;
+  GLens *lens=&binarylens;
+  ML_photometry_data data;
+  ML_photometry_signal signal(traj, lens);
+ 
   Options opt;
 
   s0->addOptions(opt,"");
+  lens->addOptions(opt,"");
+  data.addOptions(opt,"");
+  signal.addOptions(opt,"");
 
   opt.add(Option("nchains","Number of consequtive chain runs. Default 1","1"));
   opt.add(Option("seed","Pseudo random number grenerator seed in [0,1). (Default=-1, use clock to seed.)","-1"));
-  opt.add(Option("poly","Don't use integration method for lens magnification, use only the polynomial method."));
+
+  //prior options:
   opt.add(Option("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value."));
-  opt.add(Option("remap_r0","Use remapped r0 coordinate."));
-  opt.add(Option("remap_q","Use remapped mass-ratio coordinate."));
-  opt.add(Option("additive_noise","Interpret Fn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)"));
-  opt.add(Option("q0","Prior max in q (with q>1) with remapped q0. Default=1e5/","1e5"));
-  opt.add(Option("Fn_max","Uniform prior max (min for additive) in Fn. Default=1.0 (18.0 additive)/","1"));
   opt.add(Option("tE_max","Uniform prior max in tE. Default=100.0/","100.0"));
+
+  //likelihood or data option?
+  opt.add(Option("additive_noise","Interpret Fn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)"));
+  opt.add(Option("Fn_max","Uniform prior max (min for additive) in Fn. Default=1.0 (18.0 additive)/","1"));
   opt.add(Option("tcut","Cut times before tcut (relative to tmax). Default=-1e20/","-1e20"));
   opt.add(Option("view","Don't run any chains, instead take a set of parameters and produce a set of reports about that lens model."));
+
+  //other options
   opt.add(Option("magmap","Don't run any chains, instead just make a magnitude map.  In this case the parameters should be just q,L,width."));
   opt.add(Option("mm_center","On which lens to center magmap. (-1,0,1), with default zero for CoM.","0"));
   opt.add(Option("mm_samples","Number of samples in magmap (default 300)","300"));
@@ -164,10 +178,10 @@ int main(int argc, char*argv[]){
   //DEV:   -Data?
   cout<<"flags=\n"<<opt.report()<<endl;
   
-  double nburn_frac,Tmax,q0,Fn_max,tE_max,tcut,seed;
+  double nburn_frac,Tmax,Fn_max,tE_max,tcut,seed;
   int Nchain;
   int mm_center,mm_samples,save_every;
-  bool use_remapped_r0,use_remapped_q,use_log_tE,view,use_additive_noise=false,do_magmap;
+  bool do_magmap,view;
   int Nsigma=1;
   int Nbest=10;
   *s0->optValue("nevery")>>Nevery;
@@ -176,20 +190,15 @@ int main(int argc, char*argv[]){
   istringstream(opt.value("seed"))>>seed;
   //if seed<0 set seed from clock
   if(seed<0)seed=time(NULL);
-  integrate=!opt.set("poly");
-  use_remapped_r0=opt.set("remap_r0");
-  use_remapped_q=opt.set("remap_q");
-  use_log_tE=opt.set("log_tE");
-  use_additive_noise=opt.set("additive_noise");
-  istringstream(opt.value("q0"))>>q0;
-  istringstream(opt.value("Fn_max"))>>Fn_max;
-  istringstream(opt.value("tE_max"))>>tE_max;
   istringstream(opt.value("tcut"))>>tcut;
   do_magmap=opt.set("magmap");
   istringstream(opt.value("mm_center"))>>mm_center;
   istringstream(opt.value("mm_samples"))>>mm_samples;
   istringstream(opt.value("precision"))>>output_precision;
   istringstream(opt.value("mm_lens_rWB"))>>mm_lens_rWB;
+  //Prior params (should move out to objects which manage specific parameters.)
+  istringstream(opt.value("Fn_max"))>>Fn_max;
+  istringstream(opt.value("tE_max"))>>tE_max;
 
   //read args
   string outname;
@@ -227,20 +236,26 @@ int main(int argc, char*argv[]){
   
   //Create the data object (This block is setting up the model.  If/when we separate model from data, then data obj may be defined below)
   cout<<"OGLE data file='"<<datafile<<"'"<<endl;
-  OGLEdata data(datafile);
-  double r0s=6.0;
+  OGLEdata odata(datafile);
+  double r0s=6.0,q0;
+  istringstream(opt.value("q0"))>>q0;
+  bool use_remapped_r0,use_remapped_q,use_log_tE,use_additive_noise=false;
+  use_remapped_r0=opt.set("remap_r0");
+  use_remapped_q=opt.set("remap_q");
+  use_additive_noise=opt.set("additive_noise");
+  use_log_tE=opt.set("log_tE");
   if(use_remapped_r0){
-    data.remap_r0(2.0);
+    odata.remap_r0(2.0);
     r0s=1.0;
   }
   if(use_remapped_q){
-    data.remap_q(q0);
+    odata.remap_q(q0);
   }
   if(use_additive_noise){
-    data.useAdditiveNoise();    
+    odata.useAdditiveNoise();    
   }
   if(use_log_tE){
-    data.use_log_tE();
+    odata.use_log_tE();
   }
   
   //Set up the parameter space
@@ -271,23 +286,23 @@ int main(int argc, char*argv[]){
     state s(&space,params);
     //magnification map
     ss.str("");ss<<outname<<"_mmap.dat";
-    dump_mag_map(ss.str(),data,s,0,0,mm_samples,mm_center);    
+    dump_mag_map(ss.str(),odata,s,0,0,mm_samples,mm_center);    
     if(opt.set("mm_nimage")){
       //debugint=true;
       ss.str("");ss<<outname<<"_nmap.dat";    
-      dump_mag_map(ss.str(),data,s,0,0,mm_samples,mm_center,true);      
+      dump_mag_map(ss.str(),odata,s,0,0,mm_samples,mm_center,true);      
     }
     exit(0);
   }    
 
   //Prune data
-  data.cropBefore(tcut);
-  cout<<"Ndata="<<data.size()<<endl;
+  odata.cropBefore(tcut);
+  cout<<"Ndata="<<odata.size()<<endl;
   double t0,twidth;
   //define time range:
   double tstart,tend;
-  data.getTimeLimits(tstart,tend);
-  t0=data.getPeakTime();
+  odata.getTimeLimits(tstart,tend);
+  t0=odata.getPeakTime();
   double finewidth=1.5;
   double tfinestart=t0-(-tstart+tend)*finewidth/2.0;
   double tfineend=t0+(-tstart+tend)*finewidth/2.0; //tfine range is twice data range centered on t0
@@ -306,13 +321,14 @@ int main(int argc, char*argv[]){
   if(view){
     if(have_pars0){
       cout<<"Producing report on the model with specified parameters."<<endl;
-      dump_view(outname,data,instate,tfinestart,tfineend,mm_samples);
+      dump_view(outname,odata,instate,tfinestart,tfineend,mm_samples);
     } else {
       cout<<" The -view option requires that parameters are provided."<<endl;
     }
   }
 
   //Set the prior:
+  //Eventually this should move to the relevant constitutent code elements where the params are given meaning.
   const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
   //                                     I0      Fs     Fn          logq*   logL       r0     phi      tE     tpass  
   valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,  r0s/2.0,   M_PI, tE_max/2,  t0     });
@@ -341,7 +357,7 @@ int main(int argc, char*argv[]){
 
   //Set the likelihood
   MLFitProb *llike=nullptr;
-  llike = new MLFitProb(&space,&data,&prior);
+  llike = new MLFitProb(&space,&odata,&prior);
   if(have_pars0){
     double ll=llike->evaluate_log(instate);
     double lp=prior.evaluate_log(instate);
@@ -368,7 +384,7 @@ int main(int argc, char*argv[]){
     bayes_sampler *s=s0->clone();
     s->initialize();
     s->run(base,ic);
-    s->analyze(base,ic,Nsigma,Nbest,data,tfinestart,tfineend);
+    s->analyze(base,ic,Nsigma,Nbest,odata,tfinestart,tfineend);
   }
   
   //Dump summary info
