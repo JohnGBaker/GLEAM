@@ -16,6 +16,7 @@
 #include "ptmcmc.hh"
 #include "mldata.hh"
 #include "mlsignal.hh"
+#include "mllike.hh"
 
 using namespace std;
 
@@ -55,7 +56,7 @@ class MLFitProb: public bayes_likelihood{
   state best;
 
   virtual ~MLFitProb(){};//Avoid GCC warnings
-  MLFitProb(stateSpace *sp, MLdata *data, sampleable_probability_function *prior=nullptr):data(data),prior(prior),bayes_likelihood(sp){
+  MLFitProb(stateSpace *sp, MLdata *data, bayes_data *d,bayes_signal *s,sampleable_probability_function *prior=nullptr):data(data),prior(prior),bayes_likelihood(sp,d,s){
     best=state(sp,Npar);
     reset();
   };
@@ -76,6 +77,8 @@ class MLFitProb: public bayes_likelihood{
     double tstart=omp_get_wtime();
     double result=data->evaluate_log(params,integrate);
     double post=result;
+    //double result=log_chi_squared(s);
+    //double post=result;
     if(prior)post+=prior->evaluate_log(s);
     //clock_t tend=clock();
     //double eval_time = (tend-tstart)/(double)CLOCKS_PER_SEC;
@@ -105,6 +108,28 @@ class MLFitProb: public bayes_likelihood{
   //s<<"MLFitProb:data["<<i<<"]:\n"<<data->print_info();
   //return s.str();
   //};
+  void defWorkingStateSpace(const stateSpace &sp){};
+  stateSpace getObjectStateSpace()const{return stateSpace();};
+  void write(ostream &out,state &st){data->write(out,st);};
+  void writeFine(ostream &out,state &st){
+    double nsamples=0,tstart=0,tend=0;
+    getFineGrid(nsamples,tstart,tend);
+    data->write(out,st,nsamples,tstart,tend);};
+  void getFineGrid(double & nfine, double &tfinestart, double &tfineend)const{
+    nfine=data->size()*2;
+    double t0,twidth;
+    double tstart,tend;
+    data->getTimeLimits(tstart,tend);
+    t0=data->getPeakTime();
+    double finewidth=1.5;
+    tfinestart=t0-(-tstart+tend)*finewidth/2.0;
+    tfineend=t0+(-tstart+tend)*finewidth/2.0; //tfine range is twice data range centered on t0
+    twidth=10;//look mostly within 10 days of peak;
+    cout<<"tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
+    cout<<"nfine="<<nfine<<endl;
+  };
+  
+
 };
 
 int ref_dir;//use to parameter for marginalization.
@@ -128,7 +153,7 @@ int main(int argc, char*argv[]){
   Trajectory linear_trajectory(Point(0,0), Point(1,0));
   Trajectory *traj=&linear_trajectory;
   GLens *lens=&binarylens;
-  ML_photometry_data data;
+  ML_OGLEdata data;
   ML_photometry_signal signal(traj, lens);
  
   Options opt;
@@ -222,7 +247,7 @@ int main(int argc, char*argv[]){
       have_pars0=true;
     }
   }
-    
+
   //report
   cout.precision(output_precision);
   cout<<"\noutname = '"<<outname<<"'"<<endl;
@@ -234,6 +259,11 @@ int main(int argc, char*argv[]){
   globalRNG.reset(ProbabilityDist::getPRNG());//just for safety to keep us from deleting main RNG in debugging.
   //cout<<"globalRNG="<<globalRNG.get()<<endl;
   
+  //Set up ML objects
+  data.setup(datafile);
+  signal.setup();
+
+
   //Create the data object (This block is setting up the model.  If/when we separate model from data, then data obj may be defined below)
   cout<<"OGLE data file='"<<datafile<<"'"<<endl;
   OGLEdata odata(datafile);
@@ -356,8 +386,29 @@ int main(int argc, char*argv[]){
   cout<<"Prior is:\n"<<prior.show()<<endl;
 
   //Set the likelihood
-  MLFitProb *llike=nullptr;
-  llike = new MLFitProb(&space,&odata,&prior);
+  //FIXME some of this should move up before addOptions 
+  bayes_likelihood *llike=nullptr;
+  bayes_likelihood *like=nullptr;
+  llike = new MLFitProb(&space,&odata,&data,&signal,&prior);
+  ML_photometry_likelihood mpl(&space, &data, &signal, &prior);
+  mpl.addOptions(opt);
+  mpl.setup();
+  like = &mpl;
+  ///At this point we are ready for analysis in the case that we are asked to view a model
+  ///Note that we still have needed the data file to create the OGLEdata object, and concretely
+  ///to set the domain.  This could be changed...
+  if(view){
+    if(have_pars0){
+    double nsamples,tfinestart,tfineend;
+    llike->getFineGrid(nsamples,tfinestart,tfineend);
+      cout<<"Producing report on the model with specified parameters."<<endl;
+      dump_view(outname,odata,instate,tfinestart,tfineend,mm_samples);
+    } else {
+      cout<<" The -view option requires that parameters are provided."<<endl;
+    }
+  }
+
+  //Just a little reporting
   if(have_pars0){
     double ll=llike->evaluate_log(instate);
     double lp=prior.evaluate_log(instate);
@@ -384,11 +435,11 @@ int main(int argc, char*argv[]){
     bayes_sampler *s=s0->clone();
     s->initialize();
     s->run(base,ic);
-    s->analyze(base,ic,Nsigma,Nbest,odata,tfinestart,tfineend);
+    s->analyze(base,ic,Nsigma,Nbest,*llike);
   }
   
   //Dump summary info
-  cout<<"best_post "<<llike->best_post<<", state="<<llike->best.get_string()<<endl;
+  cout<<"best_post "<<llike->bestPost()<<", state="<<llike->bestState().get_string()<<endl;
 }
 
 //An analysis function defined below.

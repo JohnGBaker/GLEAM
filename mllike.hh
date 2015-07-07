@@ -55,6 +55,7 @@ public:
   state bestState(){return best;};
   double bestPost(){return best_post;};
   double getVariance(int i, double label){
+    check();
     return data->getVariance(i)+signal->getVariance(label);};
 
   double evaluate_log(state &s){
@@ -65,7 +66,6 @@ public:
     double tstart=omp_get_wtime();
 
     double result=log_chi_squared(s);
-
     double post=result;
     if(prior)post+=prior->evaluate_log(s);
     //clock_t tend=clock();
@@ -94,6 +94,7 @@ public:
 
   ///from stateSpaceInterface
   void defWorkingStateSpace(const stateSpace &sp){
+    check();
     signal->defWorkingStateSpace(sp);
     //backward compatible hack    
     idx_I0=sp.get_index("I0");
@@ -106,6 +107,7 @@ public:
   ///
   ///This is just an initial draft.  To be utilized in later round of development.
   stateSpace getObjectStateSpace(){
+    check();
     stateSpace space(1);
     space=signal->getObjectStateSpace();
     cout<<"ML_photometry_likelihood::getObjectStateSpace(): This function is not yet implemented.  Need more development of stateSpace."<<endl;
@@ -123,14 +125,26 @@ public:
   };
   void setup(){
     if(optSet("additive_noise"))useAdditiveNoise();
-  };
-  
+    set_like0();
+  };  
   void set_model(state &s){
-    
+    check();
     if(do_additive_noise){
       state st=noise_trans.transformState(s);
       data->set_model(st);
     }
+  };
+  void getFineGrid(double & nfine, double &tfinestart, double &tfineend)const{
+    check();
+    nfine=data->size()*2;
+    double t0,twidth,tstart,tend;
+    data->getDomainLimits(tstart,tend);
+    t0=data->getFocusLabel();
+    double finewidth=1.5;
+    tfinestart=t0-(-tstart+tend)*finewidth/2.0;
+    tfineend=t0+(-tstart+tend)*finewidth/2.0; //tfine range is twice data range centered on t0
+    twidth=10;//look mostly within 10 days of peak;
+    cout<<"ML_photometry_likelihood::getFineGrid: tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
   };
     
 private:
@@ -142,8 +156,13 @@ private:
   
   ///This goes to ml instantiation of bayes_signal type
   ///overloads bayes_signal fn
-  void write(ostream &out,state&st,bool integrate=false, int nsamples=-1, double tstart=0, double tend=0){
-    
+  virtual void write(ostream &out,state &st){oldwrite(out,st);};
+  virtual void writeFine(ostream &out,state &st){
+    double nsamples=0,tstart=0,tend=0;
+    getFineGrid(nsamples,tstart,tend);
+    oldwrite(out,st,nsamples,tstart,tend);};
+  void oldwrite(ostream &out, state&st, int nsamples=-1, double tstart=0, double tend=0){
+    check();
     vector<double>times;
     if(nsamples<0)
       times=data->getLabels();

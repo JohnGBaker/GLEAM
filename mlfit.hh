@@ -38,7 +38,6 @@ public:
     }
     start=times.front();
     end=times.back();
-
   };
   double getPeakTime(bool original=false)const{
     if(original||times.size()<1)return time0;
@@ -396,7 +395,7 @@ public:
   };
 
   void write(ostream &out,vector<double>vparams,bool integrate=false, int nsamples=-1, double tstart=0, double tend=0){
-    
+
     valarray<double> params(vparams.data(), vparams.size());
     double I0,noise_lev;
     I0=params[0];

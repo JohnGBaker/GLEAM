@@ -31,17 +31,15 @@ protected:
   double time0;
   double extra_noise_mag;
   int idx_Mn;
-  double like0;
-  
+
 public:
   ///We relabel the generic bayes_data names as times/mags/etc...
   ML_photometry_data():bayes_data(),times(labels),mags(values),dmags(dvalues),time0(label0){
     extra_noise_mag=0;;
     idx_Mn=-1;
-    like0=0;
   };
   int size()const{return times.size();};
-  void getDomainLimits(double &start, double &end)const{
+  virtual void getDomainLimits(double &start, double &end)const{
     check_data();
     if(times.size()==0){
       cout<<"MLdata::getTimeLimits: Cannot get limit on empty object."<<endl;
@@ -51,7 +49,7 @@ public:
     end=times.back();
   };
   //double getPeakTime(bool original=false)const{
-  double getFocusLabel(bool original=false)const{
+  virtual double getFocusLabel(bool original=false)const{
     check_data();
     if(original||times.size()<1)return time0;
     //we assume monotonic time and magnitude data.
@@ -69,19 +67,18 @@ public:
   ///Crop out some early data.
   ///
   ///Permanently remove early portion of data
-  void cropBefore(double tstart){
+  virtual void cropBefore(double tstart){
     check_data();
     while (times.size()>0&&times[0]<tstart){
       times.erase(times.begin());
       mags.erase(mags.begin());
       dmags.erase(dmags.begin());
     }
-    set_like0();
   };
   //vector<double>getMags()const{return mags;};
   ///May eliminate/change to only reference the state-dependent version (now realized with mag_noise_var)
   //vector<double>getDeltaMags()const{return dmags;};
-  double getVariance(int i)const{
+  virtual double getVariance(int i)const{
     check_data();
     if(i<0||i>size()){
       cout<<"ML_photometry_data:getVariance: Index out of range."<<endl;
@@ -100,12 +97,12 @@ public:
     write(out,st.get_params_vector(),true,nsamples,tstart,tend);
   };
   */
-  void set_model(state &st){
+  virtual void set_model(state &st){
     bayes_data::set_model(st);
     extra_noise_mag=st.get_param(idx_Mn);
   };
   ///from stateSpaceInterface
-  void defWorkingStateSpace(const stateSpace &sp){
+  virtual void defWorkingStateSpace(const stateSpace &sp){
     ///This is how the names are currently hard-coded.  We want to have these space components be supplied by the signal/data objects
     //string names[]={"I0","Fs","Mn","logq","logL","r0","phi","tE","tpass"};
     idx_Mn=sp.get_index("Mn");
@@ -114,36 +111,20 @@ public:
   ///Set up the output stateSpace for this object
   ///
   ///This is just an initial draft.  To be utilized in later round of development.
-  stateSpace getObjectStateSpace()const{
+  virtual stateSpace getObjectStateSpace()const{
     stateSpace space(1);
     string names[]={"Mn"};
     space.set_names(names);  
     return space;
   };
-
-    
-protected:
-  ///This probably needs to move out to likelihood somehow
-  void set_like0(){
-    check_data();
-    like0=0;
-    //A largely cosmetic adjustment to yield conventional likelihood level with noise_mag=0;
-    for(int i=0;i<size();i++){
-      double S=dmags[i]*dmags[i];
-      like0+=log(S);
-    }
-    like0/=-2;
-    cout<<"setting like0="<<like0<<endl;
-  };
 };
 
 //class for OGLEII-IV DIA data
 class ML_OGLEdata : public ML_photometry_data {
-  double like0;
   //OGLE-IV:Photometry data file containing 5 columns: Hel.JD, I magnitude, magnitude error, seeing estimation (in pixels - 0.26"/pixel) and sky level.
 public:
   ML_OGLEdata(){};
-  void setup(string &filepath){
+  void setup(const string &filepath){
     ifstream file(filepath.c_str());
     if(file.good()){
       string line;
@@ -161,11 +142,10 @@ public:
 	exit(1);
       }
     }
-    set_like0();
+    have_data=true;
     //time0=getPeakTime();
     time0=getFocusLabel();
     for(double &t : times)t-=time0;//permanently offset times from their to put the peak at 0.
-    have_data=true;
     return;
   };
 
