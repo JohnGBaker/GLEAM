@@ -25,6 +25,7 @@ typedef initializer_list<int> ilist;
 
 bool debug = false;
 bool debugint = false;
+bool debug_signal = false;
 
 shared_ptr<Random> globalRNG;//used for some debugging... 
 
@@ -47,18 +48,25 @@ void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,do
 ///Perhaps move this into mlfit?
 
 class MLFitProb: public bayes_likelihood{
-  MLdata * data;
+  MLdata * odata;
   sampleable_probability_function * prior;
   int count;
   double total_eval_time;
+  stateSpaceTransformND noise_trans{2,{"I0","Fn"},{"I0","Mn"},[](vector<double>&v){return vector<double>({v[0],v[0]-2.5*log10(v[1])});}};
+  bool do_additive_noise;
  public:
   double best_post;
   state best;
 
   virtual ~MLFitProb(){};//Avoid GCC warnings
-  MLFitProb(stateSpace *sp, MLdata *data, bayes_data *d,bayes_signal *s,sampleable_probability_function *prior=nullptr):data(data),prior(prior),bayes_likelihood(sp,d,s){
+  MLFitProb(stateSpace *sp, MLdata *data, bayes_data *d,bayes_signal *s,sampleable_probability_function *prior=nullptr):odata(data),prior(prior),bayes_likelihood(sp,d,s){
     best=state(sp,Npar);
     reset();
+    //void setup(){    
+    //if(optSet("additive_noise"))useAdditiveNoise();
+    set_like0();
+    //cout<<"setup:options="<<reportOptions()<<endl;
+    //cout<<"setup:do_additive_noise="<<(do_additive_noise?"true":"false")<<endl;
   };
   void reset(){
     best_post=-INFINITY;
@@ -75,11 +83,13 @@ class MLFitProb: public bayes_likelihood{
     valarray<double>params=s.get_params();
     //clock_t tstart=clock();
     double tstart=omp_get_wtime();
-    double result=data->evaluate_log(params,integrate);
+    //double result=odata->evaluate_log(params,integrate);
+    //cout<<"loglike="<<result<<"<="<<best_post<<endl;   
+    //result=log_chi_squared(s);
+    double result=log_chi_squared(s);
     double post=result;
-    //double result=log_chi_squared(s);
-    //double post=result;
     if(prior)post+=prior->evaluate_log(s);
+    //cout<<"loglike="<<result<<"<="<<best_post<<endl;   
     //clock_t tend=clock();
     //double eval_time = (tend-tstart)/(double)CLOCKS_PER_SEC;
     double tend=omp_get_wtime();
@@ -94,7 +104,6 @@ class MLFitProb: public bayes_likelihood{
         best_post=post;
         best=state(s);
       }
-      //cout<<"loglike="<<result<<"<="<<maxLike<<endl;   
       if(!isfinite(result)){
         cout<<"Whoa dude, loglike is NAN! What's up with that?"<<endl;
         cout<<"params="<<s.get_string()<<endl;
@@ -108,19 +117,57 @@ class MLFitProb: public bayes_likelihood{
   //s<<"MLFitProb:data["<<i<<"]:\n"<<data->print_info();
   //return s.str();
   //};
-  void defWorkingStateSpace(const stateSpace &sp){};
+  void defWorkingStateSpace(const stateSpace &sp){
+    if(optSet("additive_noise"))do_additive_noise=true;
+    else do_additive_noise=false;
+    haveSetup();
+    checkSetup();//Call this assert whenever we need options to have been processed.
+    haveWorkingStateSpace();
+    checkPointers();
+    signal->defWorkingStateSpace(sp);
+    //backward compatible hack    
+    if(!do_additive_noise){
+      stateSpace st=noise_trans.transform(sp);
+      //cout<<"mlfitprob:defWSS: transformed space is:\n"<<sp.show()<<endl;
+      data->defWorkingStateSpace(st);
+    } else {
+      data->defWorkingStateSpace(sp);
+    }    
+  };
+  state transformDataState(const state &s)const{
+    if(!do_additive_noise){
+      state st=noise_trans.transformState(s);
+      //cout<<"Transforming data state from:"<<s.show()<<"\nto:"<<st.show()<<endl;
+      return st;
+    }
+    return s;
+  };
+  state transformSignalState(const state &s)const{return s;};
+
+  void addOptions(Options &opt,string s=""){Optioned::addOptions(opt,s);};
+  
   stateSpace getObjectStateSpace()const{return stateSpace();};
-  void write(ostream &out,state &st){data->write(out,st);};
+  void write(ostream &out,state &st){
+    debug_signal=true;
+    odata->write(out,st);
+    //oldwrite(out,st);
+  };
   void writeFine(ostream &out,state &st){
     double nsamples=0,tstart=0,tend=0;
+    debug_signal=false;
     getFineGrid(nsamples,tstart,tend);
-    data->write(out,st,nsamples,tstart,tend);};
+    odata->write(out,st,nsamples,tstart,tend);
+    //oldwrite(out,st,nsamples,tstart,tend);
+  };
   void getFineGrid(double & nfine, double &tfinestart, double &tfineend)const{
+    //nfine=odata->size()*2;
     nfine=data->size()*2;
     double t0,twidth;
     double tstart,tend;
-    data->getTimeLimits(tstart,tend);
-    t0=data->getPeakTime();
+    //odata->getTimeLimits(tstart,tend);
+    data->getDomainLimits(tstart,tend);
+    //t0=odata->getPeakTime();
+    t0=data->getFocusLabel();
     double finewidth=1.5;
     tfinestart=t0-(-tstart+tend)*finewidth/2.0;
     tfineend=t0+(-tstart+tend)*finewidth/2.0; //tfine range is twice data range centered on t0
@@ -128,7 +175,68 @@ class MLFitProb: public bayes_likelihood{
     cout<<"tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
     cout<<"nfine="<<nfine<<endl;
   };
-  
+
+  void oldwrite(ostream &out, state&st, int nsamples=-1, double tstart=0, double tend=0){
+    checkPointers();
+    vector<double>times;
+    if(nsamples<0)
+      times=data->getLabels();
+    else {
+      double delta_t=(tend-tstart)/(nsamples-1);
+      for(int i=0;i<nsamples;i++){
+	double t=tstart+i*delta_t;
+	times.push_back(t);
+      }
+    }
+    //double tpk=getPeakTime();
+    double tpk=data->getFocusLabel();
+    double time0=data->getFocusLabel(true);
+    
+    //backward compatibility hack
+    const int idx_Fn=2,idx_I0=0;
+    double noise_lev=st.get_param(idx_Fn);
+    double I0=st.get_param(idx_I0);
+    double noise_mag=I0-2.5*log10(noise_lev);
+    if(do_additive_noise)noise_mag=noise_lev;
+    cout<<"I0,noise_lev,integrate="<<I0<<","<<noise_lev<<","<<integrate<<endl;
+    cout<<"nsamples,tstart,tend="<<nsamples<<" "<<tstart<<" "<<tend<<endl;
+    //endhack
+    
+    I0=st.get_param(idx_I0);
+    vector<double> model=signal->get_model_signal(st,times);
+    vector<double> dmags=data->getDeltaValues();
+    vector<double> dvar=getVariances(st);
+
+    if(nsamples<0){
+      for(int i=0;i<times.size();i++){
+	double S=dvar[i];
+	//if(i<10)cout<<"i="<<i<<"  S="<<S<<endl;
+	if(i==0)
+	  out<<"#t"<<" "<<"t_vs_pk" 
+	     <<" "<<"data_mag"<<" "<<"model_mag"
+	     <<" "<<"data_err"<<" "<<"model_err"
+	     <<endl;
+	out<<times[i]+time0<<" "<<times[i]-tpk
+	   <<" "<<data->getValue(i)<<" "<<model[i]
+	   <<" "<<dmags[i]<<" "<<sqrt(S)
+	   <<endl;
+      }
+    } else {
+      for(int i=0;i<times.size();i++){
+	//if(i<10)cout<<"i="<<i<<"  S="<<S<<endl;
+	double rtS=pow(10.0,0.4*(-noise_mag+model[i]));
+	double t=times[i];
+	if(i==0)
+	  out<<"#t"<<" "<<"t_vs_pk" 
+	     <<" "<<"model_mag"<<" "<<"model_extra_err"
+	     <<endl;
+	out<<t+time0<<" "<<t-tpk
+	   <<" "<<model[i]<<" "<<rtS
+	   <<endl;
+      }
+    }
+  };
+
 
 };
 
@@ -155,7 +263,7 @@ int main(int argc, char*argv[]){
   GLens *lens=&binarylens;
   ML_OGLEdata data;
   ML_photometry_signal signal(traj, lens);
- 
+
   Options opt;
 
   s0->addOptions(opt,"");
@@ -173,7 +281,6 @@ int main(int argc, char*argv[]){
   //likelihood or data option?
   opt.add(Option("additive_noise","Interpret Fn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)"));
   opt.add(Option("Fn_max","Uniform prior max (min for additive) in Fn. Default=1.0 (18.0 additive)/","1"));
-  opt.add(Option("tcut","Cut times before tcut (relative to tmax). Default=-1e20/","-1e20"));
   opt.add(Option("view","Don't run any chains, instead take a set of parameters and produce a set of reports about that lens model."));
 
   //other options
@@ -387,13 +494,17 @@ int main(int argc, char*argv[]){
 
   //Set the likelihood
   //FIXME some of this should move up before addOptions 
+  lens->setup();
   bayes_likelihood *llike=nullptr;
   bayes_likelihood *like=nullptr;
   llike = new MLFitProb(&space,&odata,&data,&signal,&prior);
+  llike->addOptions(opt,"");
   ML_photometry_likelihood mpl(&space, &data, &signal, &prior);
-  mpl.addOptions(opt);
+  mpl.addOptions(opt,"");
   mpl.setup();
   like = &mpl;
+  llike->defWorkingStateSpace(space);
+  like->defWorkingStateSpace(space);
   ///At this point we are ready for analysis in the case that we are asked to view a model
   ///Note that we still have needed the data file to create the OGLEdata object, and concretely
   ///to set the domain.  This could be changed...
@@ -435,7 +546,25 @@ int main(int argc, char*argv[]){
     bayes_sampler *s=s0->clone();
     s->initialize();
     s->run(base,ic);
-    s->analyze(base,ic,Nsigma,Nbest,*llike);
+    //s->analyze(base,ic,Nsigma,Nbest,*llike);
+    {//For exact backward compatibility we need to override the command-line flag -poly and always set integrate=true for the analysis
+      //Here we try first working exclusively with the new code ML_photometry_likelihood, rather than MLFitProb...
+      //As coded here this is not very general...
+      GLensBinary alens;
+      alens.Optioned::addOptions(opt,"");
+      alens.setup();
+      alens.set_integrate(true);//This line is the point of remaing all this.
+      cout<<"alens:"<<alens.print_info()<<endl;
+      ML_photometry_signal asignal(traj, &alens);
+      asignal.Optioned::addOptions(opt,"");
+      asignal.setup();
+      ML_photometry_likelihood alike(&space, &data, &asignal, &prior);
+      cout<<"alike="<<&alike<<endl;
+      alike.Optioned::addOptions(opt,"");
+      alike.setup();
+      alike.defWorkingStateSpace(space);
+      s->analyze(base,ic,Nsigma,Nbest,alike);
+    }
   }
   
   //Dump summary info

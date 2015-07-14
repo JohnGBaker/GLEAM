@@ -12,7 +12,7 @@
 #include "bayesian.hh"
 
 using namespace std;
-//#define OLD_BUGGY
+extern bool debug_signal;
 
 //plan:
 //Probably add an "astro_signal" class, more general from photometry  than can simultaneously be applied to phtometry and astrometry signals...
@@ -41,7 +41,7 @@ class ML_photometry_signal : public bayes_signal{
   Trajectory *traj;
   GLens *lens;
   int idx_I0, idx_Fs, idx_q, idx_L, idx_r0, idx_phi, idx_tE, idx_tmax; 
-  bool have_working_ss;
+  stateSpace lensSpace;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
     do_remap_r0=false;
@@ -49,12 +49,12 @@ public:
     do_log_tE=false;
     r0_ref=0;
     q_ref=0;
-    have_working_ss=false;
     idx_I0=idx_Fs=idx_q=idx_L=idx_r0=idx_phi=idx_tE=idx_tmax=-1; 
   };
   ///From bayes_signal
   //
-  vector<double> get_model_signal(state &st, vector<double> &labels){
+  vector<double> get_model_signal(const state &st, const vector<double> &labels)const{
+    checkWorkingStateSpace();
     vector<double>params=st.get_params_vector();
     return model_lightcurve(params,labels);
   };
@@ -62,32 +62,37 @@ public:
   ///From StateSpaceInterface (via bayes_signal)
   ///
   void defWorkingStateSpace(const stateSpace &sp){
+    checkSetup();//Call this assert whenever we need options to have been processed.
     ///This is how the names are currently hard-coded.  We want to have these space components be supplied by the signal/data objects
     //string names[]={"I0","Fs","Fn","logq","logL","r0","phi","tE","tpass"};
     //if(use_additive_noise)names[2]="Mn";
     //if(use_remapped_r0)names[5]="s(r0)";
     //if(use_remapped_q)names[3]="s(1+q)";    
     //if(use_log_tE)names[7]="log(tE)";
-    idx_I0=sp.get_index("I0");
-    idx_Fs=sp.get_index("Fs");
-    if(do_remap_q)idx_q=sp.get_index("s(1+q)");
-    else idx_q=sp.get_index("logq");
-    idx_L=sp.get_index("logL");
-    if(do_remap_r0)idx_r0=sp.get_index("r0");
-    else idx_r0=sp.get_index("s(r0)");
-    idx_phi=sp.get_index("phi");
-    if(do_log_tE)idx_tE=sp.get_index("log(tE)");
-    else idx_tE=sp.get_index("tE");
-    idx_tmax=sp.get_index("tpass");
+    idx_I0=sp.requireIndex("I0");
+    idx_Fs=sp.requireIndex("Fs");
+    if(do_remap_q)idx_q=sp.requireIndex("s(1+q)");
+    else idx_q=sp.requireIndex("logq");
+    idx_L=sp.requireIndex("logL");
+    if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");
+    else idx_r0=sp.requireIndex("r0");
+    idx_phi=sp.requireIndex("phi");
+    if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");
+    else idx_tE=sp.requireIndex("tE");
+    idx_tmax=sp.requireIndex("tpass");
+    haveWorkingStateSpace();
     ///Eventually want to transmit these down to constituent objects:
-    ///--eg lens.defWorkingStateSpace(sp)
+    lensSpace=lens->getObjectStateSpace();
+    lens->defWorkingStateSpace(lensSpace);
+    //lens->defWorkingStateSpace();
     ///--or lens.defWorkingStateSpace(transform_to_lens.transform(sp))
   };
-
+  
   ///Set up the output stateSpace for this object
   ///
   ///This is just an initial draft.  To be utilized in later round of development.
   stateSpace getObjectStateSpace()const{
+    checkSetup();//Call this assert whenever we need options to have been processed.
     stateSpace space(9);
     string names[]={"I0","Fs","Fn","logq","logL","r0","phi","tE","tpass"};
     //if(use_additive_noise)names[2]="Mn";
@@ -124,6 +129,7 @@ public:
       remap_q(q0_val);
     }
     if(optSet("log_tE"))use_log_tE();
+    haveSetup();
   };    
 private:
 
@@ -183,11 +189,11 @@ private:
   }
 
   ///This goes to ml instantiation of bayes_signal type
-  void get_model_params(vector<double> &params, double &I0, double &Fs,double &q,double &L,double &r0,double &phi,double &tE,double &tmax){
+  void get_model_params(const vector<double> &params, double &I0, double &Fs,double &q,double &L,double &r0,double &phi,double &tE,double &tmax)const{
+    checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
     //Light level parameters
     //  I0 baseline unmagnitized magnitude
     //  Fs fraction of I0 light from the magnetized source
-    //  fractional noise intensity at I0 baseline (It is conventional to fit this ad hoc away from the lens event, but we fit for this as part of the Bayesian analysis, one can thing of this as a simple stellar variability model, with more sophisticated models possible as well, naively anyway.)
     //Earth trajectory parameterized by:
     //  time (tmax) at point of closest approach to alignment with source and lens CoM
     //  separation (r0, in Einstein ring units) of closest approach
@@ -221,22 +227,14 @@ private:
   };
 
   ///This goes to ml instantiation of bayes_signal type
-  Trajectory *clone_trajectory(double q, double L, double r0, double phi, double tstart){
+  Trajectory *clone_trajectory(double q, double L, double r0, double phi, double tstart)const{
     //In C++11, I believe this should be elided and thus no slower than if explicit as in inline...
 
     //compute reference position
     double vx=cos(phi), vy=sin(phi);
-    //cout<<"r0="<<r0<<" q="<<q<<" L="<<L<<endl;
-    //double sph=vy;
-    //cout<<"r+ = "<<r0-q*L/(1+q)*sph<<" r- = "<<r0+L/(1+q)*sph<<"  alpha+ = "<<Fs/(r0*(1+q)-q*L*sph)<<" alpha- = "<<Fs/(r0*(1+q)+L*sph)<<endl;
     double p0x=-r0*sin(phi), p0y=r0*cos(phi);
     double xcm  =  (q/(1.0+q)-0.5)*L;
 
-    //cout<<"vx="<<vx<<" vy="<<vy<<endl;
-    //cout<<"tEs[0]="<<tEs[0]<<endl;
-    //cout<<"p0x="<<p0x<<" p0y="<<p0y<<" xcm="<<xcm<<endl;
-    //cout<<" tstart="<<tstart<<endl;
-    //Trajectory traj(Point(p0x+vx*tstart+xcm,p0y+vy*tstart), Point(vx,vy));
     Trajectory *newtraj=traj->clone();
     newtraj->setup(Point(p0x+vx*tstart+xcm,p0y+vy*tstart), Point(vx,vy));
 
@@ -245,12 +243,12 @@ private:
 
   ///This goes to ml instantiation of bayes_signal type
   ///Change this to a standard signal function get_signal_model dep on state, data etc, returns vector.
-  vector<double> model_lightcurve(vector<double> &params,vector<double>&times){
+  vector<double> model_lightcurve(const vector<double> &params,const vector<double>&times)const{
     double result=0;
     
     double I0,Fs,q,L,r0,phi,tE,tmax;
     get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);
-
+    //cout<<"model params:I0,Fs,q,L,r0,phi,tE,tmax="<<I0<<","<<Fs<<","<<q<<",\n"<<L<<","<<r0<<","<<phi<<","<<tE<<","<<tmax<<endl;
     //Comment:
     //The lightcurve model is centered at the midpoint between m1 and m2
     //This seems like it would unnecessarily couple the parameters as
@@ -277,30 +275,63 @@ private:
 
     //We need to clone lens/traj before so that each omp thread is working with different copies of the objects.
     //we clone rather than copy so that we can allow derived classes.
-    //GLens *worklens=lens->clone();
-    //We want this to look like the line above.  To realize that, we have to provide Glens with stateSpaceInterface, and pass params in that way.
-    GLensBinary *worklens=dynamic_cast<GLensBinary*>(lens->clone()); //HACK FIXME
-    worklens->setup(q,L);
+    //GLens *worklens;
+    GLensBinary *worklens;
+    //cout<<"signal lens:"<<lens->print_info()<<endl;
+    //worklens=lens->clone();
+    worklens=dynamic_cast<GLensBinary*>(lens->clone()); //HACK FIXME.  StateSpace based setup will obviate this cast
+    //This next lines are appropriate for GLensBinary.  The generalization of this requires a state-space transformation which pulls out q and L.
+    //Probably everything related to L/q should probably move into GLensBinary...
+    //state lens_state(&lensSpace,valarray<double>({q,L}));
+    //worklens->setState(lens_state);
+    worklens->setState(q,L);
+    //cout<<"signal worklens:"<<worklens->print_info()<<endl;
+    //worklens=new GLensBinary(q,L);
     //Trajectory traj(get_trajectory(q,L,r0,phi,tEs[0]));
     //See fixme note above.  The same issue will keep us from generalizing Trajectory, until fixed.
-    Trajectory *worktraj=clone_trajectory(q,L,r0,phi,tEs[0]);
+    Trajectory *worktraj;
+    worktraj=clone_trajectory(q,L,r0,phi,tEs[0]);//FIXME change this to a generic clone, then a stateSpace setup.
     worktraj->set_times(tEs,0);
+    /*
+    if(debug_signal){
+      int prec=cout.precision();
+      cout.precision(20);
+      cout<<"mlsignal Times range from "<<worktraj->t_start()<<" to "<<worktraj->t_end()<<endl;
+      cout.precision(prec);
+      cout<<"mlsignal Traj:"<<worktraj->print_info()<<endl;}
+    */
+    //cout<<"worklens="<<worklens<<endl;
     worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
-    delete worktraj, worklens;
 
     bool burped=false;
     for(int i=0;i<indices.size();i++ ){
       double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
       model.push_back(Ival);
+      /*
+      if(debug_signal){
+	int prec=cout.precision();
+	cout.precision(20);
+	Point p=worktraj->get_obs_pos(times[i]);
+	double xcm  =  (q/(1.0+q)-0.5)*L;
+	cout<<i<<" "<<times[i]<<" "<<xtimes[indices[i]]<<"\nq,L="<<q<<","<<L<<" ("<<p.x<<","<<p.y<<") "<<sqrt((p.x-xcm)*(p.x-xcm)+p.y*p.y);
+	cout.precision(prec);
+	cout<<"\n "<<Ival<<"\n "<<modelmags[indices[i]]<<" thetas="<<endl;
+	cout.precision(20);
+	for(int j=0;j<thetas[indices[i]].size();j++)cout<<"  ("<<thetas[indices[i]][j].x<<","<<thetas[indices[i]][j].y<<") "<<endl;
+	cout<<"]"<<endl;//debug
+	cout.precision(prec);
+      }
+      */
       if(!isfinite(Ival)&&!burped){
 	cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" I0,Fs,noise_lev,q,L,r0,phi,tE,tmax: "<<I0<<" "<<Fs<<" "<<"??????"<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;
 	burped=true;
       }
     }
+    delete worktraj, worklens;
     return model;
   };
-
-};
+  
+  };
 
 #endif
 

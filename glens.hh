@@ -2,12 +2,12 @@
 //Written by John G Baker NASA-GSFC (2014)
 
 #ifndef GLENS_HH
-
+#define GLENS_HH
 #include <vector>
 #include <iostream>
 #include <cmath>
 #include <sstream>
-#include "options.hh"
+#include "bayesian.hh"
 using namespace std;
 extern bool debug;
 
@@ -82,7 +82,7 @@ public:
 };
 
 ///This is a generic abstract base class for thin gravitational lens objects.
-class GLens :public Optioned{
+class GLens :public bayes_component{
 protected:
   int NimageMax;
   static const double constexpr dThTol=1e-9;
@@ -124,6 +124,11 @@ public:
   //For the Optioned interface:
   virtual void addOptions(Options &opt,const string &prefix="");
   virtual void setup();
+  virtual string print_info()const=0;
+  //For stateSpaceInterface
+  virtual void defWorkingStateSpace(const stateSpace &sp)=0;
+  virtual stateSpace getObjectStateSpace()const=0;
+  virtual void setState(const state &s)=0;
 };
 
 ///A rigid binary lens implementation
@@ -137,6 +142,7 @@ class GLensBinary : public GLens{
   vector<Point> invmapAsaka(const Point &p);
   vector<Point> invmapWittMao(const Point &p);
   double rWide;
+  int idx_q,idx_L;
 public:
   GLensBinary(double q=1,double L=1);
   virtual GLensBinary* clone(){
@@ -154,13 +160,48 @@ public:
   double get_q(){return q;};
   double get_L(){return L;};
   double set_WideBinaryR(double r){rWide=r;};
+  /*
   void setup(double q_, double L_){
     GLens::setup();
     q=q_;
     L=L_;
     nu=1/(1+q);
-  }
+    }*/
+  virtual string print_info()const{ostringstream s;s<<"GLensBinary(q="<<q<<",L="<<L<<")"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
+  //virtual string print_info()const{ostringstream s;s<<"GLensBinary(q="<<q<<",L="<<L<<")"<<endl;return s.str();};
+
+  ///From StateSpaceInterface (via bayes_component)
+  ///
+  void defWorkingStateSpace(const stateSpace &sp){
+    checkSetup();
+    idx_q=sp.requireIndex("q");
+    idx_L=sp.requireIndex("L");
+    haveWorkingStateSpace();
+  };  
+  ///Set up the output stateSpace for this object
+  ///
+  stateSpace getObjectStateSpace()const{
+    checkSetup();//Call this assert whenever we need options to have been processed.
+    stateSpace space(2);
+    string names[]={"q","L"};
+    space.set_names(names);  
+    return space;
+  };
+  ///Set state parameters
+  ///
+  void setState(const state &st){;
+    checkWorkingStateSpace();
+    q=st.get_param(idx_q);
+    L=st.get_param(idx_L);
+    nu=1/(1+q);
+  };
+  ///This is a class-specific variant which 
+  void setState(double q_, double L_){;
+    checkWorkingStateSpace();
+    q=q_;
+    L=L_;
+    nu=1/(1+q);
+  };
 };
 
-#define GLENS_HH
 #endif

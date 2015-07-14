@@ -19,7 +19,6 @@ using namespace std;
 #include "options.hh"
 #include "bayesian.hh"
 
-
 class ML_photometry_likelihood: public bayes_likelihood{
   sampleable_probability_function * prior;
   int count;
@@ -33,7 +32,7 @@ class ML_photometry_likelihood: public bayes_likelihood{
   ///The following declaration creates a stateSpace transform object
   ///There are four arguments for the stateSpaceTransformND constructor. The first is the number of dimensions, then a vector of the "in" param names,
   ///then a vector of the transformed "out" param names, then a function (declared via the c++11 lambda 'closure' function notation) defining the transformation.
-  stateSpaceTransformND noise_trans{2,{"I0","Mn"},{"I0","Fn"},[](vector<double>&v){return vector<double>({v[0],v[0]-2.5*log10(v[1])});}};
+  stateSpaceTransformND noise_trans{2,{"I0","Fn"},{"I0","Mn"},[](vector<double>&v){return vector<double>({v[0],v[0]-2.5*log10(v[1])});}};
   int nevery;
 public:
   ML_photometry_likelihood(stateSpace *sp, ML_photometry_data *data, ML_photometry_signal *signal, sampleable_probability_function *prior=nullptr):prior(prior),bayes_likelihood(sp,data,signal){
@@ -54,10 +53,12 @@ public:
   }
   state bestState(){return best;};
   double bestPost(){return best_post;};
+  /*
   double getVariance(int i, double label){
     check();
+    cout<<"mllike::getVar: dataVar,signalVar="<<data->getVariance(i)<<","<<signal->getVariance(label)<<endl;
     return data->getVariance(i)+signal->getVariance(label);};
-
+  */
   double evaluate_log(state &s){
     //#pragma omp critical
     //cout<<"Evaluating likelihood for params"<<s.get_string()<<endl;
@@ -94,20 +95,29 @@ public:
 
   ///from stateSpaceInterface
   void defWorkingStateSpace(const stateSpace &sp){
-    check();
+    checkSetup();//Call this assert whenever we need options to have been processed.
+    haveWorkingStateSpace();
+    checkPointers();
     signal->defWorkingStateSpace(sp);
     //backward compatible hack    
-    idx_I0=sp.get_index("I0");
-    if(do_additive_noise) idx_Fn=sp.get_index("Mn");
-    else idx_Fn=sp.get_index("Fn");
-    data->defWorkingStateSpace(noise_trans.transform(sp));
+    idx_I0=sp.requireIndex("I0");
+    //cout<<"do_additive_noise="<<(do_additive_noise?"true":"false")<<endl;
+    if(do_additive_noise){
+      idx_Fn=sp.requireIndex("Mn");
+      data->defWorkingStateSpace(sp);
+    } else {
+      idx_Fn=sp.requireIndex("Fn");
+      stateSpace st=noise_trans.transform(sp);
+      data->defWorkingStateSpace(st);
+    }
   };
 
   ///Set up the output stateSpace for this object
   ///
   ///This is just an initial draft.  To be utilized in later round of development.
   stateSpace getObjectStateSpace(){
-    check();
+    checkSetup();//Call this assert whenever we need options to have been processed.
+    checkPointers();
     stateSpace space(1);
     space=signal->getObjectStateSpace();
     cout<<"ML_photometry_likelihood::getObjectStateSpace(): This function is not yet implemented.  Need more development of stateSpace."<<endl;
@@ -123,19 +133,25 @@ public:
     Optioned::addOptions(opt,prefix);   
     addOption("additive_noise","Interpret Fn->Mn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)");
   };
-  void setup(){
+  void setup(){    
     if(optSet("additive_noise"))useAdditiveNoise();
     set_like0();
+    //cout<<"setup:options="<<reportOptions()<<endl;
+    //cout<<"setup:do_additive_noise="<<(do_additive_noise?"true":"false")<<endl;
+    haveSetup();
   };  
-  void set_model(state &s){
-    check();
-    if(do_additive_noise){
+  state transformDataState(const state &s)const{
+    //cout<<"ML_photometrylike:transfDataSt: this="<<this<<endl;
+    if(!do_additive_noise){
       state st=noise_trans.transformState(s);
-      data->set_model(st);
+      return st;
     }
+    return s;
   };
+  state transformSignalState(const state &s)const{return s;};
+  
   void getFineGrid(double & nfine, double &tfinestart, double &tfineend)const{
-    check();
+    checkPointers();
     nfine=data->size()*2;
     double t0,twidth,tstart,tend;
     data->getDomainLimits(tstart,tend);
@@ -144,7 +160,7 @@ public:
     tfinestart=t0-(-tstart+tend)*finewidth/2.0;
     tfineend=t0+(-tstart+tend)*finewidth/2.0; //tfine range is twice data range centered on t0
     twidth=10;//look mostly within 10 days of peak;
-    cout<<"ML_photometry_likelihood::getFineGrid: tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
+    //cout<<"ML_photometry_likelihood::getFineGrid: tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
   };
     
 private:
@@ -162,15 +178,28 @@ private:
     getFineGrid(nsamples,tstart,tend);
     oldwrite(out,st,nsamples,tstart,tend);};
   void oldwrite(ostream &out, state&st, int nsamples=-1, double tstart=0, double tend=0){
-    check();
+    checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
+    checkPointers();
     vector<double>times;
-    if(nsamples<0)
+    if(nsamples<0){
       times=data->getLabels();
-    else {
-      double delta_t=(tend-tstart)/(nsamples-1);
+    } else {
+      cout<<"mllike:oldWriteFine: ns,ts,te="<<nsamples<<","<<tstart<<","<<tend<<endl;
+      double delta_t=(tend-tstart)/(nsamples-1.0);
       for(int i=0;i<nsamples;i++){
 	double t=tstart+i*delta_t;
 	times.push_back(t);
+	//vector<double> loctimes(nsamples);
+	//double dt=(tend-tstart)/(nsamples-1.0)/tE;
+	//double t0=(tstart-tmax)/tE;
+	//cout<<"dt,t0 = "<<dt<<", "<<t0<<endl;
+	//for(int i=0;i<nsamples;i++)loctimes[i]=t0+dt*i;
+	//traj.set_times(loctimes,0);
+	/// ts = ( t - tmax )/tE
+	///    = ( tstart + i*delta_t -tmax ) / tE
+	///    = ( t0*tE + i*dt*tE )/tE
+	///    = t0 + i*dt = loctimes[i]
+
       }
     }
     //double tpk=getPeakTime();
@@ -181,21 +210,53 @@ private:
     double noise_lev=st.get_param(idx_Fn);
     double I0=st.get_param(idx_I0);
     double noise_mag=I0-2.5*log10(noise_lev);
+    if(do_additive_noise)noise_mag=noise_lev;
     //endhack
     
+    /*
+    //Trajectory traj(get_trajectory(q,L,r0,phi,0*tEs[0]));
+    Trajectory traj(get_trajectory(q,L,r0,phi,tEs[0]));
+
+    if(nsamples<1){//by default use the data sample times.
+      traj.set_times(tEs,0);
+      //cout<<"tEs0,tPeak,tPeak(orig) = "<<tEs[0]<<", "<<getPeakTime()<<", "<<getPeakTime(true)<<endl;
+    } else {       //otherwise we use the specified times
+      vector<double> loctimes(nsamples);
+      double dt=(tend-tstart)/(nsamples-1.0)/tE;
+      double t0=(tstart-tmax)/tE;
+      //cout<<"dt,t0 = "<<dt<<", "<<t0<<endl;
+      for(int i=0;i<nsamples;i++)loctimes[i]=t0+dt*i;
+      traj.set_times(loctimes,0);
+    }
+    */
+
     I0=st.get_param(idx_I0);
-    set_model(st);
-    vector<double> model=signal->get_model_signal(st,times);
+    //FIXME HACK: The next line is to recove some bugish effects for backward compatibility testing.
+    ///Hack to recover an old bug for testing.
+    ///
+    ///This is to implement old behavior, apparently a bug, which did not seem to make sense.
+    ///The old bug apparently offset the time in the wrong direction, though I can't understand why that wouldn't have shown up. 
+    ///To get the presumably better new behavior use "0" instead.
+    ///See clone_trajectory comment in model_lightcurve
+    ///The idea is that, before, tEs[0] in ml_signal::model_lightcurve -> tstart in ml_signal::clone_trajectory which then impacts the the trajectory's p0
+    ///The ultimate effect is to offset the times effectively by t -> t + tEs[0]*tE = =t + times[0]-tmax
+    //vector<double>params=st.get_params_vector();
+    //double tmax=params[st.size()-1];
+    //double toff=times[0]-tmax;  
+    //for(double &t:times)t=t+toff;
+    ///END HACK
+    vector<double> model=signal->get_model_signal(transformSignalState(st),times);
     vector<double> dmags=data->getDeltaValues();
+    vector<double> dvar=getVariances(st);
 
     if(nsamples<0){
       for(int i=0;i<times.size();i++){
-	double S=getVariance(i,times[i]);
+	double S=dvar[i];
 	//if(i<10)cout<<"i="<<i<<"  S="<<S<<endl;
 	if(i==0)
 	  out<<"#t"<<" "<<"t_vs_pk" 
 	     <<" "<<"data_mag"<<" "<<"model_mag"
-	     <<" "<<"data_eee"<<" "<<"model_eee"
+	     <<" "<<"data_err"<<" "<<"model_err"
 	     <<endl;
 	out<<times[i]+time0<<" "<<times[i]-tpk
 	   <<" "<<data->getValue(i)<<" "<<model[i]

@@ -10,6 +10,8 @@
 #include "bayesian.hh"
 
 using namespace std;
+
+extern bool debug_signal;
 //#define OLD_BUGGY
 
 //plan:
@@ -351,8 +353,12 @@ public:
       for(int i=0;i<nsamples;i++)loctimes[i]=t0+dt*i;
       traj.set_times(loctimes,0);
     }
-    //cout<<"mlfit Times range from "<<traj.t_start()<<" to "<<traj.t_end()<<endl;
-    //cout<<"mlfit Traj:"<<traj.print_info()<<endl;
+    if(debug_signal){
+      int prec=cout.precision();
+      cout.precision(20);
+      cout<<"mlfit Times range from "<<traj.t_start()<<" to "<<traj.t_end()<<endl;
+      cout.precision(prec);
+      cout<<"mlfit Traj:"<<traj.print_info()<<endl;}
     vector<double> xtimes,model,modelmags;
     vector<vector<Point> > thetas;
     vector<int> indices;
@@ -374,6 +380,18 @@ public:
     for(int i=0;i<indices.size();i++ ){
       double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
       model.push_back(Ival);
+      if(debug_signal){
+	int prec=cout.precision();
+	cout.precision(20);
+	Point p=traj.get_obs_pos(times[i]);
+	double xcm  =  (q/(1.0+q)-0.5)*L;
+	cout<<i<<" "<<times[i]<<" "<<xtimes[indices[i]]<<"\nq,L="<<q<<","<<L<<" ("<<p.x<<","<<p.y<<") "<<sqrt((p.x-xcm)*(p.x-xcm)+p.y*p.y);
+	cout.precision(prec);
+	cout<<"\n "<<Ival<<"\n "<<modelmags[indices[i]]<<" thetas="<<endl;
+	cout.precision(20);
+	for(int j=0;j<thetas[indices[i]].size();j++)cout<<"  ("<<thetas[indices[i]][j].x<<","<<thetas[indices[i]][j].y<<") "<<endl;
+	cout.precision(prec);
+      }
       /*
       { //debug block
 	double err=Ival-mags[i];
@@ -402,6 +420,8 @@ public:
     noise_lev=params[2];
     double noise_mag=I0-2.5*log10(noise_lev);
     if(do_additive_noise)noise_mag=noise_lev;
+    cout<<"I0,noise_lev,integrate="<<I0<<","<<noise_lev<<","<<integrate<<endl;
+    cout<<"nsamples,tstart,tend="<<nsamples<<" "<<tstart<<" "<<tend<<endl;
     vector<double> model=model_lightcurve(params,integrate,nsamples,tstart,tend);
     double tpk=getPeakTime();
 
@@ -422,7 +442,6 @@ public:
     } else {
       double delta_t=(tend-tstart)/(nsamples-1);
       for(int i=0;i<nsamples;i++){
-	//if(i<10)cout<<"i="<<i<<"  S="<<S<<endl;
 	double rtS=pow(10.0,0.4*(-noise_mag+model[i]));
 	double t=tstart+i*delta_t;
 	if(i==0)

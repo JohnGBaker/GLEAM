@@ -108,6 +108,10 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   const double caustic_step_factor = 1.;  //take smaller steps near caustics.
   const double intTOL = 1e-10;  //control integration error tolerance
   if(have_integrate)integrate=use_integrate;
+  double prec=cout.precision();cout.precision(20);
+  //cout<<"glens::compTraj: int="<<integrate<<"\nthisLens="<<print_info()<<"\n traj="<<traj.print_info()<<endl;
+  //cout<<"this="<<this<<endl;
+  cout.precision(prec);
 
   ///clear the outputs
   time_series.clear();
@@ -139,7 +143,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   vector<Point> thetas=invmap(beta);
   double mg=mag(thetas);
   bool evolving=false;
-  //cout<<"Recording at t="<<traj.t_start()<<endl;
+  //cout<<"Recording at t="<<traj.t_start()<<" beta=("<<beta.x<<","<<beta.y<<")"<<endl;
   time_series.push_back(traj.t_start());
   thetas_series.push_back(thetas);
   mag_series.push_back(mg);
@@ -417,6 +421,7 @@ void GLens::addOptions(Options &opt,const string &prefix){
 
 void GLens::setup(){
   set_integrate(!optSet("poly"));
+  haveSetup();
 };
 
 
