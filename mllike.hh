@@ -150,7 +150,7 @@ public:
   };
   state transformSignalState(const state &s)const{return s;};
   
-  void getFineGrid(double & nfine, double &tfinestart, double &tfineend)const{
+  void getFineGrid(int & nfine, double &tfinestart, double &tfineend)const{
     checkPointers();
     nfine=data->size()*2;
     double t0,twidth,tstart,tend;
@@ -173,9 +173,8 @@ private:
   ///This goes to ml instantiation of bayes_signal type
   ///overloads bayes_signal fn
   virtual void write(ostream &out,state &st){oldwrite(out,st);};
-  virtual void writeFine(ostream &out,state &st){
-    double nsamples=0,tstart=0,tend=0;
-    getFineGrid(nsamples,tstart,tend);
+  virtual void writeFine(ostream &out,state &st,int nsamples=-1, double tstart=0, double tend=0){
+    if(nsamples<0)getFineGrid(nsamples,tstart,tend);
     oldwrite(out,st,nsamples,tstart,tend);};
   void oldwrite(ostream &out, state&st, int nsamples=-1, double tstart=0, double tend=0){
     checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
