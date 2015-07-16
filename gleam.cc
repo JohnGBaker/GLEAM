@@ -438,12 +438,14 @@ int main(int argc, char*argv[]){
   //define time range:
   double tstart,tend;
   odata.getTimeLimits(tstart,tend);
-  signal.set_tstartHACK(tstart);
+  //signal.set_tstartHACK(tstart);
   t0=odata.getPeakTime();
   double finewidth=1.5;
   double tfinestart=t0-(-tstart+tend)*finewidth/2.0;
   double tfineend=t0+(-tstart+tend)*finewidth/2.0; //tfine range is twice data range centered on t0
-  twidth=10;//look mostly within 10 days of peak;
+  //Big Hack/alteration here for testing time-centering
+  twidth=300;//look mostly within 10 days of peak;
+  //twidth=10;
   cout<<"tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
 
   //Initial parameter state
@@ -558,7 +560,7 @@ int main(int argc, char*argv[]){
       ML_photometry_signal asignal(traj, &alens);
       asignal.Optioned::addOptions(opt,"");
       asignal.setup();
-      asignal.set_tstartHACK(tstart);
+      //asignal.set_tstartHACK(tstart);
       ML_photometry_likelihood alike(&space, &data, &asignal, &prior);
       cout<<"alike="<<&alike<<endl;
       alike.Optioned::addOptions(opt,"");
