@@ -42,6 +42,7 @@ class ML_photometry_signal : public bayes_signal{
   GLens *lens;
   int idx_I0, idx_Fs, idx_q, idx_L, idx_r0, idx_phi, idx_tE, idx_tmax; 
   stateSpace lensSpace;
+  double tstartHACK;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
     do_remap_r0=false;
@@ -50,6 +51,7 @@ public:
     r0_ref=0;
     q_ref=0;
     idx_I0=idx_Fs=idx_q=idx_L=idx_r0=idx_phi=idx_tE=idx_tmax=-1; 
+    tstartHACK=0;
   };
   ///From bayes_signal
   //
@@ -82,9 +84,9 @@ public:
     idx_tmax=sp.requireIndex("tpass");
     haveWorkingStateSpace();
     ///Eventually want to transmit these down to constituent objects:
+    ///FIXME This is a temporary version.  Should replace r0 and q rescalings with a stateSpaceTransform...
     lensSpace=lens->getObjectStateSpace();
     lens->defWorkingStateSpace(lensSpace);
-    //lens->defWorkingStateSpace();
     ///--or lens.defWorkingStateSpace(transform_to_lens.transform(sp))
   };
   
@@ -106,6 +108,10 @@ public:
     ///or space.add(transform_to_lens.inverse(lens.getObjectStateSpace()))
     return space;
   };
+
+  ///This is a HACK to allow dubious old behavior for back-testing see comment in model_lightcurve for explanation. 
+  ///Eventually remove.
+  void set_tstartHACK(double tstart){tstartHACK=tstart;};
 
   
   void addOptions(Options &opt,const string &prefix=""){
@@ -269,28 +275,54 @@ private:
     vector<vector<Point> > thetas;
     vector<int> indices;
 
-    vector<double>tEs=times;
-    //scale for implied tE
-    for(double &t : tEs)t=(t-tmax)/tE;  
-
     //We need to clone lens/traj before so that each omp thread is working with different copies of the objects.
     //we clone rather than copy so that we can allow derived classes.
-    //GLens *worklens;
-    GLensBinary *worklens;
-    //cout<<"signal lens:"<<lens->print_info()<<endl;
-    //worklens=lens->clone();
-    worklens=dynamic_cast<GLensBinary*>(lens->clone()); //HACK FIXME.  StateSpace based setup will obviate this cast
+    GLens *worklens;
+    worklens=lens->clone();
+    //GLensBinary *worklens;
+    //worklens=dynamic_cast<GLensBinary*>(lens->clone()); //HACK FIXME.  StateSpace based setup will obviate this cast
     //This next lines are appropriate for GLensBinary.  The generalization of this requires a state-space transformation which pulls out q and L.
     //Probably everything related to L/q should probably move into GLensBinary...
-    //state lens_state(&lensSpace,valarray<double>({q,L}));
-    //worklens->setState(lens_state);
-    worklens->setState(q,L);
+    state lens_state(&lensSpace,valarray<double>({q,L}));
+    worklens->setState(lens_state);
+    //worklens->setState(q,L);
     //cout<<"signal worklens:"<<worklens->print_info()<<endl;
     //worklens=new GLensBinary(q,L);
     //Trajectory traj(get_trajectory(q,L,r0,phi,tEs[0]));
     //See fixme note above.  The same issue will keep us from generalizing Trajectory, until fixed.
+    //FIXME: This offset (several line below) is tEs[0] in the original version, but that assumed that the "times" came directly from the data.
+    //Here we have no access to the data so we can't construct offset=tEs[0]=(tstart-tmax)/tE  (where tstart=data->times[0])
+    //Furthermore, it doesn't seem to make sense to do the offset this way and is probably a bug vis-a-vis my intended definition what 'tmax' should mean.
+    //I note that I had (pre github) committed a change which purported (and as I recall) to fix similar issue, a diff of that commit did not seem related
+    //so maybe something went wrong? Seems  unlikely, but...?
+    //Looking at the original (mlfit) code, the effective result seems have been:
+    //  v={cos(phi),vy=sin(phi)}; p00={xcm-r0*sin(phi),r0*cos(phi)} ... traj->setup(p00+v*tEs[0],v);
+    //  We either do (a) set_times(tEs, 0) or (b) set_times({(tfinestart-tmax)/tE .. (tfineend-tmax)/tE}, 0) (either way toff->0.
+    //  thus...  get_obs_pos(t) = p = p0 + v*t = p00 + v*(t+tEs[0]) = p00 + v*(t+(tstart-tmax)/tE) 
+    //  for (a): t=tEs[0]                     ->  p = p00 + 2*v*(tstart-tmax)/tE  (which doesn't make sense!)
+    //        to t=(data_times[end]-tmax)/tE  ->  p = p00 + 2*v*((tstart+data_times[end]/2 - tmax)/tE  (which doesn't make sense!)
+    //      with t=0                          ->  p = p00 +   v*(tstart-tmax)/tE
+    //  for (b): t=(tstart-tmax)/tE           ->  p = p00 + 2*v*((tstart+tfinestart)/2-tmax)/tE  
+    //        to t=(tend-tmax)/tE             ->  p = p00 + 2*v*((tstart+tfineend)/2-tmax)/tE  
+    //      with t=0                          ->  p = p00 +   v*(tstart-tmax)/tE
+    //  in practice tfinestart -> t0-(-tstart+tend)*3/4.0;
+    //              tfineend   -> t0+(-tstart+tend)*3/4.0;
+    // so for (b): t=(tstart-tmax)/tE         ->  p = p00 + 2*v*(tstart*7/8+t0*3/8-tend*3/8-tmax)/tE  
+    //          to t=(tend-tmax)/tE           ->  p = p00 + 2*v*(tstart*1/8+t0*3/8+tend*3/8-tmax)/tE  
+    //      with t=0                          ->  p = p00 +   v*(tstart-tmax)/tE
+    //everywhere there is an extra tstart-tmax (which doesn't make sense) though the results would look OKish.  They do imply that we effectively interpret
+    // closest approach time is at t00 = tmax-tstart, offset tmax = t00 + tstart from the intention t00=tmax
+    //To get the intended result we need offset=0 instead of offset=tEs[0];
+    // to recover the old behavior we need to tmax=t00 -> tmax-tstart;
+    double offset=(tstartHACK-tmax)/tE; //for spring 2015 (buggy?) behavior
+    //double offset=0;  //Seem to be what was intended.
+    vector<double>tEs=times;
+    for(double &t : tEs)t=(t-tmax)/tE;    
+
+
     Trajectory *worktraj;
-    worktraj=clone_trajectory(q,L,r0,phi,tEs[0]);//FIXME change this to a generic clone, then a stateSpace setup.
+    worktraj=clone_trajectory(q,L,r0,phi,offset);
+    //FIXME change the following to a generic Trajectory set up based on a stateSpace setup to support more parameters.
     worktraj->set_times(tEs,0);
     /*
     if(debug_signal){

@@ -231,20 +231,6 @@ private:
     */
 
     I0=st.get_param(idx_I0);
-    //FIXME HACK: The next line is to recove some bugish effects for backward compatibility testing.
-    ///Hack to recover an old bug for testing.
-    ///
-    ///This is to implement old behavior, apparently a bug, which did not seem to make sense.
-    ///The old bug apparently offset the time in the wrong direction, though I can't understand why that wouldn't have shown up. 
-    ///To get the presumably better new behavior use "0" instead.
-    ///See clone_trajectory comment in model_lightcurve
-    ///The idea is that, before, tEs[0] in ml_signal::model_lightcurve -> tstart in ml_signal::clone_trajectory which then impacts the the trajectory's p0
-    ///The ultimate effect is to offset the times effectively by t -> t + tEs[0]*tE = =t + times[0]-tmax
-    //vector<double>params=st.get_params_vector();
-    //double tmax=params[st.size()-1];
-    //double toff=times[0]-tmax;  
-    //for(double &t:times)t=t+toff;
-    ///END HACK
     vector<double> model=signal->get_model_signal(transformSignalState(st),times);
     vector<double> dmags=data->getDeltaValues();
     vector<double> dvar=getVariances(st);

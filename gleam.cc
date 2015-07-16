@@ -370,7 +370,6 @@ int main(int argc, char*argv[]){
   data.setup(datafile);
   signal.setup();
 
-
   //Create the data object (This block is setting up the model.  If/when we separate model from data, then data obj may be defined below)
   cout<<"OGLE data file='"<<datafile<<"'"<<endl;
   OGLEdata odata(datafile);
@@ -439,6 +438,7 @@ int main(int argc, char*argv[]){
   //define time range:
   double tstart,tend;
   odata.getTimeLimits(tstart,tend);
+  signal.set_tstartHACK(tstart);
   t0=odata.getPeakTime();
   double finewidth=1.5;
   double tfinestart=t0-(-tstart+tend)*finewidth/2.0;
@@ -558,6 +558,7 @@ int main(int argc, char*argv[]){
       ML_photometry_signal asignal(traj, &alens);
       asignal.Optioned::addOptions(opt,"");
       asignal.setup();
+      asignal.set_tstartHACK(tstart);
       ML_photometry_likelihood alike(&space, &data, &asignal, &prior);
       cout<<"alike="<<&alike<<endl;
       alike.Optioned::addOptions(opt,"");
