@@ -7,6 +7,7 @@
 #include <iostream>
 #include <cmath>
 #include <sstream>
+#include <iomanip>
 #include "bayesian.hh"
 using namespace std;
 extern bool debug;
@@ -129,6 +130,34 @@ public:
   virtual void defWorkingStateSpace(const stateSpace &sp)=0;
   virtual stateSpace getObjectStateSpace()const=0;
   virtual void setState(const state &s)=0;
+  //Write a magnitude map to file.
+  virtual Point getCenter(int option=0)const=0;
+  virtual void writeMagMap(ostream &out, const Point &LLcorner,const Point &URcorner,int samples,bool output_nlens=false){
+    double dx=(URcorner.x-LLcorner.x)/(samples-1);    
+    double dy=(URcorner.y-LLcorner.y)/(samples-1);    
+    //cout<<"mag-map ranges from: ("<<x0<<","<<y0<<") to ("<<x0+width<<","<<y0+width<<") stepping by: "<<dx<<endl;
+    int output_precision=out.precision();
+    double ten2prec=pow(10,output_precision-2);
+    out<<"#x-xcm  y  magnification"<<endl;
+    for(double y=LLcorner.y;y<=URcorner.y;y+=dy){
+      Trajectory traj(Point(LLcorner.x,y), Point(1,0), URcorner.x-LLcorner.x, dx);
+      vector<int> indices;
+      vector<double> times,mags;
+      vector<vector<Point> >thetas;
+      compute_trajectory(traj,times,thetas,indices,mags);
+      for(int i : indices){
+	Point b=traj.get_obs_pos(times[i]);
+	double mtruc=floor(mags[i]*ten2prec)/ten2prec;
+	out.precision(output_precision);
+	out<<b.x<<" "<<b.y<<" "<<setiosflags(ios::scientific)<<mtruc<<setiosflags(ios::fixed);
+	if(output_nlens)out<<" "<<thetas[i].size();
+	out<<endl;
+      }
+      out<<endl;
+    }	  
+  };   
+  
+  
 };
 
 ///A rigid binary lens implementation
@@ -201,6 +230,22 @@ public:
     q=q_;
     L=L_;
     nu=1/(1+q);
+  };
+  Point getCenter(int option=0)const{
+    double x0=0,y0=0,width=0,wx,wy,xcm = (q/(1.0+q)-0.5)*L;
+    cout<<"q,L,option="<<q<<", "<<L<<", "<<option<<endl;
+    //center on {rminus-CoM,CoM-CoM,rplus-CoM}, when cent={-1,0,1} otherwise CoM-nominalorigin;
+  switch(option){
+    case -1://minus lens rel to CoM
+      x0=-0.5*L-xcm;
+    case 0:
+      x0=0;
+    case 1:
+      x0=0.5*L-xcm;//plus lens rel to CoM
+    default:
+      x0=xcm;
+    }
+    return Point(x0,0);
   };
 };
 

@@ -195,6 +195,7 @@ private:
   }
 
   ///This goes to ml instantiation of bayes_signal type
+  ///FIXME: This is currently hard-coded with lens and trajectory parameters.  We want to be agnostic to those.
   void get_model_params(const vector<double> &params, double &I0, double &Fs,double &q,double &L,double &r0,double &phi,double &tE,double &tmax)const{
     checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
     //Light level parameters
@@ -232,10 +233,8 @@ private:
     else q=pow(10.0,sofq);
   };
 
-  ///This goes to ml instantiation of bayes_signal type
+  ///This version still refers to GLensBinary parameters
   Trajectory *clone_trajectory(double q, double L, double r0, double phi, double tstart)const{
-    //In C++11, I believe this should be elided and thus no slower than if explicit as in inline...
-
     //compute reference position
     double vx=cos(phi), vy=sin(phi);
     double p0x=-r0*sin(phi), p0y=r0*cos(phi);
@@ -247,13 +246,26 @@ private:
     return newtraj;
   };
 
+  ///This version takes a step toward generality.
+  ///Ultimately this goes into the Trajectory class as a general clone and stateSpace setting...
+  ///call as traj=cone_trajectory(lens->getCenter,r0,phi)
+  Trajectory *clone_trajectory(const Point &center,double r0,double phi)const{
+    //compute reference position
+    double vx=cos(phi), vy=sin(phi);
+    double p0x=-r0*sin(phi), p0y=r0*cos(phi);
+    double xcm  =  center.x;
+    Trajectory *newtraj=traj->clone();
+    newtraj->setup(Point(p0x+xcm,p0y), Point(vx,vy));
+    return newtraj;
+  };
+
   ///This goes to ml instantiation of bayes_signal type
   ///Change this to a standard signal function get_signal_model dep on state, data etc, returns vector.
   vector<double> model_lightcurve(const vector<double> &params,const vector<double>&times)const{
     double result=0;
     
-    double I0,Fs,q,L,r0,phi,tE,tmax;
-    get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);
+    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
+    get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
     //cout<<"model params:I0,Fs,q,L,r0,phi,tE,tmax="<<I0<<","<<Fs<<","<<q<<",\n"<<L<<","<<r0<<","<<phi<<","<<tE<<","<<tmax<<endl;
     //Comment:
     //The lightcurve model is centered at the midpoint between m1 and m2
@@ -314,6 +326,8 @@ private:
     // closest approach time is at t00 = tmax-tstart, offset tmax = t00 + tstart from the intention t00=tmax
     //To get the intended result we need offset=0 instead of offset=tEs[0];
     // to recover the old behavior we need to tmax=t00 -> tmax-tstart;
+    //UPDATE:Greatly expanding the prior on tmax, the interpretation of a skew in tmax is borne out, though the optimal tmax seems to
+    //tmax ~ tstart/2, though we would have expected tmax ~tstart based on the above...
     double offset=(tstartHACK-tmax)/tE; //for spring 2015 (buggy?) behavior
     //double offset=0;  //Seem to be what was intended.
     vector<double>tEs=times;
@@ -363,7 +377,44 @@ private:
     return model;
   };
   
-  };
+public:
+  //Here we always make a square window, big enough to fit the trajectory (over the specified domain) and the lens window
+  void getWindow(const state &s, Point &LLcorner,Point &URcorner, double tstart=0, double tend=0, int cent=-2){
+    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
+    get_model_params(s.get_params_vector(),I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
+    Point pstart(0,0),pend(0,0);
+    double margin=0,width=0,x0,y0,wx,wy;
+    if(cent>-2){//signal to use r0 as map width and center on {rminus,CoM,rplus}, when cent={0,1,2}
+      lens->setState(s);
+      x0=lens->getCenter(cent).x;
+      width=r0;
+      pstart=Point(x0-width/2,-width/2);
+      pend=Point(x0+width/2,+width/2);
+    } else {
+      double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;
+      Trajectory *tr=clone_trajectory(lens->getCenter(),r0,phi);
+      pstart=tr->get_obs_pos(tleft);
+      pend=tr->get_obs_pos(tright);
+      cout<<"making mag-map between that fits points: ("<<pstart.x<<","<<pstart.y<<") and ("<<pend.x<<","<<pend.y<<")"<<endl;
+      margin=1;
+      delete tr;
+    }
+    width=wx=abs(pstart.x-pend.x);
+    wy=abs(pstart.y-pend.y);
+    if(wy>width)width=wy;
+    x0=pstart.x;
+    if(pend.x<x0)x0=pend.x;
+    y0=pstart.y;
+    if(pend.y<y0)y0=pend.y;
+    width+=margin;
+    y0=y0-(width-wy)/2.0;
+    x0=x0-(width-wx)/2.0;
+    cout<<"x0,y0,width="<<x0<<", "<<y0<<", "<<width<<endl;
+    LLcorner=Point(x0-width/2.0,y0-width/2.0);
+    URcorner=Point(x0+width/2.0,y0+width/2.0);
+  };    
+
+};
 
 #endif
 
