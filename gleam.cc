@@ -1,7 +1,7 @@
 //Gravitational lens event analysis machine
 //Written by John G Baker NASA-GSFC (2014)
 
-#include "mlfit.hh"
+//#include "mlfit.hh"
 #include <valarray>
 #include <vector>
 #include <iostream>
@@ -38,12 +38,12 @@ int output_precision;
 double mm_lens_rWB;
 
 //Analysis functions defined below.
-void dump_view(const string &outname,MLdata&data,bayes_likelihood&like,state &s,double tstart,double tend, int nsamples=301);
+//void dump_view(const string &outname,MLdata&data,bayes_likelihood&like,state &s,double tstart,double tend, int nsamples=301);
 void dump_view(const string &outname,GLens &lens, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples);
-void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,double tend, int nsamples=301, int cent=-2,bool output_nlens=false);
+//void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,double tend, int nsamples=301, int cent=-2,bool output_nlens=false);
 void dump_mag_map(const string &outname,bayes_data &data,ML_photometry_signal &signal, GLens &lens, state &s,double tstart,double tend,int nsamples=301,int cent=-2,bool output_nlens=false);
-void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
-void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
+//void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
+//void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
 void dump_lightcurve(const string &outname,bayes_likelihood&like,state &s,double tstart,double tend,int nsamples=301);
 
 
@@ -378,7 +378,7 @@ int main(int argc, char*argv[]){
 
   //Create the data object (This block is setting up the model.  If/when we separate model from data, then data obj may be defined below)
   cout<<"OGLE data file='"<<datafile<<"'"<<endl;
-  OGLEdata odata(datafile);
+  //OGLEdata odata(datafile);
   double r0s=6.0,q0;
   istringstream(opt.value("q0"))>>q0;
   bool use_remapped_r0,use_remapped_q,use_log_tE,use_additive_noise=false;
@@ -388,17 +388,17 @@ int main(int argc, char*argv[]){
   use_log_tE=opt.set("log_tE");
 
   if(use_remapped_r0){
-    odata.remap_r0(2.0);
+    //odata.remap_r0(2.0);
     r0s=1.0;
   }
   if(use_remapped_q){
-    odata.remap_q(q0);
+    //odata.remap_q(q0);
   }
   if(use_additive_noise){
-    odata.useAdditiveNoise();    
+    //odata.useAdditiveNoise();    
   }
   if(use_log_tE){
-    odata.use_log_tE();
+    //odata.use_log_tE();
   }
 
   //Set up the parameter space
@@ -468,7 +468,7 @@ int main(int argc, char*argv[]){
   }    
 
   //Prune data
-  odata.cropBefore(tcut);
+  //odata.cropBefore(tcut);
   cout<<"Ndata="<<data.size()<<endl;
   double t0,twidth;
   t0=data.getFocusLabel();
@@ -672,6 +672,7 @@ void dump_view(const string &outname, GLens &lens, bayes_data &data, ML_photomet
 
   //This is the old version
 //An analysis function defined below.
+/*
 void dump_view(const string &outname,MLdata &data,bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){
   //The report includes:
   // 1. The lens magnification map
@@ -701,6 +702,7 @@ void dump_view(const string &outname,MLdata &data,bayes_likelihood &like,state &
   dump_lightcurve(ss.str(),like,s,0,0);  
 
 };
+*/
 
 ///This is the new version (testing)
 void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, GLens &lens, state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
@@ -714,6 +716,7 @@ void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &
 };
 
 ///This is the old version
+/*
 void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
   debug=false;
   valarray<double>params=s.get_params();  
@@ -912,6 +915,7 @@ void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,do
   data.write(out,p,true,nfine,tstart,tend);
   out<<endl;
 };
+*/
 
 ///Dump the lightcurve
 void dump_lightcurve(const string &outname,bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){
