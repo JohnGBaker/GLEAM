@@ -191,6 +191,39 @@ public:
 
 };
 
+//class for generic two column time/mag data
+class ML_generic_data : public ML_photometry_data {
+public:
+  ML_generic_data(){};
+  void setup(const string &filepath){
+    ifstream file(filepath.c_str());
+    if(file.good()){
+      string line;
+      while(getline(file,line)){
+	if(line[0]=='#')continue;//skip comment lines
+	double t,m;
+	stringstream(line)>>t>>m;
+	times.push_back(t);
+	mags.push_back(m);
+	dmags.push_back(0);
+      }
+    } else {
+      if(filepath.size()>0){//empty path signifies go forward without data
+	cout<<"ML_generic_data: Could not open file '"<<filepath<<"'."<<endl;
+	exit(1);
+      }
+    }
+    have_data=true;//Do we need this in addition to checkSetup?
+    //This is the original style.  After initialization, time is internally referenced relative to the peak time.
+    //We may want to make this relative to some externally defined reference time...
+    time0=getFocusLabel();
+    for(double &t : times)t-=time0;//permanently offset times from their to put the peak at 0.
+    processData();
+    return;
+  };
+
+};
+
 
 
 #endif

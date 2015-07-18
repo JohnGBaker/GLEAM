@@ -418,6 +418,7 @@ int main(int argc, char*argv[]){
   //Handle separate magmap (only) option.
   if(do_magmap){//translate parameters
     if(false){//original version
+      /*
       //This all depends only on GLens
       double qpar,Lpar,widthpar;
       qpar=params[0];
@@ -438,7 +439,7 @@ int main(int argc, char*argv[]){
 	ss.str("");ss<<outname<<"_nmap.dat";    
 	//This version depends only on GLens (or maybe mlsignal)
 	dump_mag_map(ss.str(),odata,s,0,0,mm_samples,mm_center,true);      
-      }
+	} */
     } else {//new version (This doesn't agree with the old behavior, but at least the map grid looks more correct in this version.
       double q,L,width;
       q=pow(10.0,params[0]);
@@ -468,20 +469,23 @@ int main(int argc, char*argv[]){
 
   //Prune data
   odata.cropBefore(tcut);
-  cout<<"Ndata="<<odata.size()<<endl;
+  cout<<"Ndata="<<data.size()<<endl;
   double t0,twidth;
+  t0=data.getFocusLabel();
+  /*
   //define time range:
   double tstart,tend;
-  odata.getTimeLimits(tstart,tend);
+  //odata.getTimeLimits(tstart,tend);
+  odata.getDomainLimits(tstart,tend);
   //signal.set_tstartHACK(tstart);
-  t0=odata.getPeakTime();
+  //t0=odata.getPeakTime();
   double finewidth=1.5;
   double tfinestart=t0-(-tstart+tend)*finewidth/2.0;
   double tfineend=t0+(-tstart+tend)*finewidth/2.0; //tfine range is twice data range centered on t0
-  //Big Hack/alteration here for testing time-centering
-  twidth=300;//look mostly within 10 days of peak;
+  */
+  twidth=300;//Changed for study, may return to smaller range...;
   //twidth=10;
-  cout<<"tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
+  //cout<<"tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
 
   //Initial parameter state
   state instate(&space,params);
