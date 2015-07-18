@@ -282,7 +282,7 @@ private:
 
     //roughly translate intensity noise to a magnitude error level
     //double noise_mag=I0-2.5*log10(noise_lev);
-    //if(do_additive_noise)noise_mag=noise_lev;
+    //if(do_additive_noise)noise_mag=noise_lev; 
     vector<double> xtimes,model,modelmags;
     vector<vector<Point> > thetas;
     vector<int> indices;
@@ -395,7 +395,7 @@ public:
       Trajectory *tr=clone_trajectory(lens->getCenter(),r0,phi);
       pstart=tr->get_obs_pos(tleft);
       pend=tr->get_obs_pos(tright);
-      cout<<"making mag-map between that fits points: ("<<pstart.x<<","<<pstart.y<<") and ("<<pend.x<<","<<pend.y<<")"<<endl;
+      cout<<"making mag-map window between that fits points: ("<<pstart.x<<","<<pstart.y<<") and ("<<pend.x<<","<<pend.y<<")"<<endl;
       margin=1;
       delete tr;
     }
@@ -410,9 +410,120 @@ public:
     y0=y0-(width-wy)/2.0;
     x0=x0-(width-wx)/2.0;
     cout<<"x0,y0,width="<<x0<<", "<<y0<<", "<<width<<endl;
-    LLcorner=Point(x0-width/2.0,y0-width/2.0);
-    URcorner=Point(x0+width/2.0,y0+width/2.0);
+    LLcorner=Point(x0,y0);
+    URcorner=Point(x0+width,y0+width);
+    cout<<"returning: LL=("<<LLcorner.x<<","<<LLcorner.y<<") UR=("<<URcorner.x<<","<<URcorner.y<<")"<<endl;
   };    
+
+  ///Dump the trajectory
+  ///Probably moves to trajectory eventually.
+  void dump_trajectory(ostream &out, state &s, vector<double> &times, double tref){
+    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
+    get_model_params(s.get_params_vector(), I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
+
+    //Get square bounding box size
+    cout<<"Model params: I0  Fs  q  L  r0  phi tE tmax\n"
+	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;
+    cout<<"making traj("<<q<<" "<<L<<" "<<r0<<" "<<phi<<")"<<endl;
+    cout<<" vx="<<cos(phi)<<", vy="<<sin(phi)<<endl;
+    cout<<" p0x="<<-r0*sin(phi)<<", p0y="<<r0*cos(phi)<<endl;
+    cout<<" xcm  =  "<<(q/(1.0+q)-0.5)*L<<endl;
+    double vx=cos(phi), vy=sin(phi);
+    double p0x=-r0*sin(phi), p0y=r0*cos(phi);
+    double xcm  =  (q/(1.0+q)-0.5)*L;
+    
+    double offset=(tstartHACK-tmax)/tE; //for spring 2015 (buggy?) behavior
+    //double offset=0;  //Better
+    vector<double>tEs=times;
+    for(double &t : tEs)t=(t-tmax)/tE;    
+    traj->setup(Point(p0x+vx*offset,p0y+vy*offset), Point(vx,vy));
+    traj->set_times(tEs,0);
+    cout<<"times range from "<<traj->t_start()<<" to "<<traj->t_end()<<endl;
+    cout<<traj->print_info()<<endl;
+    out<<"#"<<s.get_string()<<endl;
+    out<<"#1.t   2. t_rel  3.x   4.y "<<endl;
+    for(auto t:tEs){
+      Point p=traj->get_obs_pos(t);
+      out<<t+tref<<" "<<t<<" "<<p.x-xcm<<" "<<p.y<<endl;
+    }
+  };
+
+  ///Dump the trajectory
+  ///Old version
+  ///And additional information about the lens evaluation.
+  ///This is not currently used, but maybe we will want it again later.
+  ///If so then it must belong in ML_photometry_signal
+  ///As it is it is hard-coded for GLensBinary...
+  void dump_trajectory_and_more(ostream &out,state &s,vector<double>&times,double tref=0){
+    valarray<double>params=s.get_params();  
+    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
+    get_model_params(s.get_params_vector(),I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
+    double tpk=0;
+    double time0=tref;
+    //Get square bounding box size
+    cout<<"Model params: I0  Fs  q  L  r0  phi tE tmax\n"
+	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;
+    cout<<"making traj("<<q<<" "<<L<<" "<<r0<<" "<<phi<<")"<<endl;
+    cout<<" vx="<<cos(phi)<<", vy="<<sin(phi)<<endl;
+    cout<<" p0x="<<-r0*sin(phi)<<", p0y="<<r0*cos(phi)<<endl;
+    cout<<" xcm  =  "<<(q/(1.0+q)-0.5)*L<<endl;
+    double vx=cos(phi), vy=sin(phi);
+    double p0x=-r0*sin(phi), p0y=r0*cos(phi);
+    double xcm  =  (q/(1.0+q)-0.5)*L;
+    double nu=1/(1+q),nu_pos=1-nu;
+    
+    vector<double>xtimes,modelmags; 
+    vector<int> indices;
+    //cout<<"tleft="<<tleft<<" tright="<<tright<<" dt="<<dt<<endl;
+    vector<double>tEs=times;
+    for(double &t : tEs)t=(t-tmax)/tE;    
+    
+    //Trajectory traj(data.get_trajectory(q,L,r0,phi,times[0]));//This is consistent with the tstartHACK
+    double offset=(tstartHACK-tmax)/tE; //for spring 2015 (buggy?) behavior
+    traj->setup(Point(p0x+vx*offset,p0y+vy*offset), Point(vx,vy));
+    traj->set_times(tEs,0);
+    cout<<"times range from "<<traj->t_start()<<" to "<<traj->t_end()<<endl;
+    
+    //This is left hardcoded for GLensBinary in this disused form  can generalize if we need it...
+    GLensBinary lens(q,L);
+    vector<vector<Point>> allthetas;
+    
+    lens.compute_trajectory(*traj,xtimes,allthetas,indices,modelmags);
+    
+    cout<<traj->print_info()<<endl;
+    out<<"#"<<s.get_string()<<endl;
+    out<<"#nu_pos="<<nu_pos<<" nu_neg="<<nu<<" L="<<L<<" r0="<<r0<<" phi="<<phi<<endl;
+    out<<"#1.t   2. t_rel  3.x   4.y   5.magnif   6.n_img   7.magnif(wide)   8.n_img   9.magnif(int)   10. n_img 11.rpos  12.rneg 13-22.imgsXY 23-28.wide-imgsXY 29-38.int-imgsXY"<<endl;
+    int i=0;
+    for(int ii:indices){
+      double t=xtimes[ii];
+      Point p=traj->get_obs_pos(t);
+      vector<Point> thetas=lens.invmap(p);
+      vector<Point> wthetas=lens.invmapWideBinary(p);
+      double x1=p.x-L/2,x2=p.x+L/2,r1sq=x1*x1+p.y*p.y,r2sq=x2*x2+p.y*p.y;
+      double cpos=nu_pos/sqrt(r1sq),cneg=nu/sqrt(r2sq),xcm  =  (q/(1.0+q)-0.5)*L;
+      double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
+      out<<t+time0<<" "<<t-tpk<<" "<<p.x-xcm<<" "<<p.y<<" "<<lens.mag(thetas)<<" "<<thetas.size()<<" "<<lens.mag(wthetas)<<" "<<wthetas.size()
+	 <<" "<<modelmags[ii]<<" "<<allthetas[ii].size();
+      
+      for(int j=0;j<5;j++){
+	if(j<thetas.size())out<<" "<<thetas[j].x<<" "<<thetas[j].y;
+	else out<<" 0 0";
+      }
+      
+      for(int j=0;j<3;j++){
+	if(j<wthetas.size())out<<" "<<wthetas[j].x<<" "<<wthetas[j].y;
+	else out<<" 0 0";
+      }
+      
+      for(int j=0;j<5;j++){
+	if(j<allthetas[ii].size())out<<" "<<allthetas[ii][j].x<<" "<<allthetas[ii][j].y;
+	else out<<" 0 0";
+      }
+      out<<endl;
+      i++;
+    }
+  };
 
 };
 

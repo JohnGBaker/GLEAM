@@ -39,8 +39,9 @@ double mm_lens_rWB;
 
 //Analysis functions defined below.
 void dump_view(const string &outname,MLdata&data,bayes_likelihood&like,state &s,double tstart,double tend, int nsamples=301);
+void dump_view(const string &outname,GLens &lens, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples);
 void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,double tend, int nsamples=301, int cent=-2,bool output_nlens=false);
-void dump_mag_map(const string &outname,bayes_data *data,ML_photometry_signal *signal, GLens *lens, state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens);
+void dump_mag_map(const string &outname,bayes_data &data,ML_photometry_signal &signal, GLens &lens, state &s,double tstart,double tend,int nsamples=301,int cent=-2,bool output_nlens=false);
 void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
 void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
 void dump_lightcurve(const string &outname,bayes_likelihood&like,state &s,double tstart,double tend,int nsamples=301);
@@ -385,6 +386,7 @@ int main(int argc, char*argv[]){
   use_remapped_q=opt.set("remap_q");
   use_additive_noise=opt.set("additive_noise");
   use_log_tE=opt.set("log_tE");
+
   if(use_remapped_r0){
     odata.remap_r0(2.0);
     r0s=1.0;
@@ -398,7 +400,7 @@ int main(int argc, char*argv[]){
   if(use_log_tE){
     odata.use_log_tE();
   }
-  
+
   //Set up the parameter space
   stateSpace space(Npar);
   {
@@ -447,7 +449,7 @@ int main(int argc, char*argv[]){
       state lens_state(&lensSpace,valarray<double>({q,L}));
       lens->setState(lens_state);
       double x0=lens->getCenter(mm_center).x;
-      cout<<"x0-xcm="<<x0<<" xcm="<<lens->getCenter().x<<endl;
+      cout<<"cent="<<mm_center<<" x0-xcm="<<x0<<" xcm="<<lens->getCenter().x<<endl;
       Point pstart(x0-width/2,-width/2);
       Point pend(x0+width/2,+width/2);
       {
@@ -539,24 +541,22 @@ int main(int argc, char*argv[]){
       //llike->getFineGrid(nsamples,tfinestart,tfineend);
       cout<<"Producing report on the model with specified parameters."<<endl;
       //dump_view(outname,odata,instate,tfinestart,tfineend,mm_samples);
-      //For exact backward compatibility we need to override the command-line flag -poly and always set integrate=true for the analysis
-      //Here we try first working exclusively with the new code ML_photometry_likelihood, rather than MLFitProb...
-      //As coded here this is not very general...
-      GLensBinary alens;
-      alens.Optioned::addOptions(opt,"");
-      alens.setup();
-      alens.set_integrate(true);//This line is the point of remaing all this.
-      cout<<"alens:"<<alens.print_info()<<endl;
-      ML_photometry_signal asignal(traj, &alens);
-      asignal.Optioned::addOptions(opt,"");
-      asignal.setup();
-      //asignal.set_tstartHACK(tstart);
-      ML_photometry_likelihood alike(&space, &data, &asignal, &prior);
-      cout<<"alike="<<&alike<<endl;
-      alike.Optioned::addOptions(opt,"");
-      alike.setup();
-      alike.defWorkingStateSpace(space);
-      dump_view(outname,odata,alike,instate,tfinestart,tfineend,mm_samples);
+      //GLensBinary alens;
+      //alens.Optioned::addOptions(opt,"");
+      //alens.setup();
+      //lens.set_integrate(true);//This line is the point of remaing all this.
+      //cout<<"alens:"<<alens.print_info()<<endl;
+      //ML_photometry_signal asignal(traj, lens);
+      //asignal.Optioned::addOptions(opt,"");
+      //asignal.setup();
+      ////asignal.set_tstartHACK(tstart);
+      //ML_photometry_likelihood alike(&space, &data, &signal, &prior);
+      //cout<<"alike="<<&alike<<endl;
+      //alike.Optioned::addOptions(opt,"");
+      //alike.setup();
+      //alike.defWorkingStateSpace(space);
+      //dump_view(outname,odata,mpl,instate,tfinestart,tfineend,mm_samples);
+      dump_view(outname, *lens, data, signal, mpl, instate, tfinestart, tfineend, mm_samples);
     } else {
       cout<<" The -view option requires that parameters are provided."<<endl;
     }
@@ -610,6 +610,7 @@ int main(int argc, char*argv[]){
       alike.defWorkingStateSpace(space);
       s->analyze(base,ic,Nsigma,Nbest,alike);
     }
+    delete s;
   }
   
   //Dump summary info
@@ -617,6 +618,55 @@ int main(int argc, char*argv[]){
   cout<<"best_post "<<like->bestPost()<<", state="<<like->bestState().get_string()<<endl;
   }
 
+//An analysis function defined below.
+void dump_view(const string &outname, GLens &lens, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){
+  //The report includes:
+  // 1. The lens magnification map
+  // 2. The observer trajectory curve
+  // 3. The model lightcurve
+  // (anything else?)
+  ostringstream ss;
+  
+  //magnification map
+  ss.str("");ss<<outname<<"_mmap.dat";
+  dump_mag_map(ss.str(), data, signal, lens, s, tstart, tend, nsamples);
+
+  //trajectory
+  vector<double>times;
+  times=data.getLabels();
+  double tref=data.getFocusLabel(true);
+
+  //data grid trajectory
+  ss.str("");ss<<outname<<"_d_traj.dat";
+  //dump_trajectory(ss.str(),odata,s,0,0);  
+  {
+    ofstream out(ss.str());
+    signal.dump_trajectory(out, s, times, tref);
+  }
+  //fine trajectory
+    ss.str("");ss<<outname<<"_traj.dat";
+  {
+    double delta_t=(tend-tstart)/(nsamples-1.0);
+    for(int i=0;i<nsamples;i++){
+      double t=tstart+i*delta_t;
+      times.push_back(t);
+    }
+    //dump_trajectory(ss.str(),odata,s,tstart,tend,nsamples*4);//use 4 times mm_samples   
+    ofstream out(ss.str());
+    signal.dump_trajectory(out, s, times, tref);
+  }
+
+  //light curve
+  ss.str("");ss<<outname<<"_lcrv.dat";
+  dump_lightcurve(ss.str(),like,s,tstart,tend,nsamples*4);//use 4 times mm_samples     
+
+  //data light curve
+  ss.str("");ss<<outname<<"_d_lcrv.dat";
+  dump_lightcurve(ss.str(),like,s,0,0);  
+
+};
+
+  //This is the old version
 //An analysis function defined below.
 void dump_view(const string &outname,MLdata &data,bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){
   //The report includes:
@@ -647,14 +697,16 @@ void dump_view(const string &outname,MLdata &data,bayes_likelihood &like,state &
   dump_lightcurve(ss.str(),like,s,0,0);  
 
 };
+
 ///This is the new version (testing)
-void dump_mag_map(const string &outname,bayes_data *data,ML_photometry_signal *signal, GLens *lens, state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
+void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, GLens &lens, state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
   ofstream out(outname);
-  if(tend<=tstart)data->getDomainLimits(tstart,tend);
+  if(tend<=tstart)data.getDomainLimits(tstart,tend);
   Point LLp(0,0), URp(0,0);
-  signal->getWindow(s, LLp, URp, tstart, tend, cent);  
-  lens->setState(s);
-  lens->writeMagMap(out, LLp, URp, nsamples, output_nlens);
+  signal.getWindow(s, LLp, URp, tstart, tend, cent);  
+  cout<<"dump mag map: LL=("<<LLp.x<<","<<LLp.y<<") UR=("<<URp.x<<","<<URp.y<<")"<<endl;
+  lens.setState(s);
+  lens.writeMagMap(out, LLp, URp, nsamples, output_nlens);
 };
 
 ///This is the old version
@@ -740,8 +792,8 @@ void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,doubl
   }	  
 };
 
-
 ///Dump the trajectory
+///Old version
 ///And additional information about the lens evaluation.
 void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples){
   valarray<double>params=s.get_params();  
@@ -841,6 +893,7 @@ void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,do
   }
 };
 
+///Old version
 ///Dump the lightcurve
 void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples){
   ofstream out(outname);

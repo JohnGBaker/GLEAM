@@ -131,16 +131,18 @@ public:
   virtual stateSpace getObjectStateSpace()const=0;
   virtual void setState(const state &s)=0;
   //Write a magnitude map to file.
-  virtual Point getCenter(int option=0)const=0;
+  virtual Point getCenter(int option=-2)const=0;
   virtual void writeMagMap(ostream &out, const Point &LLcorner,const Point &URcorner,int samples,bool output_nlens=false){
+    double xc=getCenter().x;
+    cout<<"GLens::writeMagMap from ("<<LLcorner.x+xc<<","<<LLcorner.y<<") to ("<<URcorner.x+xc<<","<<URcorner.y<<")"<<endl;
     double dx=(URcorner.x-LLcorner.x)/(samples-1);    
     double dy=(URcorner.y-LLcorner.y)/(samples-1);    
     //cout<<"mag-map ranges from: ("<<x0<<","<<y0<<") to ("<<x0+width<<","<<y0+width<<") stepping by: "<<dx<<endl;
     int output_precision=out.precision();
     double ten2prec=pow(10,output_precision-2);
-    out<<"#x-xcm  y  magnification"<<endl;
+    out<<"#x-xc  y  magnification"<<endl;
     for(double y=LLcorner.y;y<=URcorner.y;y+=dy){
-      Trajectory traj(Point(LLcorner.x,y), Point(1,0), URcorner.x-LLcorner.x, dx);
+      Trajectory traj(Point(LLcorner.x+xc,y), Point(1,0), URcorner.x-LLcorner.x, dx);
       vector<int> indices;
       vector<double> times,mags;
       vector<vector<Point> >thetas;
@@ -231,20 +233,25 @@ public:
     L=L_;
     nu=1/(1+q);
   };
-  Point getCenter(int option=0)const{
+  Point getCenter(int option=-2)const{
     double x0=0,y0=0,width=0,wx,wy,xcm = (q/(1.0+q)-0.5)*L;
     cout<<"q,L,option="<<q<<", "<<L<<", "<<option<<endl;
     //center on {rminus-CoM,CoM-CoM,rplus-CoM}, when cent={-1,0,1} otherwise CoM-nominalorigin;
-  switch(option){
+    switch(option){
     case -1://minus lens rel to CoM
       x0=-0.5*L-xcm;
+      break;
     case 0:
       x0=0;
+      break;
     case 1:
       x0=0.5*L-xcm;//plus lens rel to CoM
+      break;
     default:
       x0=xcm;
+      cout<<"case def"<<endl;
     }
+    cout<<" GLensBinary::getCenter("<<option<<"):Returning x0="<<x0<<endl;
     return Point(x0,0);
   };
 };
