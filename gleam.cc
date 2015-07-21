@@ -31,225 +31,15 @@ shared_ptr<Random> globalRNG;//used for some debugging...
 
 //Global Control parameters (see more in main())
 const int Npar=9;
-//bool integrate;
-//int Nevery;
 const double MaxAdditiveNoiseMag=22;
 int output_precision;
 double mm_lens_rWB;
 
 //Analysis functions defined below.
-//void dump_view(const string &outname,MLdata&data,bayes_likelihood&like,state &s,double tstart,double tend, int nsamples=301);
 void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples);
-//void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,double tend, int nsamples=301, int cent=-2,bool output_nlens=false);
 void dump_mag_map(const string &outname,bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples=301,int cent=-2,bool output_nlens=false);
-//void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
-//void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
 void dump_lightcurve(const string &outname,bayes_likelihood&like,state &s,double tstart,double tend,int nsamples=301);
 
-
-///Our likelihood function class, defined below
-///Perhaps move this into mlfit?
-/*
-class MLFitProb: public bayes_likelihood{
-  MLdata * odata;
-  sampleable_probability_function * prior;
-  int count;
-  double total_eval_time;
-  stateSpaceTransformND noise_trans{2,{"I0","Fn"},{"I0","Mn"},[](vector<double>&v){return vector<double>({v[0],v[0]-2.5*log10(v[1])});}};
-  bool do_additive_noise;
- public:
-  double best_post;
-  state best;
-
-  virtual ~MLFitProb(){};//Avoid GCC warnings
-  MLFitProb(stateSpace *sp, MLdata *data, bayes_data *d,bayes_signal *s,sampleable_probability_function *prior=nullptr):odata(data),prior(prior),bayes_likelihood(sp,d,s){
-    best=state(sp,Npar);
-    reset();
-    //void setup(){    
-    //if(optSet("additive_noise"))useAdditiveNoise();
-    set_like0();
-    //cout<<"setup:options="<<reportOptions()<<endl;
-    //cout<<"setup:do_additive_noise="<<(do_additive_noise?"true":"false")<<endl;
-  };
-  void reset(){
-    best_post=-INFINITY;
-    best=best.scalar_mult(0);
-    count=0;
-    total_eval_time=0;
-  }
-  state bestState(){return best;};
-  double bestPost(){return best_post;};
-
-  double evaluate_log(state &s){
-    //#pragma omp critical
-    //cout<<"Evaluating likelihood for params"<<s.get_string()<<endl;
-    valarray<double>params=s.get_params();
-    //clock_t tstart=clock();
-    double tstart=omp_get_wtime();
-    //double result=odata->evaluate_log(params,integrate);
-    //cout<<"loglike="<<result<<"<="<<best_post<<endl;   
-    //result=log_chi_squared(s);
-    double result=log_chi_squared(s);
-    double post=result;
-    if(prior)post+=prior->evaluate_log(s);
-    //cout<<"loglike="<<result<<"<="<<best_post<<endl;   
-    //clock_t tend=clock();
-    //double eval_time = (tend-tstart)/(double)CLOCKS_PER_SEC;
-    double tend=omp_get_wtime();
-    double eval_time = tend-tstart;
-    #pragma omp critical
-    {     
-      total_eval_time+=eval_time;
-      count++;
-      if(0==count%Nevery)
-	cout<<"eval_time = "<<eval_time<<"  result="<<result<<" mean = "<<total_eval_time/count<<endl; 
-      if(post>best_post){
-        best_post=post;
-        best=state(s);
-      }
-      if(!isfinite(result)){
-        cout<<"Whoa dude, loglike is NAN! What's up with that?"<<endl;
-        cout<<"params="<<s.get_string()<<endl;
-	result=-INFINITY;
-      }
-    }
-    return result;
-  };
-  //string print_info(){
-  //ostringstream s;
-  //s<<"MLFitProb:data["<<i<<"]:\n"<<data->print_info();
-  //return s.str();
-  //};
-  void defWorkingStateSpace(const stateSpace &sp){
-    if(optSet("additive_noise"))do_additive_noise=true;
-    else do_additive_noise=false;
-    haveSetup();
-    checkSetup();//Call this assert whenever we need options to have been processed.
-    haveWorkingStateSpace();
-    checkPointers();
-    signal->defWorkingStateSpace(sp);
-    //backward compatible hack    
-    if(!do_additive_noise){
-      stateSpace st=noise_trans.transform(sp);
-      //cout<<"mlfitprob:defWSS: transformed space is:\n"<<sp.show()<<endl;
-      data->defWorkingStateSpace(st);
-    } else {
-      data->defWorkingStateSpace(sp);
-    }    
-  };
-  state transformDataState(const state &s)const{
-    if(!do_additive_noise){
-      state st=noise_trans.transformState(s);
-      //cout<<"Transforming data state from:"<<s.show()<<"\nto:"<<st.show()<<endl;
-      return st;
-    }
-    return s;
-  };
-  state transformSignalState(const state &s)const{return s;};
-
-  void addOptions(Options &opt,string s=""){Optioned::addOptions(opt,s);};
-  
-  stateSpace getObjectStateSpace()const{return stateSpace();};
-  void write(ostream &out,state &st){
-    debug_signal=true;
-    odata->write(out,st);
-    //oldwrite(out,st);
-  };
-  void writeFine(ostream &out,state &st,int nsamples=-1, double tstart=0, double tend=0){
-    if(nsamples<0)getFineGrid(nsamples,tstart,tend);
-    debug_signal=false;
-    getFineGrid(nsamples,tstart,tend);
-    odata->write(out,st,nsamples,tstart,tend);
-    //oldwrite(out,st,nsamples,tstart,tend);
-  };
-  void getFineGrid(int & nfine, double &tfinestart, double &tfineend)const{
-    //nfine=odata->size()*2;
-    nfine=data->size()*2;
-    double t0,twidth;
-    double tstart,tend;
-    //odata->getTimeLimits(tstart,tend);
-    data->getDomainLimits(tstart,tend);
-    //t0=odata->getPeakTime();
-    t0=data->getFocusLabel();
-    double finewidth=1.5;
-    tfinestart=t0-(-tstart+tend)*finewidth/2.0;
-    tfineend=t0+(-tstart+tend)*finewidth/2.0; //tfine range is twice data range centered on t0
-    twidth=10;//look mostly within 10 days of peak;
-    cout<<"tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
-    cout<<"nfine="<<nfine<<endl;
-  };
-
-  void oldwrite(ostream &out, state&st, int nsamples=-1, double tstart=0, double tend=0){
-    checkPointers();
-    vector<double>times;
-    if(nsamples<0)
-      times=data->getLabels();
-    else {
-      double delta_t=(tend-tstart)/(nsamples-1);
-      for(int i=0;i<nsamples;i++){
-	double t=tstart+i*delta_t;
-	times.push_back(t);
-      }
-    }
-    //double tpk=getPeakTime();
-    double tpk=data->getFocusLabel();
-    double time0=data->getFocusLabel(true);
-    
-    //backward compatibility hack
-    const int idx_Fn=2,idx_I0=0;
-    double noise_lev=st.get_param(idx_Fn);
-    double I0=st.get_param(idx_I0);
-    double noise_mag=I0-2.5*log10(noise_lev);
-    if(do_additive_noise)noise_mag=noise_lev;
-    cout<<"I0,noise_lev,integrate="<<I0<<","<<noise_lev<<","<<integrate<<endl;
-    cout<<"nsamples,tstart,tend="<<nsamples<<" "<<tstart<<" "<<tend<<endl;
-    //endhack
-    
-    I0=st.get_param(idx_I0);
-    vector<double> model=signal->get_model_signal(st,times);
-    vector<double> dmags=data->getDeltaValues();
-    vector<double> dvar=getVariances(st);
-
-    if(nsamples<0){
-      for(int i=0;i<times.size();i++){
-	double S=dvar[i];
-	//if(i<10)cout<<"i="<<i<<"  S="<<S<<endl;
-	if(i==0)
-	  out<<"#t"<<" "<<"t_vs_pk" 
-	     <<" "<<"data_mag"<<" "<<"model_mag"
-	     <<" "<<"data_err"<<" "<<"model_err"
-	     <<endl;
-	out<<times[i]+time0<<" "<<times[i]-tpk
-	   <<" "<<data->getValue(i)<<" "<<model[i]
-	   <<" "<<dmags[i]<<" "<<sqrt(S)
-	   <<endl;
-      }
-    } else {
-      for(int i=0;i<times.size();i++){
-	//if(i<10)cout<<"i="<<i<<"  S="<<S<<endl;
-	double rtS=pow(10.0,0.4*(-noise_mag+model[i]));
-	double t=times[i];
-	if(i==0)
-	  out<<"#t"<<" "<<"t_vs_pk" 
-	     <<" "<<"model_mag"<<" "<<"model_extra_err"
-	     <<endl;
-	out<<t+time0<<" "<<t-tpk
-	   <<" "<<model[i]<<" "<<rtS
-	   <<endl;
-      }
-    }
-  };
-
-
-};
-*/
-
-int ref_dir;//use to parameter for marginalization.
-//Function to estimate the marginalized parameter value
-double for_peak_position(state s){
-  vector<double>pars=s.get_params_vector();
-  return pars[ref_dir];
-};
 
 //***************************************************************************************8
 //main test program
@@ -307,12 +97,6 @@ int main(int argc, char*argv[]){
     return 1;
   }
     
-  //options
-  //DEV: take options from sub-elements rather than filling them all here. eg call "add_options"
-  //DEV: Subelements:
-  //DEV:   -Model (Now just one option)
-  //DEV:   -Bayes-estimator (Now just MCMC)
-  //DEV:   -Data?
   cout<<"flags=\n"<<opt.report()<<endl;
 
   //Post parse setup
@@ -323,7 +107,6 @@ int main(int argc, char*argv[]){
   bool do_magmap,view;
   int Nsigma=1;
   int Nbest=10;
-  //  *s0->optValue("nevery")>>Nevery;
   view=opt.set("view");
   istringstream(opt.value("nchains"))>>Nchain;
   istringstream(opt.value("seed"))>>seed;
@@ -366,21 +149,18 @@ int main(int argc, char*argv[]){
   cout.precision(output_precision);
   cout<<"\noutname = '"<<outname<<"'"<<endl;
   cout<<"seed="<<seed<<endl; 
-  //  cout<<"integrate="<<(integrate?"true":"false")<<endl;
   cout<<"Running on "<<omp_get_max_threads()<<" thread"<<(omp_get_max_threads()>1?"s":"")<<"."<<endl;
 
   ProbabilityDist::setSeed(seed);
   globalRNG.reset(ProbabilityDist::getPRNG());//just for safety to keep us from deleting main RNG in debugging.
-  //cout<<"globalRNG="<<globalRNG.get()<<endl;
   
   //Set up ML objects
   data.setup(datafile);
   signal.setup();
 
   //Create the data object (This block is setting up the model.  If/when we separate model from data, then data obj may be defined below)
-  cout<<"OGLE data file='"<<datafile<<"'"<<endl;
-  //OGLEdata odata(datafile);
-  double r0s=6.0,q0;
+  cout<<"Data file='"<<datafile<<"'"<<endl;
+  double q0;
   istringstream(opt.value("q0"))>>q0;
   bool use_remapped_r0,use_remapped_q,use_log_tE,use_additive_noise=false;
   use_remapped_r0=opt.set("remap_r0");
@@ -388,18 +168,9 @@ int main(int argc, char*argv[]){
   use_additive_noise=opt.set("additive_noise");
   use_log_tE=opt.set("log_tE");
 
+  double r0s=6.0;
   if(use_remapped_r0){
-    //odata.remap_r0(2.0);
     r0s=1.0;
-  }
-  if(use_remapped_q){
-    //odata.remap_q(q0);
-  }
-  if(use_additive_noise){
-    //odata.useAdditiveNoise();    
-  }
-  if(use_log_tE){
-    //odata.use_log_tE();
   }
 
   //Set up the parameter space
@@ -418,76 +189,39 @@ int main(int argc, char*argv[]){
 
   //Handle separate magmap (only) option.
   if(do_magmap){//translate parameters
-    if(false){//original version
-      /*
-      //This all depends only on GLens
-      double qpar,Lpar,widthpar;
-      qpar=params[0];
-      Lpar=params[1];
-      widthpar=params[2];
-      params[3]=qpar;
-      params[4]=Lpar;
-      params[5]=widthpar;
-      params[7]=1;
-      //other params are undefined and should be unused...
-      state s(&space,params);
-      //magnification map
+    double q,L,width;
+    q=pow(10.0,params[0]);
+    L=pow(10.0,params[1]);
+    width=params[2];
+    stateSpace lensSpace=lens->getObjectStateSpace();
+    lens->defWorkingStateSpace(lensSpace);
+    state lens_state(&lensSpace,valarray<double>({q,L}));
+    lens->setState(lens_state);
+    double x0=lens->getCenter(mm_center).x;
+    cout<<"cent="<<mm_center<<" x0-xcm="<<x0<<" xcm="<<lens->getCenter().x<<endl;
+    Point pstart(x0-width/2,-width/2);
+    Point pend(x0+width/2,+width/2);
+    {
       ss.str("");ss<<outname<<"_mmap.dat";
-      //This version depends only on GLens (or maybe mlsignal)
-      dump_mag_map(ss.str(),odata,s,0,0,mm_samples,mm_center);    
-      if(opt.set("mm_nimage")){
-	//debugint=true;
-	ss.str("");ss<<outname<<"_nmap.dat";    
-	//This version depends only on GLens (or maybe mlsignal)
-	dump_mag_map(ss.str(),odata,s,0,0,mm_samples,mm_center,true);      
-	} */
-    } else {//new version (This doesn't agree with the old behavior, but at least the map grid looks more correct in this version.
-      double q,L,width;
-      q=pow(10.0,params[0]);
-      L=pow(10.0,params[1]);
-      width=params[2];
-      stateSpace lensSpace=lens->getObjectStateSpace();
-      lens->defWorkingStateSpace(lensSpace);
-      state lens_state(&lensSpace,valarray<double>({q,L}));
-      lens->setState(lens_state);
-      double x0=lens->getCenter(mm_center).x;
-      cout<<"cent="<<mm_center<<" x0-xcm="<<x0<<" xcm="<<lens->getCenter().x<<endl;
-      Point pstart(x0-width/2,-width/2);
-      Point pend(x0+width/2,+width/2);
-      {
-	ss.str("");ss<<outname<<"_mmap.dat";
-	ofstream out(ss.str());
-	lens->writeMagMap(out, pstart, pend, mm_samples);
-      }
-      if(opt.set("mm_nimage")){
-	ss.str("");ss<<outname<<"_nmap.dat";    
-	ofstream out(ss.str());
-	lens->writeMagMap(out, pstart, pend, mm_samples,true);
-      }
+      ofstream out(ss.str());
+      lens->writeMagMap(out, pstart, pend, mm_samples);
+    }
+    if(opt.set("mm_nimage")){
+      ss.str("");ss<<outname<<"_nmap.dat";    
+      ofstream out(ss.str());
+      lens->writeMagMap(out, pstart, pend, mm_samples,true);
     }
     exit(0);
   }    
 
   //Prune data
-  //odata.cropBefore(tcut);
   cout<<"Ndata="<<data.size()<<endl;
   double t0,twidth;
   double tstart,tend;
   t0=data.getFocusLabel();
   data.getDomainLimits(tstart,tend);
-  /*
-  //define time range:
-  double tstart,tend;
-  //odata.getTimeLimits(tstart,tend);
-  //signal.set_tstartHACK(tstart);
-  //t0=odata.getPeakTime();
-  double finewidth=1.5;
-  double tfinestart=t0-(-tstart+tend)*finewidth/2.0;
-  double tfineend=t0+(-tstart+tend)*finewidth/2.0; //tfine range is twice data range centered on t0
-  */
   twidth=300;//Changed for study, may return to smaller range...;
   //twidth=10;
-  //cout<<"tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
   //cout<<"ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<endl;
 
   //Initial parameter state
@@ -526,17 +260,15 @@ int main(int argc, char*argv[]){
   cout<<"Prior is:\n"<<prior.show()<<endl;
 
   //Set the likelihood
-  //FIXME some of this should move up before addOptions 
+  //Should some of this move up before addOptions?
   bayes_likelihood *llike=nullptr;
   bayes_likelihood *like=nullptr;
-  //llike = new MLFitProb(&space,&odata,&data,&signal,&prior);
-  //llike->addOptions(opt,"");
   ML_photometry_likelihood mpl(&space, &data, &signal, &prior);
   mpl.addOptions(opt,"");
   mpl.setup();
   like = &mpl;
-  //llike->defWorkingStateSpace(space);
   like->defWorkingStateSpace(space);
+
   ///At this point we are ready for analysis in the case that we are asked to view a model
   ///Note that we still have needed the data file to create the OGLEdata object, and concretely
   ///to set the domain.  This could be changed...
@@ -545,24 +277,7 @@ int main(int argc, char*argv[]){
       int nsamples;
       double tfinestart,tfineend;
       like->getFineGrid(nsamples,tfinestart,tfineend);
-      //llike->getFineGrid(nsamples,tfinestart,tfineend);
       cout<<"Producing report on the model with specified parameters."<<endl;
-      //dump_view(outname,odata,instate,tfinestart,tfineend,mm_samples);
-      //GLensBinary alens;
-      //alens.Optioned::addOptions(opt,"");
-      //alens.setup();
-      //lens.set_integrate(true);//This line is the point of remaing all this.
-      //cout<<"alens:"<<alens.print_info()<<endl;
-      //ML_photometry_signal asignal(traj, lens);
-      //asignal.Optioned::addOptions(opt,"");
-      //asignal.setup();
-      ////asignal.set_tstartHACK(tstart);
-      //ML_photometry_likelihood alike(&space, &data, &signal, &prior);
-      //cout<<"alike="<<&alike<<endl;
-      //alike.Optioned::addOptions(opt,"");
-      //alike.setup();
-      //alike.defWorkingStateSpace(space);
-      //dump_view(outname,odata,mpl,instate,tfinestart,tfineend,mm_samples);
       dump_view(outname, data, signal, mpl, instate, tfinestart, tfineend, mm_samples);
     } else {
       cout<<" The -view option requires that parameters are provided."<<endl;
@@ -584,7 +299,6 @@ int main(int argc, char*argv[]){
   proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,&prior,&halfwidths);
   cout<<"Proposal distribution (at "<<prop<<") is:\n"<<prop->show()<<endl;
   //set up the mcmc sampler (assuming mcmc)
-  //mcmc.setup(Ninit,*llike,prior,*prop,output_precision);
   mcmc.setup(Ninit,*like,prior,*prop,output_precision);
 
 
@@ -597,7 +311,6 @@ int main(int argc, char*argv[]){
     bayes_sampler *s=s0->clone();
     s->initialize();
     s->run(base,ic);
-    //s->analyze(base,ic,Nsigma,Nbest,*llike);
     {//For exact backward compatibility we need to override the command-line flag -poly and always set integrate=true for the analysis
       //Here we try first working exclusively with the new code ML_photometry_likelihood, rather than MLFitProb...
       //As coded here this is not very general...
@@ -621,7 +334,6 @@ int main(int argc, char*argv[]){
   }
   
   //Dump summary info
-  //cout<<"best_post "<<llike->bestPost()<<", state="<<llike->bestState().get_string()<<endl;
   cout<<"best_post "<<like->bestPost()<<", state="<<like->bestState().get_string()<<endl;
   }
 
@@ -673,41 +385,6 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
 
 };
 
-  //This is the old version
-//An analysis function defined below.
-/*
-void dump_view(const string &outname,MLdata &data,bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){
-  //The report includes:
-  // 1. The lens magnification map
-  // 2. The observer trajectory curve
-  // 3. The model lightcurve
-  // (anything else?)
-  ostringstream ss;
-  
-  //magnification map
-  ss.str("");ss<<outname<<"_mmap.dat";
-  dump_mag_map(ss.str(),data,s,tstart,tend,nsamples);  
-
-  //trajectory
-  ss.str("");ss<<outname<<"_traj.dat";
-  dump_trajectory(ss.str(),data,s,tstart,tend,nsamples*4);//use 4 times mm_samples   
-
-  //data trajectory
-  ss.str("");ss<<outname<<"_d_traj.dat";
-  dump_trajectory(ss.str(),data,s,0,0);  
-
-  //light curve
-  ss.str("");ss<<outname<<"_lcrv.dat";
-  dump_lightcurve(ss.str(),like,s,tstart,tend,nsamples*4);//use 4 times mm_samples     
-
-  //data light curve
-  ss.str("");ss<<outname<<"_d_lcrv.dat";
-  dump_lightcurve(ss.str(),like,s,0,0);  
-
-};
-*/
-
-///This is the new version (testing)
 void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
   ofstream out(outname);
   if(tend<=tstart)data.getDomainLimits(tstart,tend);
@@ -719,208 +396,6 @@ void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &
   lens->writeMagMap(out, LLp, URp, nsamples, output_nlens);
   delete lens;
 };
-
-///This is the old version
-/*
-void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
-  debug=false;
-  valarray<double>params=s.get_params();  
-  bool use_r0_width=false;
-  double I0,Fs,noise_frac,q,L,r0,phi,tE,tmax;
-  data.get_model_params(params, I0,Fs,noise_frac,q,L,r0,phi,tE,tmax);
-  GLensBinary lens(q,L);
-  lens.set_WideBinaryR(mm_lens_rWB);
-  double x0=0,y0=0,width=0,wx,wy,xcm  =  (q/(1.0+q)-0.5)*L;
-
-  //Get square bounding box size
-  cout<<"q,L,cent="<<q<<", "<<L<<", "<<cent<<endl;
-  if(cent>-2){//signal to use r0 as map width and center on {rminus,CoM,rplus}, when cent={0,1,2}
-    //We have to hand code the CoM info
-    width=r0;
-    y0=-width/2;
-    switch(cent){
-    case -1:
-      x0=-0.5*L;
-    case 0:
-      x0=xcm;
-    case 1:
-      x0=0.5*L;
-    }
-  } else {
-    double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;
-    if(tend>tstart){
-      tleft=(tstart-tmax)/tE;
-      tright=(tend-tmax)/tE;
-    } else { //use data range
-      data.getTimeLimits(tleft,tright);
-      tleft=(tleft-tmax)/tE;    
-      tright=(tright-tmax)/tE;    
-    }  
-    Trajectory traj(data.get_trajectory(q,L,r0,phi,tleft));
-    Point pstart=traj.get_obs_pos(tleft);
-    Point pend=traj.get_obs_pos(tright);
-    cout<<"making mag-map between that fits points: ("<<pstart.x<<","<<pstart.y<<") and ("<<pend.x<<","<<pend.y<<")"<<endl;
-    width=wx=abs(pstart.x-pend.x);
-    wy=abs(pstart.y-pend.y);
-    if(wy>width)width=wy;
-    x0=pstart.x;
-    if(pend.x<x0)x0=pend.x;
-    y0=pstart.y;
-    if(pend.y<y0)y0=pend.y;
-    width+=1.0;//margin
-    y0=y0-(width-wy)/2.0;
-    x0=x0-(width-wx)/2.0;
-  }
-  cout<<"x0,y0,width="<<x0<<", "<<y0<<", "<<width<<endl;
-    
-  double dx=width/(nsamples-1);    
-  cout<<"mag-map ranges from: ("<<x0<<","<<y0<<") to ("<<x0+width<<","<<y0+width<<") stepping by: "<<dx<<endl;
-  ofstream out(outname);
-  double ten2prec=pow(10,output_precision-2);
-  out.precision(output_precision);
-  out<<"#x-xcm  y  magnification"
-    //<<"  Nimages"
-     <<endl;
-  for(double y=y0;y<=y0+width;y+=dx){
-    //cout<<"y="<<y<<endl;
-    Trajectory traj(Point(x0,y), Point(1,0), width, dx);
-    vector<int> indices;
-    vector<double> times,mags;
-    vector<vector<Point> >thetas;
-    //debugint=true;
-    lens.compute_trajectory(traj,times,thetas,indices,mags,integrate);
-    //debugint=false;
-    int ilast=-1;
-    for(int i : indices){
-      Point b=traj.get_obs_pos(times[i]);
-      double mtruc=floor(mags[i]*ten2prec)/ten2prec;
-      out.precision(output_precision);
-      out<<b.x-xcm<<" "<<b.y<<" "<<setiosflags(ios::scientific)<<mtruc<<setiosflags(ios::fixed);
-      if(output_nlens)out<<" "<<thetas[i].size();
-      out<<endl;
-      ilast=i;
-    }
-    out<<endl;
-  }	  
-};
-
-///Dump the trajectory
-///Old version
-///And additional information about the lens evaluation.
-void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples){
-  valarray<double>params=s.get_params();  
-  double I0,Fs,noise_frac,q,L,r0,phi,tE,tmax;
-  data.get_model_params(params, I0,Fs,noise_frac,q,L,r0,phi,tE,tmax);
-  double dt=(-tstart+tend)/tE/nsamples;
-  double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;
-  double tpk=data.getPeakTime();
-  double time0=data.getPeakTime(true);
-  //Get square bounding box size
-  cout<<"Model params: I0  Fs  noise_frac; q  L  r0  phi tE tmax\n"
-      <<I0<<" "<<Fs<<" "<<noise_frac<<"; "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;
-  cout<<"making traj("<<q<<" "<<L<<" "<<r0<<" "<<phi<<")"<<endl;
-  cout<<" vx="<<cos(phi)<<", vy="<<sin(phi)<<endl;
-  cout<<" p0x="<<-r0*sin(phi)<<", p0y="<<r0*cos(phi)<<endl;
-  cout<<" xcm  =  "<<(q/(1.0+q)-0.5)*L<<endl;
-  double nu=1/(1+q),nu_pos=1-nu;
-
-  vector<double>times;
-  vector<double>xtimes,modelmags; 
-  vector<int> indices;
-  //cout<<"tleft="<<tleft<<" tright="<<tright<<" dt="<<dt<<endl;
-  if(dt>0){//if no time range use data times...
-    cout<<"traj: Setting times provided: from "<<tleft<<" to "<<tright<<endl;
-    for(double t=tleft;t<=tright;t+=dt){
-      times.push_back(t);
-    }
-  } else {
-    cout<<"traj: Setting times from data"<<endl;
-    times=data.getTimes();
-    for(double &t:times)t=(t-tmax)/tE;
-  }
-
-  //Trajectory traj(data.get_trajectory(q,L,r0,phi,times[0]));//This is consistent with the tstartHACK
-  Trajectory traj(data.get_trajectory(q,L,r0,phi,0));
-  traj.set_times(times,0);
-  cout<<"times range from "<<traj.t_start()<<" to "<<traj.t_end()<<endl;
-
-  ofstream out(outname);
-  GLensBinary lens(q,L);
-  vector<vector<Point>> allthetas;
-  
-  //debug=true;
-  lens.compute_trajectory(traj,xtimes,allthetas,indices,modelmags,true);
-  //debug=false;
-
-  out.precision(output_precision);
-  cout<<traj.print_info()<<endl;
-  //out<<traj.print_info()<<endl;
-  out<<"#"<<s.get_string()<<endl;
-  out<<"#nu_pos="<<nu_pos<<" nu_neg="<<nu<<" L="<<L<<" r0="<<r0<<" phi="<<phi<<endl;
-  out<<"#1.t   2. t_rel  3.x   4.y   5.magnif   6.n_img   7.magnif(wide)   8.n_img   9.magnif(int)   10. n_img 11.rpos  12.rneg 13-22.imgsXY 23-28.wide-imgsXY 29-38.int-imgsXY"<<endl;
-  //cout<<tstart<<"< t <"<<tend<<" dt="<<dt*tE<<" tE="<<tE<<endl;
-  //cout<<tleft<<"< t* <="<<tright<<endl;
-  //cout<<"xtimes.size()="<<xtimes.size()<<endl;
-  int i=0;
-  //for(double t=tleft;t<=tright;t+=dt){
-  for(int ii:indices){
-    //cout<<"indices["<<i<<"]="<<ii<<endl;
-    double t=xtimes[ii];
-    //cout<<"t="<<t<<endl;
-    Point p=traj.get_obs_pos(t);
-    vector<Point> thetas=lens.invmap(p);
-    vector<Point> wthetas=lens.invmapWideBinary(p);
-    double x1=p.x-L/2,x2=p.x+L/2,r1sq=x1*x1+p.y*p.y,r2sq=x2*x2+p.y*p.y;
-    double cpos=nu_pos/sqrt(r1sq),cneg=nu/sqrt(r2sq),xcm  =  (q/(1.0+q)-0.5)*L;
-    
-    //out<<t<<" "<<xtimes[indices[i]]<<" "<<p.x-xcm<<" "<<p.y<<" "<<lens.mag(thetas)<<" "<<thetas.size()<<" "<<lens.mag(wthetas)<<" "<<wthetas.size()
-    // <<" "<<modelmags[indices[i]]<<" "<<allthetas[indices[i]].size();
-    double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
-    out<<t+time0<<" "<<t-tpk<<" "<<p.x-xcm<<" "<<p.y<<" "<<lens.mag(thetas)<<" "<<thetas.size()<<" "<<lens.mag(wthetas)<<" "<<wthetas.size()
-       <<" "<<modelmags[ii]<<" "<<allthetas[ii].size();
-    //out<<t<<" "<<xtimes[indices[i]]<<" "<<p.x<<" "<<p.y<<" "<<lens.mag(wthetas)<<" "<<wthetas.size();
-
-    for(int j=0;j<5;j++){
-      if(j<thetas.size())out<<" "<<thetas[j].x<<" "<<thetas[j].y;
-      else out<<" 0 0";
-      }
-      
-    for(int j=0;j<3;j++){
-      if(j<wthetas.size())out<<" "<<wthetas[j].x<<" "<<wthetas[j].y;
-      //{
-	//Point betaj=lens.map(wthetas[j]);
-	//out<<" "<<wthetas[j].x<<"->"<<betaj.x-p.x
-	// <<" "<<wthetas[j].y<<"->"<<betaj.y-p.y;
-      //}
-      else out<<" 0 0";
-    }
-    
-    for(int j=0;j<5;j++){
-      //if(j<allthetas[indices[i]].size())out<<" "<<allthetas[indices[i]][j].x<<" "<<allthetas[indices[i]][j].y;
-      if(j<allthetas[ii].size())out<<" "<<allthetas[ii][j].x<<" "<<allthetas[ii][j].y;
-      else out<<" 0 0";
-      }
-    out<<endl;
-    i++;
-  }
-};
-
-///Old version
-///Dump the lightcurve
-void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples){
-  ofstream out(outname);
-  int nfine;
-  if(tend-tstart>0)
-    nfine=nsamples;
-  else 
-    nfine=-1;
-  out.precision(output_precision);    
-  vector<double> p=s.get_params_vector();
-  out<<"#"<<s.get_string()<<endl;
-  data.write(out,p,true,nfine,tstart,tend);
-  out<<endl;
-};
-*/
 
 ///Dump the lightcurve
 void dump_lightcurve(const string &outname,bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){
