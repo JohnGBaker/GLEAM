@@ -137,6 +137,20 @@ public:
     if(optSet("log_tE"))use_log_tE();
     haveSetup();
   };    
+
+  ///Get a new copy of the lens with appropriate parameters.
+  ///This version still refers to GLensBinary parameters
+  GLens *clone_lens(const state & s)const{
+    GLens *worklens;
+    vector<double> params=s.get_params_vector();
+    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
+    get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
+    worklens=lens->clone();
+    state lens_state(&lensSpace,valarray<double>({q,L}));
+    worklens->setState(lens_state);
+    return worklens;
+  };
+
 private:
 
   ///Reparameterize r0 point of closest approach to a new variable which has a finite range.
@@ -384,21 +398,22 @@ public:
     get_model_params(s.get_params_vector(),I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
     Point pstart(0,0),pend(0,0);
     double margin=0,width=0,x0,y0,wx,wy;
+    GLens *worklens=clone_lens(s);
     if(cent>-2){//signal to use r0 as map width and center on {rminus,CoM,rplus}, when cent={0,1,2}
-      lens->setState(s);
-      x0=lens->getCenter(cent).x;
+      x0=worklens->getCenter(cent).x;
       width=r0;
       pstart=Point(x0-width/2,-width/2);
       pend=Point(x0+width/2,+width/2);
     } else {
       double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;
-      Trajectory *tr=clone_trajectory(lens->getCenter(),r0,phi);
+      Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
       pstart=tr->get_obs_pos(tleft);
       pend=tr->get_obs_pos(tright);
       cout<<"making mag-map window between that fits points: ("<<pstart.x<<","<<pstart.y<<") and ("<<pend.x<<","<<pend.y<<")"<<endl;
       margin=1;
       delete tr;
     }
+    delete worklens;
     width=wx=abs(pstart.x-pend.x);
     wy=abs(pstart.y-pend.y);
     if(wy>width)width=wy;
@@ -424,27 +439,32 @@ public:
     //Get square bounding box size
     cout<<"Model params: I0  Fs  q  L  r0  phi tE tmax\n"
 	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;
-    cout<<"making traj("<<q<<" "<<L<<" "<<r0<<" "<<phi<<")"<<endl;
-    cout<<" vx="<<cos(phi)<<", vy="<<sin(phi)<<endl;
-    cout<<" p0x="<<-r0*sin(phi)<<", p0y="<<r0*cos(phi)<<endl;
-    cout<<" xcm  =  "<<(q/(1.0+q)-0.5)*L<<endl;
-    double vx=cos(phi), vy=sin(phi);
-    double p0x=-r0*sin(phi), p0y=r0*cos(phi);
-    double xcm  =  (q/(1.0+q)-0.5)*L;
+    //cout<<"making traj("<<q<<" "<<L<<" "<<r0<<" "<<phi<<")"<<endl;
+    //cout<<" vx="<<cos(phi)<<", vy="<<sin(phi)<<endl;
+    //cout<<" p0x="<<-r0*sin(phi)<<", p0y="<<r0*cos(phi)<<endl;
+    //cout<<" xcm  =  "<<(q/(1.0+q)-0.5)*L<<endl;
+    //double vx=cos(phi), vy=sin(phi);
+    //double p0x=-r0*sin(phi), p0y=r0*cos(phi);
+    ///double xcm  =  (q/(1.0+q)-0.5)*L;
     
+    GLens *worklens=clone_lens(s);
+    cout<<"mlsignal:dump_trajectory: worklens="<<lens->print_info()<<endl;
+    double xcm  =  worklens->getCenter().x;
     double offset=(tstartHACK-tmax)/tE; //for spring 2015 (buggy?) behavior
     //double offset=0;  //Better
+    Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
     vector<double>tEs=times;
     for(double &t : tEs)t=(t-tmax)/tE;    
-    traj->setup(Point(p0x+vx*offset,p0y+vy*offset), Point(vx,vy));
-    traj->set_times(tEs,0);
-    cout<<"times range from "<<traj->t_start()<<" to "<<traj->t_end()<<endl;
-    cout<<traj->print_info()<<endl;
+    //tr->setup(Point(p0x+vx*offset,p0y+vy*offset), Point(vx,vy));
+    tr->set_times(tEs,0);
+    cout<<"times range from "<<tr->t_start()<<" to "<<tr->t_end()<<endl;
+    cout<<tr->print_info()<<endl;
     out<<"#"<<s.get_string()<<endl;
     out<<"#1.t   2. t_rel  3.x   4.y "<<endl;
     for(auto t:tEs){
-      Point p=traj->get_obs_pos(t);
-      out<<t+tref<<" "<<t<<" "<<p.x-xcm<<" "<<p.y<<endl;
+      Point p=tr->get_obs_pos(t);
+      //out<<t+tref<<" "<<t<<" "<<p.x-xcm<<" "<<p.y<<endl;
+      out<<t+tref<<" "<<t<<" "<<p.x<<" "<<p.y<<endl;
     }
   };
 

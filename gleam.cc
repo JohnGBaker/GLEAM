@@ -31,17 +31,17 @@ shared_ptr<Random> globalRNG;//used for some debugging...
 
 //Global Control parameters (see more in main())
 const int Npar=9;
-bool integrate;
-int Nevery;
+//bool integrate;
+//int Nevery;
 const double MaxAdditiveNoiseMag=22;
 int output_precision;
 double mm_lens_rWB;
 
 //Analysis functions defined below.
 //void dump_view(const string &outname,MLdata&data,bayes_likelihood&like,state &s,double tstart,double tend, int nsamples=301);
-void dump_view(const string &outname,GLens &lens, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples);
+void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples);
 //void dump_mag_map(const string &outname,MLdata&data,state &s,double tstart,double tend, int nsamples=301, int cent=-2,bool output_nlens=false);
-void dump_mag_map(const string &outname,bayes_data &data,ML_photometry_signal &signal, GLens &lens, state &s,double tstart,double tend,int nsamples=301,int cent=-2,bool output_nlens=false);
+void dump_mag_map(const string &outname,bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples=301,int cent=-2,bool output_nlens=false);
 //void dump_trajectory(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
 //void dump_lightcurve(const string &outname,MLdata&data,state &s,double tstart,double tend,int nsamples=301);
 void dump_lightcurve(const string &outname,bayes_likelihood&like,state &s,double tstart,double tend,int nsamples=301);
@@ -266,6 +266,7 @@ int main(int argc, char*argv[]){
   Trajectory *traj=&linear_trajectory;
   GLens *lens=&binarylens;
   ML_OGLEdata data;
+  //ML_generic_data data;
   ML_photometry_signal signal(traj, lens);
 
   Options opt;
@@ -322,7 +323,7 @@ int main(int argc, char*argv[]){
   bool do_magmap,view;
   int Nsigma=1;
   int Nbest=10;
-  *s0->optValue("nevery")>>Nevery;
+  //  *s0->optValue("nevery")>>Nevery;
   view=opt.set("view");
   istringstream(opt.value("nchains"))>>Nchain;
   istringstream(opt.value("seed"))>>seed;
@@ -365,7 +366,7 @@ int main(int argc, char*argv[]){
   cout.precision(output_precision);
   cout<<"\noutname = '"<<outname<<"'"<<endl;
   cout<<"seed="<<seed<<endl; 
-  cout<<"integrate="<<(integrate?"true":"false")<<endl;
+  //  cout<<"integrate="<<(integrate?"true":"false")<<endl;
   cout<<"Running on "<<omp_get_max_threads()<<" thread"<<(omp_get_max_threads()>1?"s":"")<<"."<<endl;
 
   ProbabilityDist::setSeed(seed);
@@ -471,12 +472,13 @@ int main(int argc, char*argv[]){
   //odata.cropBefore(tcut);
   cout<<"Ndata="<<data.size()<<endl;
   double t0,twidth;
+  double tstart,tend;
   t0=data.getFocusLabel();
+  data.getDomainLimits(tstart,tend);
   /*
   //define time range:
   double tstart,tend;
   //odata.getTimeLimits(tstart,tend);
-  odata.getDomainLimits(tstart,tend);
   //signal.set_tstartHACK(tstart);
   //t0=odata.getPeakTime();
   double finewidth=1.5;
@@ -486,6 +488,7 @@ int main(int argc, char*argv[]){
   twidth=300;//Changed for study, may return to smaller range...;
   //twidth=10;
   //cout<<"tfs="<<tfinestart<<" < ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<" < tfe="<<tfineend<<endl;
+  //cout<<"ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<endl;
 
   //Initial parameter state
   state instate(&space,params);
@@ -499,8 +502,8 @@ int main(int argc, char*argv[]){
   const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
   //                                     I0      Fs     Fn          logq*   logL       r0     phi      tE     tpass  
   valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,  r0s/2.0,   M_PI, tE_max/2,  t0     });
-  valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   2.0,   2.0,  r0s/2.0,   M_PI, tE_max/2,  twidth });
-  valarray<int>         types((ilist){gauss,    uni,   uni,        gauss, gauss,      uni,    uni,      uni,  gauss  });
+  valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   2.0,  r0s/2.0,   M_PI, tE_max/2,  twidth });
+  valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,      uni,    uni,      uni,  gauss  });
   if(use_remapped_q){//* 
     double qq=2.0/(q0+1.0);
     double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
@@ -560,7 +563,7 @@ int main(int argc, char*argv[]){
       //alike.setup();
       //alike.defWorkingStateSpace(space);
       //dump_view(outname,odata,mpl,instate,tfinestart,tfineend,mm_samples);
-      dump_view(outname, *lens, data, signal, mpl, instate, tfinestart, tfineend, mm_samples);
+      dump_view(outname, data, signal, mpl, instate, tfinestart, tfineend, mm_samples);
     } else {
       cout<<" The -view option requires that parameters are provided."<<endl;
     }
@@ -623,7 +626,7 @@ int main(int argc, char*argv[]){
   }
 
 //An analysis function defined below.
-void dump_view(const string &outname, GLens &lens, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){
+void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){
   //The report includes:
   // 1. The lens magnification map
   // 2. The observer trajectory curve
@@ -633,7 +636,7 @@ void dump_view(const string &outname, GLens &lens, bayes_data &data, ML_photomet
   
   //magnification map
   ss.str("");ss<<outname<<"_mmap.dat";
-  dump_mag_map(ss.str(), data, signal, lens, s, tstart, tend, nsamples);
+  dump_mag_map(ss.str(), data, signal, s, tstart, tend, nsamples);
 
   //trajectory
   vector<double>times;
@@ -705,14 +708,16 @@ void dump_view(const string &outname,MLdata &data,bayes_likelihood &like,state &
 */
 
 ///This is the new version (testing)
-void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, GLens &lens, state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
+void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
   ofstream out(outname);
   if(tend<=tstart)data.getDomainLimits(tstart,tend);
   Point LLp(0,0), URp(0,0);
   signal.getWindow(s, LLp, URp, tstart, tend, cent);  
   cout<<"dump mag map: LL=("<<LLp.x<<","<<LLp.y<<") UR=("<<URp.x<<","<<URp.y<<")"<<endl;
-  lens.setState(s);
-  lens.writeMagMap(out, LLp, URp, nsamples, output_nlens);
+  GLens *lens=signal.clone_lens(s);
+  cout<<"lens="<<lens->print_info();
+  lens->writeMagMap(out, LLp, URp, nsamples, output_nlens);
+  delete lens;
 };
 
 ///This is the old version

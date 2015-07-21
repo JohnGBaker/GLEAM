@@ -201,11 +201,12 @@ public:
       string line;
       while(getline(file,line)){
 	if(line[0]=='#')continue;//skip comment lines
-	double t,m;
+	double t,m,d=0.000001;
 	stringstream(line)>>t>>m;
 	times.push_back(t);
 	mags.push_back(m);
-	dmags.push_back(0);
+	dmags.push_back(d);
+	//cout<<size()<<": "<<t<<" "<<m<<" "<<d<<endl;
       }
     } else {
       if(filepath.size()>0){//empty path signifies go forward without data
