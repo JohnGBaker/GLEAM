@@ -1,0 +1,3 @@
+Some examples:
+gnuplot -e "file='gle_July17_lc_n_1024k_4'" summary.gp
+../../gleam/script/snapshot.py gle_July17_lc_n_1024k_4.dat test_July17_lc.dat -p 300
