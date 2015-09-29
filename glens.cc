@@ -104,8 +104,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   //
   //control parameters:
   const double caustic_mag_poly_level = 1.5; //use direct polynomial eval near caustics.
-  const double caustic_mag_step_level = 1.5; //take smaller steps near caustics. (for finite source)
-  const double caustic_step_factor = 1.;  //take smaller steps near caustics.
+  const double caustic_mag_step_level = 1.25; //take smaller steps near caustics. 
+  const double caustic_step_factor = 5.;  //take smaller steps near caustics.
   const double intTOL = 1e-10;  //control integration error tolerance
   if(have_integrate)integrate=use_integrate;
   double prec=cout.precision();cout.precision(20);
@@ -210,6 +210,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	  //Need some step-size control checking for near caustics?
 	  if (status != GSL_SUCCESS) {	      
 	    cout<<"Something went wrong with GSL integration!\n t="<<t<<", err= "<<status<<": '"<<gsl_strerror(status)<<"' \nthetas="<<endl;
+	    Point b=traj.get_obs_pos(t);
+	    cout<<"beta="<<sqrt(b.x*b.x+b.y*b.y)<<" mg="<<mag(thetas)<<endl;
 	    for(int image=0;image<thetas.size();image++)
 	      cout<<"   theta["<<image<<"] = ("<<theta[image*2]<<","<<theta[image*2+1]<<")"<<endl;
 	    //cout<<"Will set theta to most recent value."<<endl; 
@@ -218,6 +220,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	    // theta[2*image]=thetas[image].x;
 	    //theta[2*image+1]=thetas[image].y;
 	    //}
+	    tstep_next=t;
 	    break;
 	  }
 	  //debugging
@@ -344,6 +347,8 @@ int GLens::GSL_integration_func (double t, const double theta[], double thetadot
   //cout <<" t = "<<t<<", dtheta/dt = ("<<thetadot[0]<<","<<thetadot[1]<<")"<<endl;
   //cout <<" t =          dtheta/dt(num) = ("<<dthx<<","<<dthy<<"),  diff="<< sqrt(ddthx*ddthx+ddthy*ddthy)<< endl;
 
+  if(!isfinite(invJ))cout<<"GLens::GSL_integration_func: invJ=inf, |beta|="<<sqrt(beta0.x*beta0.x+beta0.y*beta0.y)<<endl;
+
   return isfinite(invJ)?GSL_SUCCESS:3210123;
 }
 
@@ -393,6 +398,7 @@ int GLens::GSL_integration_func_vec (double t, const double theta[], double thet
       //cout<<"GLens::GSL_integration_func_vec: FAIL"<<endl;
       //fail=true;
       //here we panic and rather than return NAN, we evolve as if the lensing effect is trivial...
+      cout<<"GLens::GSL_integration_func_vec: invJ=inf, |beta|="<<sqrt(beta0.x*beta0.x+beta0.y*beta0.y)<<endl;
       thetadot[2*image]   = betadot.x;
       thetadot[2*image+1] = betadot.y;
     }

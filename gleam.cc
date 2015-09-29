@@ -256,6 +256,15 @@ int main(int argc, char*argv[]){
     centers[2]=MaxAdditiveNoiseMag-hw;
     halfwidths[2]=hw;
   }
+  //**test HACK **// //Here we set the q/L params to near particular values for testing with Jeremy's data
+  //centers[3]=log10(0.9);
+  //halfwidths[3]=0.05;
+  //types[3]=uni;
+  //centers[4]=log10(0.6);
+  //halfwidths[4]=0.05;
+  //types[4]=uni;  
+  //**end HACK **//
+
   mixed_dist_product prior(&space,types,centers,halfwidths);
   cout<<"Prior is:\n"<<prior.show()<<endl;
 
