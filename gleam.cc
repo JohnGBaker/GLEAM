@@ -236,7 +236,8 @@ int main(int argc, char*argv[]){
   const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
   //                                     I0      Fs     Fn          logq*   logL       r0     phi      tE     tpass  
   valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,  r0s/2.0,   M_PI, tE_max/2,  t0     });
-  valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   2.0,  r0s/2.0,   M_PI, tE_max/2,  twidth });
+  //valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   2.0,  r0s/2.0,   M_PI, tE_max/2,  twidth });
+  valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   1.0,  r0s/2.0,   M_PI, tE_max/2,  twidth });
   valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,      uni,    uni,      uni,  gauss  });
   if(use_remapped_q){//* 
     double qq=2.0/(q0+1.0);

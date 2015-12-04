@@ -1,18 +1,4 @@
 40e03f63b1adc4401ad6e20a3535f81683125fd2
 On branch master
 Your branch is up-to-date with 'origin/master'.
-
-Untracked files:
-  (use "git add <file>..." to include in what will be committed)
-
-	bayesian.cc
-	bayesian.hh.bk
-	bayesian.hh.bk2
-	chain.cc.bk
-	proposal_distribution.cc.bk
-	ptmcmc.cc.bk
-	ptmcmc.cc.bk2
-	ptmcmc.hh.bk
-	ptmcmc.hh.bk2
-
-nothing added to commit but untracked files present (use "git add" to track)
+nothing to commit, working directory clean

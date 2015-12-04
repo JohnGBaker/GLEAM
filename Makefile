@@ -50,4 +50,4 @@ clean:
 	rm -f *.o gleam gleam_quad
 	rm -f lib/*.a
 	rm -f include/*.h*
-	${MAKE} -C ptMCMC clean
+	${MAKE} -C ptmcmc clean
