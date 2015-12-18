@@ -6,8 +6,19 @@ export INCLUDE = ${ROOT}/include
 MCMC = ${ROOT}/ptmcmc
 export CXX
 export CFLAGS
+INC = ${ROOT}/include
+LIB = ${ROOT}/lib
 
-ifeq ($(strip $(DISCOVER)), )
+ifneq ($(findstring discover,$(shell hostname)),)
+#discover
+  #assumes: module load other/comp/gcc-5.2-sp3
+  CXX = g++
+  CC = gcc
+  CXXFLAGS = $(CFLAGS) -std=c++11 -O3
+  GSLROOT=/usr/local/other/SLES11.1/gsl/1.16/gnu-4.8.1
+  CFLAGS = -O3 -lquadmath -Wuninitialized -fopenmp
+
+else 
 #laptop
   CXX = x86_64-apple-darwin13-g++-mp-4.8 -fcx-fortran-rules
   CC = x86_64-apple-darwin13-gcc-mp-4.8 -fcx-fortran-rules
@@ -16,20 +27,12 @@ ifeq ($(strip $(DISCOVER)), )
   CFLAGS = -march=corei7 -g -lquadmath -Wuninitialized -O2  -fopenmp
   #CXXFLAGS = $(CFLAGS) -std=c++11 -g
   CXXFLAGS = $(CFLAGS) -std=c++11 -O2
-  GSLDIR=/opt/local/lib
-  GSLINC=/opt/local/include
-  INC=${ROOT}/include
-  LIB=${ROOT}/lib
-else
-#discover
-  FFTW = /usr/local/other/fftw/3.1.2_gcc
-# need to set this :
-  NEWRAN = newran
-  CXX =  icpc
-  CC = icc
-  CFLAGS = -Wall -g -I${FFTW}/include -wd981 -fPIC
+  GSLROOT=/opt/local
+
 endif
 
+GSLDIR=$(GSLROOT)/lib
+GSLINC=$(GSLROOT)/include
 CFLAGS += -I${INCLUDE} -I${MCMC} 
 LDFLAGS+= -L${LIB} -L${FFTW}/lib -lfftw3	
 
