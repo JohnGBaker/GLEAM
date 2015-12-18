@@ -142,9 +142,26 @@ public:
   ///Optioned interface
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);
-    //data options
-    addOption("tcut","Cut times before tcut (relative to tmax). Default=-1e20/","-1e20");
+    addTypeOptions(opt);
+    addOption("tcut","Cut times before tcut (relative to tmax). Default=-1e20","-1e20");
   };
+  ///Here provide options for the known types of ML_photometry_data...
+  ///This is provided statically to allow options to select one or more types of data before specifying the 
+  ///specific data sub-class in the main calling routine.  However, because the Optioned interface cannot
+  ///be accessed statically, we create temporary instance and let it do the work.  There should be no need
+  ///to preserve this temporary instance for later reference.
+  void static addStaticOptions(Options &opt){
+    ML_photometry_data d;
+    d.addTypeOptions(opt);
+  };
+  virtual void setup(){};
+private:
+  void addTypeOptions(Options &opt){
+    Optioned::addOptions(opt,"");
+    addOption("OGLE_data","Filepath to OGLE data.");
+    addOption("gen_data","Filepath to generic photometry data.");
+    addOption("mock_data","Construct mock data.");
+  };  
 protected:
   ///Initial data processing common to ML_photometry_data
   void processData(){
@@ -153,14 +170,63 @@ protected:
     cropBefore(tcut);
     haveSetup();
   };
-
 };
+
+///class for mock data
+///It does little other that define a grid of points, and allow them to be populated...
+///There is also a hook to fill the data, which mllike knows how to do.  In this case
+///The "extra noise" parameter becomes the actual noise parameter.
+class ML_mock_data : public ML_photometry_data {
+public:
+  ML_mock_data(){allow_fill=true;};
+  ///The time samples are generated from a regular grid, or randomly...
+  ///...not yet complete...
+  ///Note that cadence is the most probable size of timestep, with fractional variance scale set by log_dtvar
+  void setup(){
+    double tstart,tend,cadence,jitter;
+    *optValue("mock_tstart")>>tstart;
+    *optValue("mock_tend")>>tend;
+    *optValue("mock_cadence")>>cadence;
+    *optValue("mock_jitter")>>jitter;
+    cout<<"Preparing mock data."<<endl;
+    setup(tstart,tend,cadence,jitter);
+  };
+  void setup(double tmin, double tmax, double cadence, double log_dt_var=0){
+    GaussianDist gauss(0.0,log_dt_var);
+    double dt=cadence*exp(gauss.draw());
+    double time=tmin+dt/2.0;
+    while(time<tmax){
+      times.push_back(time);
+      dt=cadence*exp(gauss.draw());
+      time+=dt;
+      mags.push_back(0);
+      dmags.push_back(0);
+    }
+    have_data=true;
+    processData();
+  };
+  ///Optioned interface
+  void addOptions(Options &opt,const string &prefix=""){
+    ML_photometry_data::addOptions(opt,prefix);
+    addOption("mock_tstart","Start time for mock data sample grid (days). Default=-600","-600");
+    addOption("mock_tend","End time for mock data sample grid (days). Default=150","150");
+    addOption("mock_cadence","Typical sample period for mock data sample grid(days). Default=1","1");
+    addOption("mock_jitter","Size of standard deviation in log(time-step-size). Default=0","0");
+  };
+};
+
 
 //class for OGLEII-IV DIA data
 class ML_OGLEdata : public ML_photometry_data {
   //OGLE-IV:Photometry data file containing 5 columns: Hel.JD, I magnitude, magnitude error, seeing estimation (in pixels - 0.26"/pixel) and sky level.
 public:
   ML_OGLEdata(){};
+  void setup(){
+    string filename;
+    *optValue("OGLE_data")>>filename;
+    cout<<"OGLE data file='"<<filename<<"'"<<endl;
+    setup(filename);
+  };
   void setup(const string &filepath){
     ifstream file(filepath.c_str());
     if(file.good()){
@@ -188,13 +254,18 @@ public:
     return;
   };
 
-
 };
 
 //class for generic two column time/mag data
 class ML_generic_data : public ML_photometry_data {
 public:
   ML_generic_data(){};
+  void setup(){
+    string filename;
+    *optValue("gen_data")>>filename;
+    cout<<"generic data file='"<<filename<<"'"<<endl;
+    setup(filename);
+  };
   void setup(const string &filepath){
     ifstream file(filepath.c_str());
     if(file.good()){
@@ -222,7 +293,6 @@ public:
     processData();
     return;
   };
-
 };
 
 

@@ -19,6 +19,7 @@ const bool inv_test_mode=false;
 //const bool inv_test_mode=true;
 extern bool debugint;
 bool verbose=false;
+bool test_result=false;
 //
 // Interface to external Skowron&Gould fortran polynomial solver routine
 //
@@ -81,6 +82,98 @@ const double epsTOL=1e-14;
 
 
 
+//
+// ******************************************************************
+// Point routines **********************************************
+// ******************************************************************
+//
+
+Point operator+(const Point &a, const Point &b){return Point(a.x+b.x,a.y+b.y);};
+Point operator-(const Point &a, const Point &b){return Point(a.x-b.x,a.y-b.y);};
+
+//
+// ******************************************************************
+// Trajectory routines **********************************************
+// ******************************************************************
+//
+
+// ParallaxTrajectory ***********************************************
+
+
+///Define the observer trajectory position in SSB coordinates.
+///
+///We rely on the expression for the Earth-Moon barycenter (EMB) position from
+/// http://ssd.jpl.nasa.gov/?planet_pos which are accurate to within a few
+/// thousand km.  Note the distance from a point on the Earth or LEO to EMB is 
+/// within +/-10000km, a similar scale.  With Earth's orbit at ~30km/s this 
+/// level of precision should be compatible with timing precision to within a 
+/// few minutes.  For timing, the 1 AU light crossing time is also a few 
+/// minutes, so we can similarly ignore that.  If precision better than a few 
+/// minutes is relevant then we will need to take these factors into account.
+/// The results are rreturned in the argument in Cartesian SSB coords consistent
+/// with ecliptic sky coordinates.
+///
+void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double &z)const{
+  ///We take t to be terrestrial time, TT, time in days since the beginning of 
+  ///the J2000 epoch, meaning seconds since J2000 (ts) divided by 86400. 
+  /// I.e. t=ts/38400.  Note that the J2000 epoch reference corresponds to 
+  /// 2000 Jan 1 11:58:55.816 UTC.  The JPL ephemerides are referenced to 
+  ///T_{eph} which is effectively the same as the IAU's TDB.  TDB is nearly 
+  ///the same as IAU's terrestrial time TT, corrected for periodic relativistic
+  ///changes in the Earth's surface time as the Earth moves in orbit.  The 
+  ///corrections are less than 2 ms, so we approximate T_{eph} as TT here. 
+
+  ///Our position comes from JPL's approximate current epoch orbital elements 
+  ///( semi-maj axis a, eccen. e, inclination I, mean long. L, long. at
+  /// perihelion lonp and long. of ascending node (=0 for earth)) and their 
+  /// per-century rates of change. These are:
+  const double degrad=180.0/M_PI;
+  const double a0=1.00000261,e0=0.01671123,I0=-0.00001531/degrad,
+    L0=100.46457166/degrad,lonp0=102.93768193/degrad;
+  const double adot=5.62e-6,edot=-43.92e-6,Idot=-0.01294668/degrad,
+    Ldot=35999.37244981/degrad,lonpdot=0.32327364/degrad;
+  //inst. values
+  double Tcen=t/36525.;
+  double a=a0+adot*Tcen,e=e0+edot*Tcen,I=I0+Idot*Tcen,
+    L=L0+Ldot*Tcen,lonp=lonp0+lonpdot*Tcen;
+  //argument of perihelion argp=lonp here
+  //mean anomaly M (in range -pi<=M<PI, eccentric anom. E (solves M=E-e*sin(E),
+  double M=(floor(((L-lonp)/M_PI+1)/2.0)-1.0)*M_PI*2,E=M+e*sin(M),Eold=0;
+  //solve for E
+  while(abs(E-Eold)>1e-15){Eold=E;E=Eold+(M-Eold+e*sin(Eold))/(1-e*cos(Eold));}
+  //perihl. cartesian coords
+  double xper=a*(cos(E)-e),yper=a*sqrt(1-e*e)*sin(E);
+  double cp=cos(lonp),sp=sin(lonp),cI=cos(I),sI=sin(I);
+  //ecliptic coords
+  x=cp*xper-sp*yper;
+  double rhoyz=(sp*xper+cp*yper);
+  y=rhoyz*cI;
+  z=rhoyz*sI;
+};
+
+//Here we just compute the second order numerical derivative.  That is probably good enough...but we could do analytic..
+void ParallaxTrajectory::get_obs_vel_ssb(double t, double & rdot, double &thdot, double &phdot)const{
+  double rp,thp,php,rm,thm,phm;
+  double delta=1.0; //1 day is small
+  get_obs_pos_ssb(t+delta,rp,thp,php);
+  get_obs_pos_ssb(t-delta,rm,thm,phm);
+  rdot=(rp-rm)/(2*delta);
+  thdot=(thp-thm)/(2*delta);
+  phdot=(php-phm)/(2*delta);
+}; 
+  ///Using the approx location of the source, transform from ssb in source-lens line-of-sight frame.
+Point ParallaxTrajectory::ssb_los_transform(double x, double y, double z)const{
+  ///begin alined with lens system separation (or other ref axis)
+  ///begin with earth SSB position, then rotate SSB so that source is at lon=0
+  ///then rotate inclination until lat=+90deg.  Then rotate through some unknown
+  ///angle alpha so that the source sep/ref-axis is aligned with lon=0;
+  ///Then rescale by AU/dist.
+  ///Use source_ra and source_dec
+
+};
+  ///Compute observer position offset from ssb in source-lens line-of-sight frame.
+
+
 
 //
 // ******************************************************************
@@ -121,6 +214,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 
   trajectory=&traj;//a convenience for passing to the integrator
   int NintSize=2*NimageMax;
+
+  //Set up for GSL integration routines
   const gsl_odeiv2_step_type * stepType = gsl_odeiv2_step_rkf45;
   gsl_odeiv2_step * step=nullptr;
   gsl_odeiv2_control * control=nullptr;
@@ -136,7 +231,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
     gsl_odeiv2_evolve_reset(evol);
   }
 
-  //loop over observation times specified in the Trajectory object
+  //Main loop over observation times specified in the Trajectory object
+  //initialization
   double tgrid=traj.t_start();
   double tgrid_next=traj.get_obs_time(1);
   Point beta=traj.get_obs_pos(tgrid);
@@ -147,8 +243,14 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   time_series.push_back(traj.t_start());
   thetas_series.push_back(thetas);
   mag_series.push_back(mg);
-  for(int i=0; tgrid<traj.t_end(); tgrid=tgrid_next,i++){
-    tgrid_next=traj.get_obs_time(i+1);          
+  for(int i=0; tgrid<traj.t_end(); tgrid=tgrid_next,i++){//if we can get the number of time_samples from the Traj. obj, could convert this to an index based loop termination, and then move initialization inside, and simplify...
+
+    //entering main loop
+
+    //set tgrid val for the next step
+    tgrid_next=traj.get_obs_time(i+1);
+
+    //record the index in the output time series for this point in the Trajectory time series
     index_series.push_back(time_series.size()-1);
     //we will test on magnitude level
     
@@ -159,6 +261,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
     double tstep=tgrid,dtstep=(tgrid_next-tgrid)/isteps;;
     double tstep_next=tstep+dtstep;
     if(debugint)cout<<"steps for "<<tstep<<" < t < "<<tstep_next<<endl;
+
+    //Now we enter an inner loop which runs for isteps steps within a single step of the main loop
     for(int istep=0;istep<isteps;istep++){//provide the taking of substeps near caustics
       if(debugint)cout<<"step: "<<istep<<endl;
       //if(istep=isteps-1)tstep_next=tgrid_next;
@@ -191,7 +295,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	//The next loop steps (probably more finely) toward the next obs time.      
 	while(t<tstep_next){
 	  //integrate each image
-	  if(debugint)cout<<"\n t="<<t<<endl;
+	  if(debugint)cout<<"\n t="<<t<<" mg="<<mg<<endl;
 	  Ntheta=thetas.size();
 	  double theta[NintSize];
 	  for(int image=0;image<thetas.size();image++){
@@ -209,11 +313,18 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	  int status = gsl_odeiv2_evolve_apply (evol, control, step, &sys, &t, tstep_next, &h, theta);
 	  //Need some step-size control checking for near caustics?
 	  if (status != GSL_SUCCESS) {	      
-	    cout<<"Something went wrong with GSL integration!\n t="<<t<<", err= "<<status<<": '"<<gsl_strerror(status)<<"' \nthetas="<<endl;
-	    Point b=traj.get_obs_pos(t);
-	    cout<<"beta="<<sqrt(b.x*b.x+b.y*b.y)<<" mg="<<mag(thetas)<<endl;
-	    for(int image=0;image<thetas.size();image++)
-	      cout<<"   theta["<<image<<"] = ("<<theta[image*2]<<","<<theta[image*2+1]<<")"<<endl;
+# pragma omp critical	    
+	    {
+	      cout<<"Something went wrong with GSL integration!\n lens="<<print_info()<<"\n t="<<t<<", err= "<<status<<": '"<<gsl_strerror(status)<<"' \nthetas="<<endl;
+	      double old_t=time_series[time_series.size()-1];
+	      Point b=traj.get_obs_pos(old_t);
+	      cout<<"oldbeta("<<old_t<<")="<<sqrt(b.x*b.x+b.y*b.y)<<endl;
+	      b=traj.get_obs_pos(t);
+	      cout<<"beta="<<sqrt(b.x*b.x+b.y*b.y)<<" mg="<<mag(thetas)<<endl;
+	      for(int image=0;image<thetas.size();image++)
+		cout<<"   theta["<<image<<"] = ("<<theta[image*2]<<","<<theta[image*2+1]<<")"<<endl;
+	      cout<<"tgrid<tgrid_next="<<tgrid<<"<"<<tgrid_next<<"  istep/isteps="<<istep<<"/"<<isteps<<endl;
+	    }
 	    //cout<<"Will set theta to most recent value."<<endl; 
 	    //thetas=thetas_series.back();
 	    //for(int image=0;image<thetas.size();image++){
@@ -305,6 +416,44 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
     gsl_odeiv2_control_free (control);
     gsl_odeiv2_step_free (step);
   }
+
+  if(test_result){
+  //initialization
+    int itimes=traj.i_end();
+    double delta=traj.get_obs_time(1)-traj.t_start();
+    if(itimes<0)
+      double itimes=(traj.t_end()-traj.t_start())/delta;
+    for(int i=0; i<itimes;i++){
+      double ttest=traj.get_obs_time(i);
+      int ires=index_series[i];
+      double tres=time_series[ires];
+      Point beta=traj.get_obs_pos(ttest);
+      vector<Point> thetas=invmap(beta);
+      int nimages=thetas.size();
+      double mgtest=mag(thetas);
+      double mgres=mag_series[ires];
+      double tminus,tplus,mgminus,mgplus;
+      if(ires>0&&ires<time_series.size()-1){
+	tminus=time_series[ires-1];
+	tplus=time_series[ires+1];
+	beta=traj.get_obs_pos(tminus);thetas=invmap(beta);
+	mgminus=mag(thetas);
+	beta=traj.get_obs_pos(tplus);thetas=invmap(beta);
+	mgplus=mag(thetas);
+      }
+
+#pragma omp critical
+      if(abs(mgtest-mgres)/mgtest>1e-6){
+	cout<<"\ncompute_trajectory: test failed. test/res:\nindex="<<i<<","<<ires<<"\ntime="<<ttest<<","<<tres<<"\nmag="<<mgtest<<","<<mgres<<" -> "<<abs(mgtest-mgres)<<"["<<nimages<<" images]"<<endl;
+	if(ires>0&&ires<time_series.size()-1){
+	  cout<<"nearby times  :"<<tminus<<" < t < "<<tplus<<endl;
+	  cout<<"   with mags  :"<<mgminus<<" < t < "<<mgplus<<endl;
+	}
+	//if(i>0&&ires<index_series.size()-1)cout<<"nearby idx times:"<<time_series[index_series[i-1]]<<" < t < "<<time_series[index_series[i+1]]<<endl;
+      }
+    }
+  }
+
 }
 
 int GLens::GSL_integration_func (double t, const double theta[], double thetadot[], void *instance){

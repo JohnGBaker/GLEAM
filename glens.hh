@@ -31,8 +31,10 @@ typedef struct Point {
   double x;
   double y;
   Point(double x, double y):x(x),y(y){};
+  friend Point operator+(const Point &p1, const Point &p2);
+  friend Point operator-(const Point &p1, const Point &p2);
 }Point;
-//Point minus(const Point &a, const Point &b){return Point(a.x-b.x,a.y-b.y)};
+//
 
 ///Next is a class for trajectories through the observer plane
 ///base class implements a straight-line trajectory
@@ -61,6 +63,7 @@ public:
   virtual void set_times(vector<double> times,double toff){this->times=times;t0=times[0];tf=times.back();have_times=true;this->toff=toff;};//cout<<"tf="<<tf<<", times="<<this->times.size()<<", times["<<times.size()-1<<"]="<<times[times.size()-1]<<endl;};
   virtual double t_start()const {return t0;};
   virtual double t_end()const {return tf;};
+  virtual double i_end()const {if(have_times)return times.size(); else return 0;};
   virtual double get_obs_time(int ith)const {if(have_times)return times[ith]; else return t0-toff+cad*ith;};
   virtual Point get_obs_pos(double t)const {double x=p0.x+(t-toff)*v0.x,y=p0.y+(t-toff)*v0.y;return Point(x,y);};
   virtual Point get_obs_vel(double t)const {return v0;};
@@ -70,16 +73,55 @@ public:
 ///Next is a class for trajectories through the observer plane
 ///class implements a straight-line trajectory
 class ParallaxTrajectory : public Trajectory {
+protected:
+  double source_lon,source_lat;
 public:
-  ParallaxTrajectory(Point pos0,Point vel0, double t_end, double caden, double au, double lat,double lon, double psi0, double t0=0):Trajectory(pos0,vel0,t_end,caden,t0){};
+  ParallaxTrajectory(Point pos0, Point vel0, double t_end, double caden, double source_ra, double source_dec, double t2000off, double t0=0):Trajectory(pos0,vel0,t_end,caden,t0){
+    equatorial2ecliptic(source_ra,source_dec,source_lat,source_lon);};
   virtual ParallaxTrajectory* clone(){
     return new ParallaxTrajectory(*this);
   };
   double t_start()const {return t0;};
   double t_end()const {return tf;};
   double get_obs_time(int ith)const {return t0+cad*ith;};
-  Point get_obs_pos(double t)const {double x=p0.x+t*v0.x,y=p0.y+t*v0.y;return Point(x,y);};
-  Point get_obs_vel(double t)const {return v0;};
+  Point get_obs_pos(double t)const {return Trajectory::get_obs_pos(t)+get_obs_pos_offset(t);};
+  Point get_obs_vel(double t)const {return Trajectory::get_obs_vel(t)+get_obs_vel_offset(t);};
+  ///The following functions are to help with computing the parallax
+  ///First we need to define the observer orbital motion in barycentric coordinates
+  void get_barycentric_observer(double t, double &r, double &theta, double &phi){};
+protected:
+  ///We need to know the approximate location of the source to compute the parallax
+  double source_ra, source_dec;
+  ///These are internal functions needed to realize the parallax
+  ///First note that we will use time standardized to in JD since J2000
+  ///Define the observer trajectory position in SSB coordinates
+  virtual void get_obs_pos_ssb(double t, double &x, double &y, double &z)const;
+  ///Define the observer trajectory velocity in SSB coordinates
+  ///For this class we define an approx Earth-Moon barycenter trajectory but that can be overloaded.
+  virtual void get_obs_vel_ssb(double t, double &x, double &y, double &z)const;
+  ///Using the approx location of the source, transform from ssb in source-lens line-of-sight frame.
+  virtual Point ssb_los_transform(double x, double y, double z)const;
+  ///Compute observer position offset from ssb in source-lens line-of-sight frame.
+  virtual Point get_obs_pos_offset(double t)const{
+    double x,y,z;
+    get_obs_pos_ssb(t,x,y,z);
+    return ssb_los_transform(x,y,z);
+  };
+  ///Compute observer velocity offset from ssb in source-lens line-of-sight frame.
+  virtual Point get_obs_vel_offset(double t)const{
+    double x,y,z;
+    get_obs_vel_ssb(t,x,y,z);
+    return ssb_los_transform(x,y,z);
+  };
+  ///approximately convert equatorial to ecliptic coordinates
+  void equatorial2ecliptic(double source_ra, double source_dec, double source_lat, double source_lon){
+    const double eps=23.4372; //as of 2016.0, decreasing at 0.00013/yr
+    const double ceps=cos(eps),seps=sin(eps);
+    double sa=sin(source_ra),ca=cos(source_ra);
+    double sd=sin(source_dec),cd=cos(source_dec);
+    source_lon=atan2(sa*ceps+sd/cd*seps,ca);
+    source_lat=sd*ceps-cd*seps*sa;
+  };
 };
 
 ///This is a generic abstract base class for thin gravitational lens objects.
