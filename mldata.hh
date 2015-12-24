@@ -10,6 +10,8 @@
 #include <iostream>
 #include <valarray>
 #include "bayesian.hh"
+#include <cerrno>
+#include <cstring>
 
 using namespace std;
 //plan:
@@ -241,7 +243,8 @@ public:
       }
     } else {
       if(filepath.size()>0){//empty path signifies go forward without data
-	cout<<"OGLEData::OGLEData: Could not open file '"<<filepath<<"'."<<endl;
+	cerr << "Error: " << strerror(errno)<<endl;
+	cout<<"ML_OGLEData::ML_OGLEData: Could not open file '"<<filepath<<"'."<<endl;
 	exit(1);
       }
     }

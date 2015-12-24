@@ -30,6 +30,7 @@ extern bool debug;
 typedef struct Point {
   double x;
   double y;
+  Point():Point(0,0){};
   Point(double x, double y):x(x),y(y){};
   friend Point operator+(const Point &p1, const Point &p2);
   friend Point operator-(const Point &p1, const Point &p2);
@@ -63,7 +64,7 @@ public:
   virtual void set_times(vector<double> times,double toff){this->times=times;t0=times[0];tf=times.back();have_times=true;this->toff=toff;};//cout<<"tf="<<tf<<", times="<<this->times.size()<<", times["<<times.size()-1<<"]="<<times[times.size()-1]<<endl;};
   virtual double t_start()const {return t0;};
   virtual double t_end()const {return tf;};
-  virtual double i_end()const {if(have_times)return times.size(); else return 0;};
+  virtual int Nsamples()const {if(have_times)return times.size(); else return (int)((t_end()-t_start())/cad)+1;};
   virtual double get_obs_time(int ith)const {if(have_times)return times[ith]; else return t0-toff+cad*ith;};
   virtual Point get_obs_pos(double t)const {double x=p0.x+(t-toff)*v0.x,y=p0.y+(t-toff)*v0.y;return Point(x,y);};
   virtual Point get_obs_vel(double t)const {return v0;};
@@ -135,9 +136,11 @@ protected:
   static int GSL_integration_func (double t, const double theta[], double thetadot[], void *instance);
   static int GSL_integration_func_vec (double t, const double theta[], double thetadot[], void *instance);
   ///For use with GSL integration
-  static const int kappa=.1;
+  double kappa=.1;
   int Ntheta;
   bool use_integrate,have_integrate;
+  double GL_int_tol,GL_int_mag_limit;
+
 public:
   GLens(){have_integrate=false;};
   virtual GLens* clone()=0;

@@ -198,7 +198,7 @@ int main(int argc, char*argv[]){
   //Set up ML objects
   signal.setup();
   //special handling for backward compatibility [deprecated]
-  if(filename)dynamic_cast< ML_OGLEdata* >(data)->setup(filename);
+  if(filename&&!do_magmap)dynamic_cast< ML_OGLEdata* >(data)->setup(filename);
   else data->setup();
 
   //Create the data object (This block is setting up the model.  If/when we separate model from data, then data obj may be defined below)
@@ -246,11 +246,13 @@ int main(int argc, char*argv[]){
     {
       ss.str("");ss<<outname<<"_mmap.dat";
       ofstream out(ss.str());
+      out.precision(output_precision);
       lens->writeMagMap(out, pstart, pend, mm_samples);
     }
     if(opt.set("mm_nimage")){
       ss.str("");ss<<outname<<"_nmap.dat";    
-      ofstream out(ss.str());
+      ofstream out(ss.str()); 
+      out.precision(output_precision);
       lens->writeMagMap(out, pstart, pend, mm_samples,true);
     }
     exit(0);

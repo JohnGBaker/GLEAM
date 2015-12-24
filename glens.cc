@@ -36,8 +36,8 @@ extern "C" void cmplx_roots_gen_(complex<double> roots[], complex<double> poly[]
 void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int &degree, bool const &polish_roots_after, const bool &use_roots_as_starting_points){cmplx_roots_gen_(roots,poly,degree,polish_roots_after,use_roots_as_starting_points);};
 //const double LEADTOL=3e-7; //->balance linear approx with FP -> error below ~1e-7
 typedef  long double ldouble;
-const double LEADTOL=1e-5;
-//const double LEADTOL=1e-4;
+const double LEADTOL=1e-4;
+//const double LEADTOL=1e-5;
 const double epsTOL=1e-10;
 //const double epsTOL=1e-11;
 
@@ -75,8 +75,9 @@ void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int 
   for(int i=0;i<degree;i++)roots[i]=longroots[i];  
 };
 typedef __float128 ldouble;
-const double LEADTOL=3e-7;
+//const double LEADTOL=3e-7;
 //const double LEADTOL=1e-6;
+const double LEADTOL=1e-5;
 const double epsTOL=1e-14;
 #endif
 
@@ -196,10 +197,9 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   //  if use_integrate is set then the value it overrides integrate 
   //
   //control parameters:
-  const double caustic_mag_poly_level = 1.5; //use direct polynomial eval near caustics.
-  const double caustic_mag_step_level = 1.25; //take smaller steps near caustics. 
-  const double caustic_step_factor = 5.;  //take smaller steps near caustics.
-  const double intTOL = 1e-10;  //control integration error tolerance
+  double caustic_mag_poly_level = GL_int_mag_limit; //use direct polynomial eval near caustics.
+  const double intTOL = GL_int_tol;  //control integration error tolerance
+  const double test_result_tol = 1e-4;  //control integration error tolerance
   if(have_integrate)integrate=use_integrate;
   double prec=cout.precision();cout.precision(20);
   //cout<<"glens::compTraj: int="<<integrate<<"\nthisLens="<<print_info()<<"\n traj="<<traj.print_info()<<endl;
@@ -222,133 +222,85 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   gsl_odeiv2_evolve * evol=nullptr;
   gsl_odeiv2_system sys = {GLens::GSL_integration_func_vec, NULL, (size_t)NintSize, this};
   double h=1e-5;
-  //Set up for GSL integration routines
   if(integrate){
     step = gsl_odeiv2_step_alloc (stepType, NintSize);
     control = gsl_odeiv2_control_y_new (intTOL, 0.0);
     evol = gsl_odeiv2_evolve_alloc (NintSize);
     gsl_odeiv2_control_init(control,intTOL,0.0,1,0);//Do I need this?
-    gsl_odeiv2_evolve_reset(evol);
+    gsl_odeiv2_evolve_reset(evol);//or this
   }
 
   //Main loop over observation times specified in the Trajectory object
   //initialization
+  Point beta;
+  vector<Point> thetas;
+  bool evolving=false;
+  double mg;
+  /*
   double tgrid=traj.t_start();
   double tgrid_next=traj.get_obs_time(1);
-  Point beta=traj.get_obs_pos(tgrid);
-  vector<Point> thetas=invmap(beta);
-  double mg=mag(thetas);
-  bool evolving=false;
+  beta=traj.get_obs_pos(tgrid);
+  thetas=invmap(beta);
+  mg=mag(thetas);
   //cout<<"Recording at t="<<traj.t_start()<<" beta=("<<beta.x<<","<<beta.y<<")"<<endl;
   time_series.push_back(traj.t_start());
   thetas_series.push_back(thetas);
   mag_series.push_back(mg);
-  for(int i=0; tgrid<traj.t_end(); tgrid=tgrid_next,i++){//if we can get the number of time_samples from the Traj. obj, could convert this to an index based loop termination, and then move initialization inside, and simplify...
+  */
 
+  int Ngrid=traj.Nsamples();
+  double t_old;
+  for(int i=0; i<Ngrid;i++){
+    double tgrid=traj.get_obs_time(i);
     //entering main loop
 
-    //set tgrid val for the next step
-    tgrid_next=traj.get_obs_time(i+1);
+    //We either compute the next step by evolution or by polynomial evaluation.
+    //We do evolution is the integration flag is set *and* the last evaluated point had a
+    //magnification under caustic_mag_poly_level.
+    //If we evolving then the step-size may be smaller as driven by the ODE integrator's step-size 
+    //control, we expect this to be small enough to avoide stumbling across the caustic, unaware.
+    //After each step we check whether the mg level condition is satisfied, to consider whether to evolve.
+    //We may also wish to implement a floor in the step-size near caustics for display purposes.
 
-    //record the index in the output time series for this point in the Trajectory time series
-    index_series.push_back(time_series.size()-1);
-    //we will test on magnitude level
-    
-    //If close to caustic, require smaller steps
-    int isteps=1;    
-    if(mg>caustic_mag_step_level)isteps=caustic_step_factor;
-    if(debugint)cout<<"mg="<<mg<<",  isteps="<<isteps<<endl;
-    double tstep=tgrid,dtstep=(tgrid_next-tgrid)/isteps;;
-    double tstep_next=tstep+dtstep;
-    if(debugint)cout<<"steps for "<<tstep<<" < t < "<<tstep_next<<endl;
-
-    //Now we enter an inner loop which runs for isteps steps within a single step of the main loop
-    for(int istep=0;istep<isteps;istep++){//provide the taking of substeps near caustics
-      if(debugint)cout<<"step: "<<istep<<endl;
-      //if(istep=isteps-1)tstep_next=tgrid_next;
-      //else 
-      tstep_next=tstep+dtstep;
-      if(integrate&&mg<caustic_mag_poly_level){
-	evolving=true;
-	double t=tstep;
-	if(debugint){//debugging
-	  cout<<" t = "<<t<<endl; 
-	  Point dbgbeta=traj.get_obs_pos(t);
-	  vector<Point>thdbgbeta=invmap(dbgbeta);
-	  cout<<"*beta = ("<<dbgbeta.x<<","<<dbgbeta.y<<")"<<endl;
-	  double diff;
-	  int imap[5]={0,1,2,3,4};
-	  int iswap=1;
-	  for(int image=0;image<thetas.size();image++){
-	    diff=sqrt((thetas[image].x-thdbgbeta[imap[image]].x)*(thetas[image].x-thdbgbeta[imap[image]].x)+(thetas[image].y-thdbgbeta[imap[image]].y)*(thetas[image].y-thdbgbeta[imap[image]].y));
-	    if(diff>1e-5&&image<thetas.size()-iswap){
-	      cout<<"   swapping "<<image<<" + "<<iswap<<endl;
-	      int itemp=imap[image];
-	      imap[image]=imap[image+iswap];
-	      imap[image+iswap]=itemp;
-	      image--;
-	      iswap++;
-	      continue;
-	    } else iswap =1;
-	    cout<<"*  thetas["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<") versus ("<<thdbgbeta[imap[image]].x<<","<<thdbgbeta[imap[image]].y<<"), m = "<<mag(thetas[image])<<", diff="<<diff<<endl;}
+    if(evolving){
+      double t=t_old;
+      //The next loop steps (probably more finely) toward the next grid time point.      
+      while(t<tgrid){
+	//integrate each image
+	if(debugint)cout<<"\n t="<<t<<" mg="<<mg<<endl;
+	Ntheta=thetas.size();
+	double theta[NintSize];
+	for(int image=0;image<thetas.size();image++){
+	  theta[2*image]=thetas[image].x;
+	  theta[2*image+1]=thetas[image].y;
 	}
-	//The next loop steps (probably more finely) toward the next obs time.      
-	while(t<tstep_next){
-	  //integrate each image
-	  if(debugint)cout<<"\n t="<<t<<" mg="<<mg<<endl;
-	  Ntheta=thetas.size();
-	  double theta[NintSize];
-	  for(int image=0;image<thetas.size();image++){
-	    theta[2*image]=thetas[image].x;
-	    theta[2*image+1]=thetas[image].y;
+	for(int k=2*thetas.size();k<NintSize;k++)theta[k]=0;
+	int status = gsl_odeiv2_evolve_apply (evol, control, step, &sys, &t, tgrid, &h, theta);
+	//Need some step-size control checking for near caustics?
+	if (status != GSL_SUCCESS) { 
+	  //# pragma omp critical	    
+	  if(0){//This message is deprecated...
+	    cout<<"Something went wrong with GSL integration!\n lens="<<print_info()<<"\n t="<<t<<", err= "<<status<<": '"<<gsl_strerror(status)<<"' \nthetas="<<endl;
+	    double old_t=time_series[time_series.size()-1];
+	    Point b=traj.get_obs_pos(old_t);
+	    cout<<"oldbeta("<<old_t<<")="<<sqrt(b.x*b.x+b.y*b.y)<<endl;
+	    b=traj.get_obs_pos(t);
+	    cout<<"beta="<<sqrt(b.x*b.x+b.y*b.y)<<" mg="<<mag(thetas)<<endl;
+	    for(int image=0;image<thetas.size();image++)
+	      cout<<"   theta["<<image<<"] = ("<<theta[image*2]<<","<<theta[image*2+1]<<")"<<endl;
+	    cout<<"t<tgrid="<<t<<"<"<<tgrid<<endl;
 	  }
-	  for(int k=2*thetas.size();k<NintSize;k++)theta[k]=0;
-	  if(debugint){
-	    cout<<"stepping all images: t = "<<t<<" dt = "<<h<<", 'til "<<tstep_next<<endl;
-	    for(int image=0;image<thetas.size();image++){
-	      cout<<"   theta["<<image<<"] = ("<<theta[image*2]<<","<<theta[image*2+1]<<") -> "<<mag(Point(theta[image*2],theta[image*2+1]))<<endl;
-	      //cout<<"   thetas["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<")"<<endl;
-	    }
-	  }
-	  int status = gsl_odeiv2_evolve_apply (evol, control, step, &sys, &t, tstep_next, &h, theta);
-	  //Need some step-size control checking for near caustics?
-	  if (status != GSL_SUCCESS) {	      
-# pragma omp critical	    
-	    {
-	      cout<<"Something went wrong with GSL integration!\n lens="<<print_info()<<"\n t="<<t<<", err= "<<status<<": '"<<gsl_strerror(status)<<"' \nthetas="<<endl;
-	      double old_t=time_series[time_series.size()-1];
-	      Point b=traj.get_obs_pos(old_t);
-	      cout<<"oldbeta("<<old_t<<")="<<sqrt(b.x*b.x+b.y*b.y)<<endl;
-	      b=traj.get_obs_pos(t);
-	      cout<<"beta="<<sqrt(b.x*b.x+b.y*b.y)<<" mg="<<mag(thetas)<<endl;
-	      for(int image=0;image<thetas.size();image++)
-		cout<<"   theta["<<image<<"] = ("<<theta[image*2]<<","<<theta[image*2+1]<<")"<<endl;
-	      cout<<"tgrid<tgrid_next="<<tgrid<<"<"<<tgrid_next<<"  istep/isteps="<<istep<<"/"<<isteps<<endl;
-	    }
-	    //cout<<"Will set theta to most recent value."<<endl; 
-	    //thetas=thetas_series.back();
-	    //for(int image=0;image<thetas.size();image++){
-	    // theta[2*image]=thetas[image].x;
-	    //theta[2*image+1]=thetas[image].y;
-	    //}
-	    tstep_next=t;
-	    break;
-	  }
-	  //debugging
-	  //dbgbeta=traj.get_obs_pos(ti);
-	  //thdbgbeta=invmap(dbgbeta);
-	  //cout<<"t = "<<ti<<", h = "<<hi<<", beta = ("<<dbgbeta.x<<","<<dbgbeta.y<<")"<<endl;
-	  //diff=sqrt((theta[0]-thdbgbeta[image].x)*(theta[0]-thdbgbeta[image].x)+(theta[1]-thdbgbeta[image].y)*(theta[1]-thdbgbeta[image].y));
-	  //cout<<"  thetas["<<image<<"] = ("<<theta[0]<<","<<theta[1]<<") versus ("<<thdbgbeta[image].x<<","<<thdbgbeta[image].y<<"), diff="<<diff<<endl;
-	    //replace results for each image as we go
-	    //thetas[image]=Point(theta[0],theta[1]);
-	  //record results
-	  for(int image=0;image<thetas.size();image++){
-	    thetas[image]=Point(theta[2*image],theta[2*image+1]);	    
-	  }
-	  mg=mag(thetas);
+	  evolving=false;//switch to polynomial
+	  break;
+	}
+	//record results
+	for(int image=0;image<thetas.size();image++){
+	  thetas[image]=Point(theta[2*image],theta[2*image+1]);	    
+	}
+	mg=mag(thetas);
+	if(mg>=caustic_mag_poly_level)evolving=false;//switch to polynomial and don't record result
+	else {
 	  if(debugint)cout<<"mg="<<mg<<endl;
-	  //cout<<"Recording at t="<<t<<endl;
 	  time_series.push_back(t);
 	  thetas_series.push_back(thetas);
 	  mag_series.push_back(mg);
@@ -358,58 +310,49 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	      cout<<theta[2*image]<<","<<theta[2*image+1]<<endl;
 	    }	    
 	  }
-	  
-	}//end of loop over integration steps
-	
-      } else { //!integrate  :  instead of integrating, solve polynomial
-	if(evolving)gsl_odeiv2_evolve_reset(evol);
-	beta=traj.get_obs_pos(tstep_next);
-	thetas.clear();
-	thetas=invmap(beta);
-	//record results;
-	mg=mag(thetas);
-	//cout<<"Recording at t="<<tstep_next<<endl;
-	//cout<<"beta=("<<beta.x<<","<<beta.y<<")"<<endl;
-	time_series.push_back(tstep_next);
-	thetas_series.push_back(thetas);
-	mag_series.push_back(mg);
-	//cout<<"t="<<tstep_next<<", beta=("<<beta.x<<","<<beta.y<<"):"<<endl;
-	if(!isfinite(mg)){
-	  GLensBinary* gb;
-	  bool squak=true;
-	  if(gb=dynamic_cast< GLensBinary* > (this)){
-	    if(gb->get_q()<1e-14)squak=false;//we are going to fail with NAN, but not give a bunch of output, deal with it...
-	    else cout<<"q,L="<<gb->get_q()<<","<<gb->get_L()<<endl;
-	  }
-	  if(squak){
-	    cout<<"!integrate: mg is infinite! at beta="<<beta.x<<","<<beta.y<<endl;
-	    for(int image=0;image<thetas.size();image++){
-	      cout<<thetas[image].x<<","<<thetas[image].y<<" -> "<<mag(thetas[image])<<endl;
-	    }	    
-	  }
-	}
-	if(false&&mg<=1&&fabs(tstep_next)<3){
-	  cout<<"\nmagnification is too small (mg="<<mg<<") at t="<<tstep_next<<", beta=("<<beta.x<<","<<beta.y<<"):"<<endl;
-	  debug=true;
-	  thetas=invmap(beta);
-	  mg=mag(thetas);
-	  debug=false;
-	  for(int image=0;image<thetas.size();image++)
-	    cout<<"   theta["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<")"<<endl;
-	}
-	if(debugint){
-	  cout<<"polynomial calc at t="<<tstep_next<<":"<<endl;
-	  for(int image=0;image<thetas.size();image++)
-	    cout<<"   theta["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<")"<<endl;
 	}
       }
-      tstep=tstep_next;
-      tstep_next+=dtstep;
-    }//end of ministep loop
+      if(!evolving){
+	i--;//go back and try this step again with solving polynomial
+	continue;
+      }
+    } else { //not evolving, solve polynomial
+      beta=traj.get_obs_pos(tgrid);
+      thetas.clear();
+      thetas=invmap(beta);
+      //record results;
+      mg=mag(thetas);
+      time_series.push_back(tgrid);
+      thetas_series.push_back(thetas);
+      mag_series.push_back(mg);
+      if(integrate&&mg<caustic_mag_poly_level&&(thetas.size()==3||thetas.size()==5)){//Don't switch to integrate if the number of images doesn't make sense
+	evolving=true;
+	gsl_odeiv2_evolve_reset(evol);
+      };
+      if(!isfinite(mg)){
+	GLensBinary* gb;
+	bool squak=true;
+	if(gb=dynamic_cast< GLensBinary* > (this)){
+	  if(gb->get_q()<1e-14)squak=false;//we are going to fail with NAN, but not give a bunch of output, deal with it...
+	  else cout<<"q,L="<<gb->get_q()<<","<<gb->get_L()<<endl;
+	}
+	if(squak){
+	  cout<<"!integrate: mg is infinite! at beta="<<beta.x<<","<<beta.y<<endl;
+	  for(int image=0;image<thetas.size();image++){
+	    cout<<thetas[image].x<<","<<thetas[image].y<<" -> "<<mag(thetas[image])<<endl;
+	  }	    
+	}
+      }
+      if(debugint){
+	cout<<"polynomial calc at t="<<tgrid<<":"<<endl;
+	for(int image=0;image<thetas.size();image++)
+	  cout<<"   theta["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<")"<<endl;
+      }
+    }//end of polynomial step
+    if(time_series.size()<1)cout<<"Time series empty i="<<i<<endl;
+    t_old=tgrid;
+    index_series.push_back(time_series.size()-1);
   }//end of main observation times loop
-  //cout<<"pushing: index_series("<<index_series.size()<<")="<<time_series.size()-1<<endl;
-  index_series.push_back(time_series.size()-1);
-
 
   if(integrate){
     gsl_odeiv2_evolve_free (evol);
@@ -419,11 +362,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 
   if(test_result){
   //initialization
-    int itimes=traj.i_end();
     double delta=traj.get_obs_time(1)-traj.t_start();
-    if(itimes<0)
-      double itimes=(traj.t_end()-traj.t_start())/delta;
-    for(int i=0; i<itimes;i++){
+    for(int i=0; i<Ngrid;i++){
       double ttest=traj.get_obs_time(i);
       int ires=index_series[i];
       double tres=time_series[ires];
@@ -443,11 +383,12 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
       }
 
 #pragma omp critical
-      if(abs(mgtest-mgres)/mgtest>1e-6){
+      if(abs(mgtest-mgres)/mgtest>test_result_tol){
 	cout<<"\ncompute_trajectory: test failed. test/res:\nindex="<<i<<","<<ires<<"\ntime="<<ttest<<","<<tres<<"\nmag="<<mgtest<<","<<mgres<<" -> "<<abs(mgtest-mgres)<<"["<<nimages<<" images]"<<endl;
+	cout<<"beta=("<<beta.x<<","<<beta.y<<")"<<endl;
 	if(ires>0&&ires<time_series.size()-1){
 	  cout<<"nearby times  :"<<tminus<<" < t < "<<tplus<<endl;
-	  cout<<"   with mags  :"<<mgminus<<" < t < "<<mgplus<<endl;
+	  cout<<"   with mags  :"<<mgminus<<" < mg < "<<mgplus<<endl;
 	}
 	//if(i>0&&ires<index_series.size()-1)cout<<"nearby idx times:"<<time_series[index_series[i-1]]<<" < t < "<<time_series[index_series[i+1]]<<endl;
       }
@@ -470,7 +411,7 @@ int GLens::GSL_integration_func (double t, const double theta[], double thetadot
   double adjbetadot[2];
   //double rscale=thisobj->estimate_scale(Point(theta[0],theta[1]));
   //if our image is near one of the lenses, then we need to tread carefully
-  double rk=GLens::kappa;//*rscale*0;
+  double rk=thisobj->kappa;//*rscale*0;
   adjbetadot[0] = betadot.x-rk*dx;
   adjbetadot[1] = betadot.y-rk*dy;
   thetadot[0] = j00i*adjbetadot[0]+j01i*adjbetadot[1];
@@ -521,28 +462,15 @@ int GLens::GSL_integration_func_vec (double t, const double theta[], double thet
     double adjbetadot[2];
     //double rscale=thisobj->estimate_scale(Point(theta[0],theta[1]));
     //if our image is near one of the lenses, then we need to tread carefully
-    double rk=GLens::kappa;//*rscale;
+    double rk=thisobj->kappa;//*rscale;
     adjbetadot[0] = betadot.x;
     adjbetadot[1] = betadot.y;
     if(isfinite(dx))adjbetadot[0] += -rk*dx;
     if(isfinite(dy))adjbetadot[1] += -rk*dy;
     if(isfinite(invJ)){
-      thetadot[2*image]   = (j00i*adjbetadot[0]+j01i*adjbetadot[1]);//*invJ;
-      thetadot[2*image+1] = (j10i*adjbetadot[0]+j11i*adjbetadot[1]);//*invJ;
+      thetadot[2*image]   = (j00i*adjbetadot[0]+j01i*adjbetadot[1]);
+      thetadot[2*image+1] = (j10i*adjbetadot[0]+j11i*adjbetadot[1]);
     }
-    /*
-    cout<<" steps:"<<endl;
-    cout<<"    betadot:"<<betadot.x<<" "<<betadot.y<<endl; 
-    cout<<"       beta:"<<beta.x<<" "<<beta.y<<endl; 
-    cout<<"      beta0:"<<beta0.x<<" "<<beta0.y<<endl; 
-    cout<<" adjbetadot:"<<adjbetadot[0]<<" "<<adjbetadot[1]<<endl; 
-    cout<<"   thetadot:"<<thetadot[2*image]<<" "<<thetadot[2*image+1]<<endl; 
-    cout<<"      "<<j00i<<" "<<j01i<<" "<<j10i<<" "<<j11i<<endl;
-    cout<<"      "<<j00i<<"*"<<adjbetadot[0]<<"+"<<j01i<<"*"<<adjbetadot[1]<<" = "<<endl;
-    cout<<"      "<<j00i*adjbetadot[0]<<"+"<<j01i*adjbetadot[1]<<" = "<<j00i*adjbetadot[0]+j01i*adjbetadot[1]<<endl;
-    cout<<"      "<<j10i<<"*"<<adjbetadot[0]<<"+"<<j11i<<"*"<<adjbetadot[1]<<" = "<<endl;
-    cout<<"      "<<j10i*adjbetadot[0]<<"+"<<j11i*adjbetadot[1]<<" = "<<j10i*adjbetadot[0]+j11i*adjbetadot[1]<<endl;
-    cout<<" isfinite="<<(isfinite(invJ)?"TRUE":"FALSE")<<endl; */   
     if(!isfinite(invJ)){    
       //cout<<"GLens::GSL_integration_func_vec: FAIL"<<endl;
       //fail=true;
@@ -554,29 +482,27 @@ int GLens::GSL_integration_func_vec (double t, const double theta[], double thet
   }
   for(int k=2*thisobj->Ntheta;k<2*thisobj->NimageMax;k++)thetadot[k]=0;
 
-  //debug:
-  /*double dt=1e-7;
-  Point betap = Point(beta0.x+betadot.x*dt,beta0.y+betadot.y*dt);
-  vector<Point> thetas=thisobj->invmap(beta0), thetaps=thisobj->invmap(betap);
-  cout<<"t="<<t<<endl;
-  for(int k = 0; k<thisobj->Ntheta; k++){
-    double  dthx=(thetaps[k].x-thetas[k].x)/dt,  dthy=(thetaps[k].y-thetas[k].y)/dt;
-    double  ddthx=dthx-thetadot[2*k+0],ddthy=dthy-thetadot[2*k+1];
-    cout <<" k = "<<k<<", dtheta/dt = ("<<thetadot[2*k+0]<<","<<thetadot[2*k+1]<<")"<<endl;
-    cout <<"              dtheta/dt(num) = ("<<dthx<<","<<dthy<<"),  diff="<< sqrt(ddthx*ddthx+ddthy*ddthy)<< endl;
-    }*/
-
   return !fail?GSL_SUCCESS:3210123;
 }
 
 void GLens::addOptions(Options &opt,const string &prefix){
   Optioned::addOptions(opt,prefix);
-  opt.add(Option("poly","Don't use integration method for lens magnification, use only the polynomial method."));
+  opt.add(Option("GL_poly","Don't use integration method for lens magnification, use only the polynomial method."));
+  opt.add(Option("poly","Same as GL_poly for backward compatibility.  (Deprecated)"));
+  opt.add(Option("GL_int_tol","Tolerance for GLens inversion integration. (1e-10)","1e-10"));
+  opt.add(Option("GL_int_mag_limit","Magnitude where GLens inversion integration reverts to poly. (2.0)","2.0"));
+  opt.add(Option("GL_int_kappa","Strength of driving term for GLens inversion. (0.1)","0.1"));
 };
 
 void GLens::setup(){
-  set_integrate(!optSet("poly"));
+  set_integrate(!optSet("GL_poly")&&!optSet("poly"));
+  *optValue("GL_int_tol")>>GL_int_tol;
+  *optValue("GL_int_mag_limit")>>GL_int_mag_limit;
+  *optValue("GL_int_kappa")>>kappa;
   haveSetup();
+  cout<<"GLens set up with:\n\tintegrate=";
+  if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
+  else cout<<"false"<<endl;
 };
 
 
