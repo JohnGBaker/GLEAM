@@ -48,11 +48,6 @@ void cmplx_roots_5(complex<double> roots[5], bool &first_3_roots_order_changed, 
   int first3=first_3_roots_order_changed;
   complex<__float128>longroots[5],longpoly[6];
   for(int i=0;i<6;i++)longpoly[i]=poly[i];
-  //char c[128];
-  //for(int i=0;i<6;i++){
-  //quadmath_snprintf (c, sizeof c, "%-#*.35Qe", 46, longpoly[i]);  
-  //cout<<"poly["<<i<<"]="<<c<<endl;  
-  //}
   if(!polish_only)for(int i=0;i<5;i++)longroots[i]=roots[i];
   //cout<<sizeof(longpoly)<<endl;
   cmplx_roots_5_(longroots, first3, longpoly, polish_only);
@@ -202,6 +197,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   const double test_result_tol = 1e-4;  //control integration error tolerance
   if(have_integrate)integrate=use_integrate;
   double prec=cout.precision();cout.precision(20);
+  double rWide_int_fac=1000.0;
+
   //cout<<"glens::compTraj: int="<<integrate<<"\nthisLens="<<print_info()<<"\n traj="<<traj.print_info()<<endl;
   //cout<<"this="<<this<<endl;
   cout.precision(prec);
@@ -274,6 +271,14 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	  theta[2*image]=thetas[image].x;
 	  theta[2*image+1]=thetas[image].y;
 	}
+	if(rWide_int_fac>0){
+	  Point b=traj.get_obs_pos(t);
+	  if(testWide(b,rWide_int_fac)){
+	    cout<<"evol: testWide==true"<<endl;
+	    evolving=false;//switch to point-wise (WideBinary assuming rWide_int/rWide>=1)
+	    break;
+	  }
+	}
 	for(int k=2*thetas.size();k<NintSize;k++)theta[k]=0;
 	int status = gsl_odeiv2_evolve_apply (evol, control, step, &sys, &t, tgrid, &h, theta);
 	//Need some step-size control checking for near caustics?
@@ -325,9 +330,14 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
       time_series.push_back(tgrid);
       thetas_series.push_back(thetas);
       mag_series.push_back(mg);
-      if(integrate&&mg<caustic_mag_poly_level&&(thetas.size()==3||thetas.size()==5)){//Don't switch to integrate if the number of images doesn't make sense
+      //cout<<"mg="<<mg<<", caustic_mag_poly_level="<<caustic_mag_poly_level<<endl;
+      if(integrate&&mg<caustic_mag_poly_level){
+	double r2=beta.x*beta.x+beta.y*beta.y;
 	evolving=true;
-	gsl_odeiv2_evolve_reset(evol);
+	if(testWide(beta,rWide_int_fac))evolving=false;//Don't switch if in "wide" domain.
+	//if(!evolving)cout<<"not evol: testWide==true"<<endl;
+	if(!(thetas.size()==3||thetas.size()==5))evolving=false;//Don't switch to integrate if the number of images doesn't make sense
+	if(evolving)gsl_odeiv2_evolve_reset(evol);
       };
       if(!isfinite(mg)){
 	GLensBinary* gb;
@@ -528,10 +538,11 @@ Point GLensBinary::map(const Point &p){
 vector<Point> GLensBinary::invmap(const Point &p){
   const double rTest=1.1*rWide;
   double r2=p.x*p.x+p.y*p.y;
-  double xcm  = (q/(1.0+q)-0.5)*L;//debug
+  //double xcm  = (q/(1.0+q)-0.5)*L;//debug
   //if(p.x-xcm>16&&p.x-xcm<17&&abs(p.y)<5)debug=true;
   //else debug=false;
-  if(rWide>0&&(L>rWide||r2>rWide*rWide)){
+  //if(rWide>0&&(L>rWide||r2>rWide*rWide)){
+  if(testWide(p,1.0)){
     if(debug||inv_test_mode&&debugint){
       debug=true;
       cout<<"wide"<<endl;

@@ -121,6 +121,8 @@ int main(int argc, char*argv[]){
   //other options
   opt.add(Option("magmap","Don't run any chains, instead just make a magnitude map.  In this case the parameters should be just q,L,width."));
   opt.add(Option("mm_center","On which lens to center magmap. (-1,0,1), with default zero for CoM.","0"));
+  opt.add(Option("mm_d0x","Explicit x coord offset for magmap center, with default zero.","0"));
+  opt.add(Option("mm_d0y","Explicit y coord offset for magmap center, with default zero.","0"));
   opt.add(Option("mm_samples","Number of samples in magmap (default 300)","300"));
   opt.add(Option("mm_nimage","Include number of images magmap"));
   opt.add(Option("precision","Set output precision digits. (Default 13).","13"));
@@ -145,6 +147,7 @@ int main(int argc, char*argv[]){
   double nburn_frac,Tmax,Fn_max,tE_max,tcut,seed;
   int Nchain;
   int mm_center,mm_samples,save_every;
+  double mm_d0x,mm_d0y;
   bool do_magmap,view;
   int Nsigma=1;
   int Nbest=10;
@@ -156,6 +159,8 @@ int main(int argc, char*argv[]){
   istringstream(opt.value("tcut"))>>tcut;
   do_magmap=opt.set("magmap");
   istringstream(opt.value("mm_center"))>>mm_center;
+  istringstream(opt.value("mm_d0x"))>>mm_d0x;
+  istringstream(opt.value("mm_d0y"))>>mm_d0y;
   istringstream(opt.value("mm_samples"))>>mm_samples;
   istringstream(opt.value("precision"))>>output_precision;
   istringstream(opt.value("mm_lens_rWB"))>>mm_lens_rWB;
@@ -240,9 +245,9 @@ int main(int argc, char*argv[]){
     state lens_state(&lensSpace,valarray<double>({q,L}));
     lens->setState(lens_state);
     double x0=lens->getCenter(mm_center).x;
-    cout<<"cent="<<mm_center<<" x0-xcm="<<x0<<" xcm="<<lens->getCenter().x<<endl;
-    Point pstart(x0-width/2,-width/2);
-    Point pend(x0+width/2,+width/2);
+    cout<<"cent="<<mm_center<<" x0-xcm="<<x0+mm_d0x<<" xcm="<<lens->getCenter().x<<endl;
+    Point pstart(x0+mm_d0x-width/2,mm_d0y-width/2);
+    Point pend(x0+mm_d0x+width/2,mm_d0y+width/2);
     {
       ss.str("");ss<<outname<<"_mmap.dat";
       ofstream out(ss.str());
