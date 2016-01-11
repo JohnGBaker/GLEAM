@@ -222,6 +222,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   if(integrate){
     step = gsl_odeiv2_step_alloc (stepType, NintSize);
     control = gsl_odeiv2_control_y_new (intTOL, 0.0);
+    //control = gsl_odeiv2_control_standard_new (intTOL, 0.0,1.0,10.0);//Also apply limits on the derivative
     evol = gsl_odeiv2_evolve_alloc (NintSize);
     gsl_odeiv2_control_init(control,intTOL,0.0,1,0);//Do I need this?
     gsl_odeiv2_evolve_reset(evol);//or this
@@ -500,7 +501,7 @@ void GLens::addOptions(Options &opt,const string &prefix){
   opt.add(Option("GL_poly","Don't use integration method for lens magnification, use only the polynomial method."));
   opt.add(Option("poly","Same as GL_poly for backward compatibility.  (Deprecated)"));
   opt.add(Option("GL_int_tol","Tolerance for GLens inversion integration. (1e-10)","1e-10"));
-  opt.add(Option("GL_int_mag_limit","Magnitude where GLens inversion integration reverts to poly. (2.0)","2.0"));
+  opt.add(Option("GL_int_mag_limit","Magnitude where GLens inversion integration reverts to poly. (1.5)","1.5"));
   opt.add(Option("GL_int_kappa","Strength of driving term for GLens inversion. (0.1)","0.1"));
 };
 
