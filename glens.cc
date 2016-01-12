@@ -34,11 +34,10 @@ void cmplx_roots_5(complex<double> roots[5], bool &first_3_roots_order_changed, 
 };
 extern "C" void cmplx_roots_gen_(complex<double> roots[], complex<double> poly[], const int &degree, const int &polish_roots_after, const int &use_roots_as_starting_points);
 void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int &degree, bool const &polish_roots_after, const bool &use_roots_as_starting_points){cmplx_roots_gen_(roots,poly,degree,polish_roots_after,use_roots_as_starting_points);};
-//const double LEADTOL=3e-7; //->balance linear approx with FP -> error below ~1e-7
 typedef  long double ldouble;
-const double LEADTOL=1e-4;
-//const double LEADTOL=1e-5;
-const double epsTOL=1e-10;
+const double LEADTOL=1e-5;
+//const double LEADTOL=1e-4;
+const double epsTOL=1e-14;
 //const double epsTOL=1e-11;
 
 #else
@@ -70,9 +69,8 @@ void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int 
   for(int i=0;i<degree;i++)roots[i]=longroots[i];  
 };
 typedef __float128 ldouble;
-//const double LEADTOL=3e-7;
-//const double LEADTOL=1e-6;
-const double LEADTOL=1e-5;
+const double LEADTOL=3e-7;
+//const double LEADTOL=1e-5;
 const double epsTOL=1e-14;
 #endif
 
@@ -197,7 +195,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   const double test_result_tol = 1e-4;  //control integration error tolerance
   if(have_integrate)integrate=use_integrate;
   double prec=cout.precision();cout.precision(20);
-  double rWide_int_fac=1000.0;
+  const double rWide_int_fac=100.0;
 
   //cout<<"glens::compTraj: int="<<integrate<<"\nthisLens="<<print_info()<<"\n traj="<<traj.print_info()<<endl;
   //cout<<"this="<<this<<endl;
@@ -550,7 +548,10 @@ vector<Point> GLensBinary::invmap(const Point &p){
     }
     vector<Point>thWB= invmapWideBinary(p);
     //if fails to converge (rare) revert to WittMao:
-    if(thWB.size()==0)return invmapWittMao(p);
+    if(thWB.size()==0){
+      //cout<<"WideBinary failed to converge"<<endl;
+      return invmapWittMao(p);
+    }
     if(inv_test_mode&&r2<rTest*rTest){
       if(debug||debugint)cout<<"wide-test"<<endl;
       vector<Point>thWM= invmapWittMao(p);
@@ -591,7 +592,7 @@ vector<Point> GLensBinary::invmap(const Point &p){
     //if(inv_test_mode&&debugint){
     if(inv_test_mode){
       debug=true;
-      cout<<"wide"<<endl;
+      cout<<"not wide"<<endl;
     }
     return invmapWittMao(p);
   }
@@ -653,10 +654,11 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   complex<double_type> zp,zm,zf,zeta,ep,em,ef;
   zeta=complex<double_type>(p.x+c/2.0L,p.y);
   ep=em=ef=complex<double_type>(0,0);
-  double err=1;
+  double err=1,relerr=1;
   int iter=0;
   bool fail=false;
-  while(err>epsTOL){
+  while(err>epsTOL&&relerr>epsTOL){
+    //cout<<"WideBinary: iter="<<iter<<"  err="<<err<<"  relerr="<<relerr<<endl;
     iter++;
     if(iter>maxIter){
       if(debug)cout<<"invmapWideBinary maxIter reached: Failing."<<endl;
@@ -695,11 +697,16 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
     em=nu_f/conj(zm-c);
     ef=nu_n/conj(zf+c);
     err=abs(ep-epold)+abs(em-emold)+abs(ef-efold);
+    double zmean=abs(zp)+abs(zm)+abs(zf);
+    relerr=abs((ep-epold)*zp*zp/zmean/zmean)+abs((em-emold)*zm*zm/zmean/zmean)+abs((ef-efold)*zf*zf/zmean/zmean);
     if(debug){
       cout<<"  zp="<<zp<<"  ep="<<ep<<" D="<<ep-epold<<endl;
       cout<<"  zm="<<zm<<"  em="<<em<<" D="<<em-emold<<endl;
       cout<<"  zf="<<zf<<"  ef="<<ef<<" D="<<ef-efold<<endl;
-      cout<<" err="<<err<<" vs "<<epsTOL<<endl;
+      cout<<" err,relerr="<<err<<","<<relerr<<" vs "<<epsTOL<<endl;
+      cout<<"  mp="<<mag(Point(real(zp)-c/2.0L,imag(zp)))
+	  <<"  mm="<<mag(Point(real(zm)-c/2.0L,imag(zm)))
+	  <<"  mf="<<mag(Point(real(zf)-c/2.0L,imag(zf)))<<endl;
     }
   }
   //Should we order the roots for consistency with WittMao results??? 

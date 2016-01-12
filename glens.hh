@@ -140,7 +140,7 @@ protected:
   int Ntheta;
   bool use_integrate,have_integrate;
   double GL_int_tol,GL_int_mag_limit;
-  virtual bool testWide(const Point & p,double scale=1)const{return false;};//test conditions to revert to perturbative inversion
+  virtual bool testWide(const Point & p,double scale)const{return false;};//test conditions to revert to perturbative inversion
 
 public:
   GLens(){have_integrate=false;};
@@ -234,6 +234,7 @@ class GLensBinary : public GLens{
     if(rs<=0)return false;
     double r2=p.x*p.x+p.y*p.y;
     //if(( L>rs||r2>rs*rs)&&scale!=1.0)cout<<sqrt(r2)<<" <> "<<rs<<" <> "<<L<<endl;
+    //return L>rs||r2>rs*rs;
     return L>rs||r2>rs*rs||(q+1/q)>2*rs*rs;
   };  
 public:
