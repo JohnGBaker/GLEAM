@@ -258,7 +258,8 @@ int main(int argc, char*argv[]){
       ss.str("");ss<<outname<<"_nmap.dat";    
       ofstream out(ss.str()); 
       out.precision(output_precision);
-      lens->writeMagMap(out, pstart, pend, mm_samples,true);
+      lens->verboseWrite();
+      lens->writeMagMap(out, pstart, pend, mm_samples);
     }
     exit(0);
   }    
@@ -452,7 +453,8 @@ void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &
   cout<<"dump mag map: LL=("<<LLp.x<<","<<LLp.y<<") UR=("<<URp.x<<","<<URp.y<<")"<<endl;
   GLens *lens=signal.clone_lens(s);
   cout<<"lens="<<lens->print_info();
-  lens->writeMagMap(out, LLp, URp, nsamples, output_nlens);
+  if(output_nlens)lens->verboseWrite();
+  lens->writeMagMap(out, LLp, URp, nsamples);
   delete lens;
 };
 

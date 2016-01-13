@@ -138,12 +138,12 @@ protected:
   ///For use with GSL integration
   double kappa=.1;
   int Ntheta;
-  bool use_integrate,have_integrate;
+  bool use_integrate,have_integrate,do_verbose_write;
   double GL_int_tol,GL_int_mag_limit;
   virtual bool testWide(const Point & p,double scale)const{return false;};//test conditions to revert to perturbative inversion
 
 public:
-  GLens(){have_integrate=false;};
+  GLens(){have_integrate=false;do_verbose_write=false;};
   virtual GLens* clone()=0;
   ///Lens map: map returns a point in the observer plane from a point in the lens plane.
   virtual Point map(const Point &p)=0;
@@ -178,7 +178,7 @@ public:
   virtual void setState(const state &s)=0;
   //Write a magnitude map to file.
   virtual Point getCenter(int option=-2)const=0;
-  virtual void writeMagMap(ostream &out, const Point &LLcorner,const Point &URcorner,int samples,bool output_nimg=false){
+  virtual void writeMagMap(ostream &out, const Point &LLcorner,const Point &URcorner,int samples){//,bool output_nimg=false){
     double xc=getCenter().x;
     cout<<"GLens::writeMagMap from ("<<LLcorner.x+xc<<","<<LLcorner.y<<") to ("<<URcorner.x+xc<<","<<URcorner.y<<")"<<endl;
     double dx=(URcorner.x-LLcorner.x)/(samples-1);    
@@ -198,7 +198,7 @@ public:
 	double mtruc=floor(mags[i]*ten2prec)/ten2prec;
 	out.precision(output_precision);
 	out<<b.x<<" "<<b.y<<" "<<setiosflags(ios::scientific)<<mtruc<<setiosflags(ios::fixed);
-	if(output_nimg){
+	if(do_verbose_write){
 	  out<<" "<<thetas[i].size();
 	  if(true){
 	    for(int j=0;j<thetas[i].size();j++){
@@ -212,7 +212,7 @@ public:
       out<<endl;
     }	  
   };   
-  
+  void verboseWrite(bool state=true){do_verbose_write=state;};
   
 };
 
