@@ -273,7 +273,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	if(rWide_int_fac>0){
 	  Point b=traj.get_obs_pos(t);
 	  if(testWide(b,rWide_int_fac)){
-	    cout<<"evol: testWide==true"<<endl;
+	    //cout<<"evol: testWide==true"<<endl;
 	    evolving=false;//switch to point-wise (WideBinary assuming rWide_int/rWide>=1)
 	    break;
 	  }

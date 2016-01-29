@@ -55,18 +55,11 @@ int main(int argc, char*argv[]){
   Trajectory linear_trajectory(Point(0,0), Point(1,0));
   Trajectory *traj=&linear_trajectory;
   GLens *lens=&binarylens;
-
+  bool do_mock=false;
+  
   ///We are at the point now that we need to generalize the data types on the command line
   ///So far there are 2 tested types ML_OGLE_data and ML_generic_data while ML_photometry_mock_data is
-  ///under development.  My plan is to define a parent-class pointer ML_photometry *data, and to 
-  ///then instantiate it based on what was passed in.  This means that we will have to parse options 
-  ///twice.  First just to see what type of data we have, with the first call to parse. We can ignore
-  ///any failure notice at that point.  Next we add the appropriate options the Options object before
-  ///parsing again.  This will mean that we need a common "setup" interface, with no data-type specific
-  ///arguments.  Any such arguments will need to come from the command line.  I was thinking the
-  ///options may be such as -OGLEdata=<filename> or -mock_data (with mock_tstart=..., etc for other params).
-  ///This same command-line interface can later be used for joint anaysis of multiple data sets.  All we
-  ///will need for that may be a compounding type bayes_data class.  [Thinking ahead, we may later have
+  ///under development.  [Thinking ahead, we may later have
   ///astrometric data as well. These might be similarly added, but they will involve a different type of
   ///signal model.  We may need to be able to use vector-valued bayes_data::values with a vector of type
   ///channel-labels that can be checked.  Maybe the channels are just strings, but if there is important 
@@ -84,8 +77,10 @@ int main(int argc, char*argv[]){
     data=new ML_OGLEdata();
   else if(opt.set("gen_data"))
     data=new ML_generic_data();
-  else if(opt.set("mock_data"))
+  else if(opt.set("mock_data")){
     data=new ML_mock_data();
+    do_mock=true;
+  }
   else {
     //for backward compatibility [deprecated] default is to assume OGLE data and try to read the data from a file named in the (extra) first argument
     if(argc>=1){
@@ -95,6 +90,7 @@ int main(int argc, char*argv[]){
     } else { //go on assuming mock data; Except for backward compatibility, this would be the default.
       cout<<"No data file indicated!"<<endl;
       data=new ML_mock_data();
+      do_mock=true;
     }
   }
       
@@ -274,13 +270,6 @@ int main(int argc, char*argv[]){
   //twidth=10;
   //cout<<"ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<endl;
 
-  //Initial parameter state
-  state instate(&space,params);
-  if(have_pars0){
-    cout<<"Input parameters:"<<instate.show()<<endl;
-  }
-
-
   //Set the prior:
   //Eventually this should move to the relevant constitutent code elements where the params are given meaning.
   const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
@@ -319,15 +308,34 @@ int main(int argc, char*argv[]){
   mixed_dist_product prior(&space,types,centers,halfwidths);
   cout<<"Prior is:\n"<<prior.show()<<endl;
 
+  //Initial parameter state
+  state instate(&space,params);
+  if(have_pars0){
+    cout<<"Input parameters:"<<instate.show()<<endl;
+  } else { //If no params give just draw something.  Perhaps only relevant for mock_data
+    cout<<"Drawing a state from the prior distribution."<<endl;
+    instate=prior.drawSample(*globalRNG);
+  }
+
   //Set the likelihood
-  //Should some of this move up before addOptions?
-  bayes_likelihood *llike=nullptr;
   bayes_likelihood *like=nullptr;
   ML_photometry_likelihood mpl(&space, data, &signal, &prior);
   mpl.addOptions(opt,"");
   mpl.setup();
   like = &mpl;
   like->defWorkingStateSpace(space);
+  if(do_mock){
+    like->mock_data(instate);
+    //cout<<"outname is:'"<<outname<<"'"<<endl;
+    ss.str("");ss<<outname<<"_mock.dat";
+    ofstream outmock(ss.str().c_str());
+    outmock.precision(output_precision);    
+    outmock<<"#mock data\n#"<<instate.get_string()<<endl;
+    like->write(outmock,instate);
+    outmock<<endl;
+    if(!view)exit(0);
+  }
+
 
   ///At this point we are ready for analysis in the case that we are asked to view a model
   ///Note that we still have needed the data file to create the OGLEdata object, and concretely
@@ -354,7 +362,7 @@ int main(int argc, char*argv[]){
   if(view)exit(0);
 	  
   //assuming mcmc:
-  //Set the proposal distribution (might want to formalize some of this, now basically copied in similar form in the for the third time in a new program...)
+  //Set the proposal distribution 
   int Ninit;
   proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,&prior,&halfwidths);
   cout<<"Proposal distribution (at "<<prop<<") is:\n"<<prop->show()<<endl;
@@ -363,7 +371,8 @@ int main(int argc, char*argv[]){
 
 
   //Prepare for chain output
-  ss<<"gle_"<<outname;
+  //ss<<"gle_"<<outname;
+  ss<<outname;
   string base=ss.str();
 
   //Loop over Nchains
@@ -395,7 +404,7 @@ int main(int argc, char*argv[]){
   
   //Dump summary info
   cout<<"best_post "<<like->bestPost()<<", state="<<like->bestState().get_string()<<endl;
-  }
+}
 
 //An analysis function defined below.
 void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){

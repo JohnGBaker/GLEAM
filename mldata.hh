@@ -175,7 +175,7 @@ protected:
 };
 
 ///class for mock data
-///It does little other that define a grid of points, and allow them to be populated...
+///It does little other than define a grid of points, and allow them to be populated...
 ///There is also a hook to fill the data, which mllike knows how to do.  In this case
 ///The "extra noise" parameter becomes the actual noise parameter.
 class ML_mock_data : public ML_photometry_data {
@@ -270,17 +270,38 @@ public:
     setup(filename);
   };
   void setup(const string &filepath){
+    //assemble soruce column info
+    double errlev;
+    *optValue("gen_data_err_lev")>>errlev;
+    int tcol,col,ecol,maxcol=0;
+    *optValue("gen_data_time_col")>>tcol;
+    if(tcol>maxcol)maxcol=tcol;
+    *optValue("gen_data_col")>>col;
+    if(col>maxcol)maxcol=col;
+    if(errlev<=0){
+      *optValue("gen_data_err_col")>>ecol;
+      if(ecol<0)ecol=col+1;
+      if(ecol>maxcol)maxcol=ecol;
+    }
+    cout<<"gen_data: reading data as:\ntcol,col="<<tcol<<","<<col<<" err="<<((errlev>0)?ecol:errlev)<<endl;
     ifstream file(filepath.c_str());
     if(file.good()){
       string line;
       while(getline(file,line)){
-	if(line[0]=='#')continue;//skip comment lines
-	double t,m,d=0.000001;
-	stringstream(line)>>t>>m;
-	times.push_back(t);
-	mags.push_back(m);
-	dmags.push_back(d);
-	//cout<<size()<<": "<<t<<" "<<m<<" "<<d<<endl;
+	//cout<<"reading line:\n"<<line<<endl;
+	if(line[0]=='#'||line.length()==0)continue;//skip comment lines
+	stringstream ss(line);
+	for(int i=0;i<=maxcol;i++){
+	  //cout "i="<<i<<endl;
+	  double val;
+	  ss>>val;
+	  if(i==tcol)times.push_back(val);
+	  if(i==col)mags.push_back(val);
+	  if(errlev<=0&&i==ecol)dmags.push_back(val);
+	}
+	if(errlev>0)dmags.push_back(errlev);
+	int i=times.size()-1;
+	//cout<<times[i]<<" "<<mags[i]<<" "<<dmags[i]<<endl;
       }
     } else {
       if(filepath.size()>0){//empty path signifies go forward without data
@@ -295,6 +316,13 @@ public:
     for(double &t : times)t-=time0;//permanently offset times from their to put the peak at 0.
     processData();
     return;
+  };
+  void addOptions(Options &opt,const string &prefix=""){
+    ML_photometry_data::addOptions(opt,prefix);
+    addOption("gen_data_time_col","Column with data values. Default=0","0");
+    addOption("gen_data_col","Column with data values. Default=0","1");
+    addOption("gen_data_err_col","Column with data values. Default=(next after data)","-1");
+    addOption("gen_data_err_lev","Set a uniform error, instead of reading from file. Default=none","-1");
   };
 };
 
