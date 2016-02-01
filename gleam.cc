@@ -151,7 +151,7 @@ int main(int argc, char*argv[]){
   istringstream(opt.value("nchains"))>>Nchain;
   istringstream(opt.value("seed"))>>seed;
   //if seed<0 set seed from clock
-  if(seed<0)seed=time(NULL);
+  if(seed<0)seed=fmod(time(NULL)/3.0e7,1);
   istringstream(opt.value("tcut"))>>tcut;
   do_magmap=opt.set("magmap");
   istringstream(opt.value("mm_center"))>>mm_center;

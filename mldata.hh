@@ -32,11 +32,12 @@ protected:
   vector<double>&times,&mags,&dmags;
   double time0;
   int idx_Mn;
-
+  bool have_time0;
 public:
   ///We relabel the generic bayes_data names as times/mags/etc...
   ML_photometry_data():bayes_data(),times(labels),mags(values),dmags(dvalues),time0(label0){
     idx_Mn=-1;
+    have_time0=false;
   };
   int size()const{return times.size();};
   virtual void getDomainLimits(double &start, double &end)const{
@@ -51,7 +52,7 @@ public:
   //double getPeakTime(bool original=false)const{
   virtual double getFocusLabel(bool original=false)const{
     checkData();
-    if(original||times.size()<1)return time0;
+    if(original||times.size()<1)return time0; 
     //we assume monotonic time and magnitude data.
     double mpk=-INFINITY;
     int ipk=0;
@@ -156,6 +157,15 @@ public:
     ML_photometry_data d;
     d.addTypeOptions(opt);
   };
+  ///If there is an externally defined reference time then use this function to specify it before calling setup()
+  virtual void set_reference_time(double t0){
+    if(have_time0){
+      cout<<"ML_photometry_data::set_reference_time: Cannot reset reference time."<<endl;
+      exit(1);
+    }
+    time0=t0;
+    have_time0=true;
+  };
   virtual void setup(){};
 private:
   void addTypeOptions(Options &opt){
@@ -167,6 +177,11 @@ private:
 protected:
   ///Initial data processing common to ML_photometry_data
   void processData(){
+    if(!have_time0){
+      time0=getFocusLabel();
+      have_time0=true;
+    }
+    for(double &t : times)t-=time0;//permanently offset times from their to put the peak at 0.
     double tcut;
     *optValue("tcut")>>tcut;
     cropBefore(tcut);
@@ -205,6 +220,7 @@ public:
       dmags.push_back(0);
     }
     have_data=true;
+    if(!have_time0)set_reference_time(0);
     processData();
   };
   ///Optioned interface
@@ -249,10 +265,6 @@ public:
       }
     }
     have_data=true;//Do we need this in addition to checkSetup?
-    //This is the original style.  After initialization, time is internally referenced relative to the peak time.
-    //We may want to make this relative to some externally defined reference time...
-    time0=getFocusLabel();
-    for(double &t : times)t-=time0;//permanently offset times from their to put the peak at 0.
     processData();
     return;
   };
@@ -310,10 +322,6 @@ public:
       }
     }
     have_data=true;//Do we need this in addition to checkSetup?
-    //This is the original style.  After initialization, time is internally referenced relative to the peak time.
-    //We may want to make this relative to some externally defined reference time...
-    time0=getFocusLabel();
-    for(double &t : times)t-=time0;//permanently offset times from their to put the peak at 0.
     processData();
     return;
   };

@@ -298,7 +298,7 @@ public:
   };
   Point getCenter(int option=-2)const{
     double x0=0,y0=0,width=0,wx,wy,xcm = (q/(1.0+q)-0.5)*L;
-    cout<<"q,L,option="<<q<<", "<<L<<", "<<option<<endl;
+    //cout<<"q,L,option="<<q<<", "<<L<<", "<<option<<endl;
     //center on {rminus-CoM,CoM-CoM,rplus-CoM}, when cent={-1,0,1} otherwise CoM-nominalorigin;
     switch(option){
     case -1://minus lens rel to CoM
@@ -312,9 +312,9 @@ public:
       break;
     default:
       x0=xcm;
-      cout<<"case def"<<endl;
+      //cout<<"case def"<<endl;
     }
-    cout<<" GLensBinary::getCenter("<<option<<"):Returning x0="<<x0<<endl;
+    //cout<<" GLensBinary::getCenter("<<option<<"):Returning x0="<<x0<<endl;
     return Point(x0,0);
   };
 };

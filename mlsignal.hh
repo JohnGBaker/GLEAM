@@ -42,7 +42,6 @@ class ML_photometry_signal : public bayes_signal{
   GLens *lens;
   int idx_I0, idx_Fs, idx_q, idx_L, idx_r0, idx_phi, idx_tE, idx_tmax; 
   stateSpace lensSpace;
-  double tstartHACK;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
     do_remap_r0=false;
@@ -51,7 +50,6 @@ public:
     r0_ref=0;
     q_ref=0;
     idx_I0=idx_Fs=idx_q=idx_L=idx_r0=idx_phi=idx_tE=idx_tmax=-1; 
-    tstartHACK=0;
   };
   ///From bayes_signal
   //
@@ -109,11 +107,6 @@ public:
     return space;
   };
 
-  ///This is a HACK to allow dubious old behavior for back-testing see comment in model_lightcurve for explanation. 
-  ///Eventually remove.
-  void set_tstartHACK(double tstart){tstartHACK=tstart;};
-
-  
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);
     //signal options
@@ -231,7 +224,8 @@ private:
     phi=params[idx_phi];
     tE=params[idx_tE];//either tE or log tE
     tmax=params[idx_tmax];
-
+    tmax=tmax*2;//HACK HACK HACK fixme this is only here for a brief backward compatibility check
+    
     //derived params
     if(do_log_tE)tE=pow(10.0,tE);
 
@@ -248,7 +242,7 @@ private:
   };
 
   ///This version still refers to GLensBinary parameters
-  Trajectory *clone_trajectory(double q, double L, double r0, double phi, double tstart)const{
+  /*  Trajectory *clone_trajectory(double q, double L, double r0, double phi, double tstart)const{
     //compute reference position
     double vx=cos(phi), vy=sin(phi);
     double p0x=-r0*sin(phi), p0y=r0*cos(phi);
@@ -258,7 +252,7 @@ private:
     newtraj->setup(Point(p0x+vx*tstart+xcm,p0y+vy*tstart), Point(vx,vy));
 
     return newtraj;
-  };
+    };*/
 
   ///This version takes a step toward generality.
   ///Ultimately this goes into the Trajectory class as a general clone and stateSpace setting...
@@ -316,40 +310,13 @@ private:
     //worklens=new GLensBinary(q,L);
     //Trajectory traj(get_trajectory(q,L,r0,phi,tEs[0]));
     //See fixme note above.  The same issue will keep us from generalizing Trajectory, until fixed.
-    //FIXME: This offset (several line below) is tEs[0] in the original version, but that assumed that the "times" came directly from the data.
-    //Here we have no access to the data so we can't construct offset=tEs[0]=(tstart-tmax)/tE  (where tstart=data->times[0])
-    //Furthermore, it doesn't seem to make sense to do the offset this way and is probably a bug vis-a-vis my intended definition what 'tmax' should mean.
-    //I note that I had (pre github) committed a change which purported (and as I recall) to fix similar issue, a diff of that commit did not seem related
-    //so maybe something went wrong? Seems  unlikely, but...?
-    //Looking at the original (mlfit) code, the effective result seems have been:
-    //  v={cos(phi),vy=sin(phi)}; p00={xcm-r0*sin(phi),r0*cos(phi)} ... traj->setup(p00+v*tEs[0],v);
-    //  We either do (a) set_times(tEs, 0) or (b) set_times({(tfinestart-tmax)/tE .. (tfineend-tmax)/tE}, 0) (either way toff->0.
-    //  thus...  get_obs_pos(t) = p = p0 + v*t = p00 + v*(t+tEs[0]) = p00 + v*(t+(tstart-tmax)/tE) 
-    //  for (a): t=tEs[0]                     ->  p = p00 + 2*v*(tstart-tmax)/tE  (which doesn't make sense!)
-    //        to t=(data_times[end]-tmax)/tE  ->  p = p00 + 2*v*((tstart+data_times[end]/2 - tmax)/tE  (which doesn't make sense!)
-    //      with t=0                          ->  p = p00 +   v*(tstart-tmax)/tE
-    //  for (b): t=(tstart-tmax)/tE           ->  p = p00 + 2*v*((tstart+tfinestart)/2-tmax)/tE  
-    //        to t=(tend-tmax)/tE             ->  p = p00 + 2*v*((tstart+tfineend)/2-tmax)/tE  
-    //      with t=0                          ->  p = p00 +   v*(tstart-tmax)/tE
-    //  in practice tfinestart -> t0-(-tstart+tend)*3/4.0;
-    //              tfineend   -> t0+(-tstart+tend)*3/4.0;
-    // so for (b): t=(tstart-tmax)/tE         ->  p = p00 + 2*v*(tstart*7/8+t0*3/8-tend*3/8-tmax)/tE  
-    //          to t=(tend-tmax)/tE           ->  p = p00 + 2*v*(tstart*1/8+t0*3/8+tend*3/8-tmax)/tE  
-    //      with t=0                          ->  p = p00 +   v*(tstart-tmax)/tE
-    //everywhere there is an extra tstart-tmax (which doesn't make sense) though the results would look OKish.  They do imply that we effectively interpret
-    // closest approach time is at t00 = tmax-tstart, offset tmax = t00 + tstart from the intention t00=tmax
-    //To get the intended result we need offset=0 instead of offset=tEs[0];
-    // to recover the old behavior we need to tmax=t00 -> tmax-tstart;
-    //UPDATE:Greatly expanding the prior on tmax, the interpretation of a skew in tmax is borne out, though the optimal tmax seems to
-    //tmax ~ tstart/2, though we would have expected tmax ~tstart based on the above...
-    double offset=(tstartHACK-tmax)/tE; //for spring 2015 (buggy?) behavior
-    //double offset=0;  //Seem to be what was intended.
+    //double offset=-tmax/tE;  //eliminating this changes (corrects) the meaning of t0 parameter  
     vector<double>tEs=times;
     for(double &t : tEs)t=(t-tmax)/tE;    
 
-
     Trajectory *worktraj;
-    worktraj=clone_trajectory(q,L,r0,phi,offset);
+    //worktraj=clone_trajectory(q,L,r0,phi,offset);
+    worktraj=clone_trajectory(worklens->getCenter(),r0,phi);
     //FIXME change the following to a generic Trajectory set up based on a stateSpace setup to support more parameters.
     worktraj->set_times(tEs,0);
     /*
@@ -450,12 +417,9 @@ public:
     GLens *worklens=clone_lens(s);
     cout<<"mlsignal:dump_trajectory: worklens="<<lens->print_info()<<endl;
     double xcm  =  worklens->getCenter().x;
-    double offset=(tstartHACK-tmax)/tE; //for spring 2015 (buggy?) behavior
-    //double offset=0;  //Better
     Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
     vector<double>tEs=times;
     for(double &t : tEs)t=(t-tmax)/tE;    
-    //tr->setup(Point(p0x+vx*offset,p0y+vy*offset), Point(vx,vy));
     tr->set_times(tEs,0);
     cout<<"times range from "<<tr->t_start()<<" to "<<tr->t_end()<<endl;
     cout<<tr->print_info()<<endl;
@@ -474,6 +438,7 @@ public:
   ///This is not currently used, but maybe we will want it again later.
   ///If so then it must belong in ML_photometry_signal
   ///As it is it is hard-coded for GLensBinary...
+  /*
   void dump_trajectory_and_more(ostream &out,state &s,vector<double>&times,double tref=0){
     valarray<double>params=s.get_params();  
     double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
@@ -499,7 +464,7 @@ public:
     for(double &t : tEs)t=(t-tmax)/tE;    
     
     //Trajectory traj(data.get_trajectory(q,L,r0,phi,times[0]));//This is consistent with the tstartHACK
-    double offset=(tstartHACK-tmax)/tE; //for spring 2015 (buggy?) behavior
+    double offset=-tmax/tE; 
     traj->setup(Point(p0x+vx*offset,p0y+vy*offset), Point(vx,vy));
     traj->set_times(tEs,0);
     cout<<"times range from "<<traj->t_start()<<" to "<<traj->t_end()<<endl;
@@ -543,7 +508,7 @@ public:
       out<<endl;
       i++;
     }
-  };
+    };*/
 
 };
 

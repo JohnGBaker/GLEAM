@@ -85,9 +85,9 @@ def get_flags(fname):
 parser = argparse.ArgumentParser(description='Provide snapshot of chain state.')
 parser.add_argument('fname', metavar='chain_file', type=str, 
                    help='chain file path')
-parser.add_argument('datafile', metavar='data_file', type=str,
+parser.add_argument('datafile', metavar='data_file', type=str, nargs='?', default='',
                    help='lightcurve data file path')
-parser.add_argument('ichain', metavar='chain_index', type=int, nargs='?',default=-1,
+parser.add_argument('-i','--ichain', metavar='chain_index', type=int, nargs=1, default=-1,
                    help='index of chain to view')
 parser.add_argument('-e','--execname', metavar='executable_file', type=str, nargs=1, default="../../src/gleam/gleam",
                    help='executable file path')
@@ -103,6 +103,8 @@ if(fname.endswith(".out")):
     #we assume ".out does not otherwise appear in the name... that
     #could check... if(fname.count(".out")>1):...
     basename=fname.replace(".out","")
+    #make a guess of the chainfile name
+    fname=fname.replace(".out",".dat")
 elif(fname.endswith(".dat")):
     basename=fname.replace("gle_","")
     basename=basename.replace(".dat","")
@@ -146,14 +148,14 @@ for key in d.keys():
     eargs+=" -"+key+"="+d[key]
 print "eargs=",eargs
 #get pars and other info from .dat file
-cc,cends=count_chains("gle_"+basename+".dat")
+cc,cends=count_chains(fname)
 print "cends=",cends," cc=",cc
 iend=-1
 if(ichain>=0 and cc>ichain):
     iend=cends[ichain]
     cc=ichain
 print "iend=",iend," cc=",cc
-step,pars = get_step_pars("gle_"+basename+".dat",iend)
+step,pars = get_step_pars(fname)
 parstr=""
 for val in pars:
     parstr+=" "+str(val)
