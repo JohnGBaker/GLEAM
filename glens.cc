@@ -84,6 +84,7 @@ const double epsTOL=1e-14;
 
 Point operator+(const Point &a, const Point &b){return Point(a.x+b.x,a.y+b.y);};
 Point operator-(const Point &a, const Point &b){return Point(a.x-b.x,a.y-b.y);};
+Point operator*(const Point &a, const double &val){return Point(a.x*val,a.y*val);};
 
 //
 // ******************************************************************
@@ -104,13 +105,13 @@ Point operator-(const Point &a, const Point &b){return Point(a.x-b.x,a.y-b.y);};
 /// few minutes.  For timing, the 1 AU light crossing time is also a few 
 /// minutes, so we can similarly ignore that.  If precision better than a few 
 /// minutes is relevant then we will need to take these factors into account.
-/// The results are rreturned in the argument in Cartesian SSB coords consistent
+/// The results are returned in the argument in Cartesian SSB coords consistent
 /// with ecliptic sky coordinates.
 ///
 void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double &z)const{
   ///We take t to be terrestrial time, TT, time in days since the beginning of 
   ///the J2000 epoch, meaning seconds since J2000 (ts) divided by 86400. 
-  /// I.e. t=ts/38400.  Note that the J2000 epoch reference corresponds to 
+  /// I.e. t=ts/86400.  Note that the J2000 epoch reference corresponds to 
   /// 2000 Jan 1 11:58:55.816 UTC.  The JPL ephemerides are referenced to 
   ///T_{eph} which is effectively the same as the IAU's TDB.  TDB is nearly 
   ///the same as IAU's terrestrial time TT, corrected for periodic relativistic
@@ -145,7 +146,14 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
   z=rhoyz*sI;
 };
 
-//Here we just compute the second order numerical derivative.  That is probably good enough...but we could do analytic..
+///Here we just compute the second order numerical derivative.  That is probably good enough...but we could do analytic..
+///It is not hard to write down an analytic version of this to be computed along-with the position computation. Basically
+///you can certainly treat a and e as constant, and you can probably also treat the other elements except for M,E as constant
+///in taking the derivatives.  The trouble is you have to do this computation more or less along with the position computation.
+///We could just copy the above computation here with the changes and recompute those derivs.  We could also compute and
+///save velocities along with the position computation, and then chack and don't recompute if the evaluation time is identical.
+///That would save up to a factor of almost 3 over this computation if velocity and position are always evals consequtively at
+///the same points, or a factor of 2 if not.
 void ParallaxTrajectory::get_obs_vel_ssb(double t, double & rdot, double &thdot, double &phdot)const{
   double rp,thp,php,rm,thm,phm;
   double delta=1.0; //1 day is small
@@ -157,16 +165,31 @@ void ParallaxTrajectory::get_obs_vel_ssb(double t, double & rdot, double &thdot,
 }; 
   ///Using the approx location of the source, transform from ssb in source-lens line-of-sight frame.
 Point ParallaxTrajectory::ssb_los_transform(double x, double y, double z)const{
-  ///begin alined with lens system separation (or other ref axis)
-  ///begin with earth SSB position, then rotate SSB so that source is at lon=0
-  ///then rotate inclination until lat=+90deg.  Then rotate through some unknown
-  ///angle alpha so that the source sep/ref-axis is aligned with lon=0;
-  ///Then rescale by AU/dist.
-  ///Use source_ra and source_dec
-
+  ///Here we must assume some coordinate frame orientation for the observer plane. 
+  ///In particular we assume that the ecliptic intersects the observer plane along the x-axis
+  ///and SSB north projects onto the y-axis.  This transformation breaks down if the source-lens
+  ///lies on/near one of the SSB poles, as is roughly the case for the LMC.  An alternative would
+  /// The transformation from BBS (r,\theta,\phi) to the observation plane x-y-z coordinates is then:
+  ///   \f$ x = - r \sin\theta \sin(\phi-l) \f$
+  ///   \f$ y = - r \sin\theta \cos(\phi-l) \sin b + r \cos\theta \cos b \f$
+  ///   \f$ z = - r \sin\theta \cos(\phi-l) \cos b - r \cos\theta \sin b \f$
+  ///with l=source_lon and b=source_lat.  We have included z for completeness, though it is irrelevant.
+  ///In terms of SSB cartesian coordinates: \f$ z_{SSB} = r\cos\theta, x_{SSB} = r\sin\theta\cos\phi, etc. \f$ 
+  ///So we get:
+  ///   xnew = -y*cl + x*sl
+  ///   ynew = -(x*cl+y*cl)*sb +z*cb
+  ///   znew = -(x*cl+y*cl)*cb -z*sb
+  /// where cl=cos(source_lon), etc.
+  double xnew,ynew;
+  xnew = -y*cos_source_lon + x*sin_source_lon;
+  ynew = -(x*cos_source_lon + y*sin_source_lon)*sin_source_lat + z*cos_source_lat;
+  //last we rotate to lens frame
+  double xlens,ylens;
+  xlens = xnew * cos_dphi - ynew * sin_dphi;
+  ylens = xnew * sin_dphi + ynew * cos_dphi;
+  
+  return Point(xlens,ylens);
 };
-  ///Compute observer position offset from ssb in source-lens line-of-sight frame.
-
 
 
 //
