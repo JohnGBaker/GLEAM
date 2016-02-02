@@ -133,6 +133,7 @@ public:
 
   ///Get a new copy of the lens with appropriate parameters.
   ///This version still refers to GLensBinary parameters
+  ///2TRAJLENS: This goes to GLens.
   GLens *clone_lens(const state & s)const{
     GLens *worklens;
     vector<double> params=s.get_params_vector();
@@ -202,7 +203,11 @@ private:
   }
 
   ///This goes to ml instantiation of bayes_signal type
-  ///FIXME: This is currently hard-coded with lens and trajectory parameters.  We want to be agnostic to those.
+  ///2TRAJ: This is currently hard-coded with lens and trajectory parameters.  We want to be agnostic to those.
+  // Here is our developing plan for addressing this:
+  // Trajectory will own (tmax,tE,r0,phi, and other new params)
+  // We will do conversions for rescaling these here, as needed, as with the GLens param q and Fs.
+  //
   void get_model_params(const vector<double> &params, double &I0, double &Fs,double &q,double &L,double &r0,double &phi,double &tE,double &tmax)const{
     checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
     //Light level parameters
@@ -217,6 +222,8 @@ private:
     //  q mass ratio
     I0=params[idx_I0];
     Fs=params[idx_Fs];
+
+    //2TRAJ: wont need the rest of this func: Maybe goes to Trajectory
     //noise_lev=params[idx_noise_lev];
     double sofq=params[idx_q];//either log_q or remapped q
     double logL=params[idx_L];
@@ -224,7 +231,7 @@ private:
     phi=params[idx_phi];
     tE=params[idx_tE];//either tE or log tE
     tmax=params[idx_tmax];
-    tmax=tmax*2;//HACK HACK HACK fixme this is only here for a brief backward compatibility check
+    //tmax=tmax*2;//Uncommenting this recovers pre-1-Feb-2016 def of tmax (up to mach-prec diffs)
     
     //derived params
     if(do_log_tE)tE=pow(10.0,tE);
@@ -233,6 +240,8 @@ private:
     //See discussion in remap_r0() above    
     if(do_remap_r0)r0=r0_ref/sqrt(1.0/sofr0-1.0);
     else r0=sofr0;
+
+    //2TRAJLENS: won't need the rest of this, maybe goes to GLens
     L=pow(10.0,logL);
 
     //Perhaps use an alternative variable parameterizing the point of closest approach over a finite range,
@@ -241,21 +250,7 @@ private:
     else q=pow(10.0,sofq);
   };
 
-  ///This version still refers to GLensBinary parameters
-  /*  Trajectory *clone_trajectory(double q, double L, double r0, double phi, double tstart)const{
-    //compute reference position
-    double vx=cos(phi), vy=sin(phi);
-    double p0x=-r0*sin(phi), p0y=r0*cos(phi);
-    double xcm  =  (q/(1.0+q)-0.5)*L;
-
-    Trajectory *newtraj=traj->clone();
-    newtraj->setup(Point(p0x+vx*tstart+xcm,p0y+vy*tstart), Point(vx,vy));
-
-    return newtraj;
-    };*/
-
-  ///This version takes a step toward generality.
-  ///Ultimately this goes into the Trajectory class as a general clone and stateSpace setting...
+  ///2TRAJ: Ultimately this goes into the Trajectory class as a general clone and stateSpace setting...
   ///call as traj=cone_trajectory(lens->getCenter,r0,phi)
   Trajectory *clone_trajectory(const Point &center,double r0,double phi)const{
     //compute reference position
@@ -272,8 +267,10 @@ private:
   vector<double> model_lightcurve(const vector<double> &params,const vector<double>&times)const{
     double result=0;
     
-    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
-    get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
+    double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ
+    //double I0,Fs;//2TRAJ: should look like this when we are done.
+    
+    get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//2TRAJ
     //cout<<"model params:I0,Fs,q,L,r0,phi,tE,tmax="<<I0<<","<<Fs<<","<<q<<",\n"<<L<<","<<r0<<","<<phi<<","<<tE<<","<<tmax<<endl;
     //Comment:
     //The lightcurve model is centered at the midpoint between m1 and m2
@@ -303,8 +300,8 @@ private:
     //worklens=dynamic_cast<GLensBinary*>(lens->clone()); //HACK FIXME.  StateSpace based setup will obviate this cast
     //This next lines are appropriate for GLensBinary.  The generalization of this requires a state-space transformation which pulls out q and L.
     //Probably everything related to L/q should probably move into GLensBinary...
-    state lens_state(&lensSpace,valarray<double>({q,L}));
-    worklens->setState(lens_state);
+    state lens_state(&lensSpace,valarray<double>({q,L}));//2TRAJLENS:Replace with clone_lens
+    worklens->setState(lens_state);//2TRAJLENS:Replace with clone_lens
     //worklens->setState(q,L);
     //cout<<"signal worklens:"<<worklens->print_info()<<endl;
     //worklens=new GLensBinary(q,L);
@@ -312,13 +309,13 @@ private:
     //See fixme note above.  The same issue will keep us from generalizing Trajectory, until fixed.
     //double offset=-tmax/tE;  //eliminating this changes (corrects) the meaning of t0 parameter  
     vector<double>tEs=times;
-    for(double &t : tEs)t=(t-tmax)/tE;    
+    for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ: wont need this    
 
     Trajectory *worktraj;
     //worktraj=clone_trajectory(q,L,r0,phi,offset);
     worktraj=clone_trajectory(worklens->getCenter(),r0,phi);
     //FIXME change the following to a generic Trajectory set up based on a stateSpace setup to support more parameters.
-    worktraj->set_times(tEs,0);
+    worktraj->set_times(tEs,0);//2TRAJ: change interface to work with physical times here
     /*
     if(debug_signal){
       int prec=cout.precision();
@@ -350,19 +347,19 @@ private:
       }
       */
       if(!isfinite(Ival)&&!burped){
-	cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" I0,Fs,noise_lev,q,L,r0,phi,tE,tmax: "<<I0<<" "<<Fs<<" "<<"??????"<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;
+	cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" I0,Fs,noise_lev,q,L,r0,phi,tE,tmax: "<<I0<<" "<<Fs<<" "<<"??????"<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;//2TRAJ:use stateSpace for this message
 	burped=true;
       }
     }
-    delete worktraj, worklens;
+    delete worktraj, worklens;//2TRAJ: Need to check for virtual destructor.
     return model;
   };
   
 public:
   //Here we always make a square window, big enough to fit the trajectory (over the specified domain) and the lens window
   void getWindow(const state &s, Point &LLcorner,Point &URcorner, double tstart=0, double tend=0, int cent=-2){
-    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
-    get_model_params(s.get_params_vector(),I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
+    double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ: As in model_lightcurve
+    get_model_params(s.get_params_vector(),I0,Fs,q,L,r0,phi,tE,tmax);//2TRAJ
     Point pstart(0,0),pend(0,0);
     double margin=0,width=0,x0,y0,wx,wy;
     GLens *worklens=clone_lens(s);
@@ -372,7 +369,7 @@ public:
       pstart=Point(x0-width/2,-width/2);
       pend=Point(x0+width/2,+width/2);
     } else {
-      double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;
+      double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;//2TRAJ:Do we use this tstart/tend?  Probably need a Trajectory function for converting physical to lens-scaled time.
       Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
       pstart=tr->get_obs_pos(tleft);
       pend=tr->get_obs_pos(tright);
@@ -400,12 +397,12 @@ public:
   ///Dump the trajectory
   ///Probably moves to trajectory eventually.
   void dump_trajectory(ostream &out, state &s, vector<double> &times, double tref){
-    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
-    get_model_params(s.get_params_vector(), I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
+    double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ
+    get_model_params(s.get_params_vector(), I0,Fs,q,L,r0,phi,tE,tmax);//2TRAJ
 
     //Get square bounding box size
     cout<<"Model params: I0  Fs  q  L  r0  phi tE tmax\n"
-	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;
+	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;//2TRAJ: Use stateSpace or cut
     //cout<<"making traj("<<q<<" "<<L<<" "<<r0<<" "<<phi<<")"<<endl;
     //cout<<" vx="<<cos(phi)<<", vy="<<sin(phi)<<endl;
     //cout<<" p0x="<<-r0*sin(phi)<<", p0y="<<r0*cos(phi)<<endl;
@@ -419,96 +416,18 @@ public:
     double xcm  =  worklens->getCenter().x;
     Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
     vector<double>tEs=times;
-    for(double &t : tEs)t=(t-tmax)/tE;    
-    tr->set_times(tEs,0);
+    for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ:don't need    
+    tr->set_times(tEs,0);//2TRAJ:change to physical
     cout<<"times range from "<<tr->t_start()<<" to "<<tr->t_end()<<endl;
     cout<<tr->print_info()<<endl;
     out<<"#"<<s.get_string()<<endl;
     out<<"#1.t   2. t_rel  3.x   4.y "<<endl;
-    for(auto t:tEs){
-      Point p=tr->get_obs_pos(t);
+    for(auto t:tEs){//2TRAJ: this will have to be physical times
+      Point p=tr->get_obs_pos(t);//converted to lens-scaled time for this?
       //out<<t+tref<<" "<<t<<" "<<p.x-xcm<<" "<<p.y<<endl;
       out<<t+tref<<" "<<t<<" "<<p.x<<" "<<p.y<<endl;
     }
   };
-
-  ///Dump the trajectory
-  ///Old version
-  ///And additional information about the lens evaluation.
-  ///This is not currently used, but maybe we will want it again later.
-  ///If so then it must belong in ML_photometry_signal
-  ///As it is it is hard-coded for GLensBinary...
-  /*
-  void dump_trajectory_and_more(ostream &out,state &s,vector<double>&times,double tref=0){
-    valarray<double>params=s.get_params();  
-    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
-    get_model_params(s.get_params_vector(),I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
-    double tpk=0;
-    double time0=tref;
-    //Get square bounding box size
-    cout<<"Model params: I0  Fs  q  L  r0  phi tE tmax\n"
-	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;
-    cout<<"making traj("<<q<<" "<<L<<" "<<r0<<" "<<phi<<")"<<endl;
-    cout<<" vx="<<cos(phi)<<", vy="<<sin(phi)<<endl;
-    cout<<" p0x="<<-r0*sin(phi)<<", p0y="<<r0*cos(phi)<<endl;
-    cout<<" xcm  =  "<<(q/(1.0+q)-0.5)*L<<endl;
-    double vx=cos(phi), vy=sin(phi);
-    double p0x=-r0*sin(phi), p0y=r0*cos(phi);
-    double xcm  =  (q/(1.0+q)-0.5)*L;
-    double nu=1/(1+q),nu_pos=1-nu;
-    
-    vector<double>xtimes,modelmags; 
-    vector<int> indices;
-    //cout<<"tleft="<<tleft<<" tright="<<tright<<" dt="<<dt<<endl;
-    vector<double>tEs=times;
-    for(double &t : tEs)t=(t-tmax)/tE;    
-    
-    //Trajectory traj(data.get_trajectory(q,L,r0,phi,times[0]));//This is consistent with the tstartHACK
-    double offset=-tmax/tE; 
-    traj->setup(Point(p0x+vx*offset,p0y+vy*offset), Point(vx,vy));
-    traj->set_times(tEs,0);
-    cout<<"times range from "<<traj->t_start()<<" to "<<traj->t_end()<<endl;
-    
-    //This is left hardcoded for GLensBinary in this disused form  can generalize if we need it...
-    GLensBinary lens(q,L);
-    vector<vector<Point>> allthetas;
-    
-    lens.compute_trajectory(*traj,xtimes,allthetas,indices,modelmags);
-    
-    cout<<traj->print_info()<<endl;
-    out<<"#"<<s.get_string()<<endl;
-    out<<"#nu_pos="<<nu_pos<<" nu_neg="<<nu<<" L="<<L<<" r0="<<r0<<" phi="<<phi<<endl;
-    out<<"#1.t   2. t_rel  3.x   4.y   5.magnif   6.n_img   7.magnif(wide)   8.n_img   9.magnif(int)   10. n_img 11.rpos  12.rneg 13-22.imgsXY 23-28.wide-imgsXY 29-38.int-imgsXY"<<endl;
-    int i=0;
-    for(int ii:indices){
-      double t=xtimes[ii];
-      Point p=traj->get_obs_pos(t);
-      vector<Point> thetas=lens.invmap(p);
-      vector<Point> wthetas=lens.invmapWideBinary(p);
-      double x1=p.x-L/2,x2=p.x+L/2,r1sq=x1*x1+p.y*p.y,r2sq=x2*x2+p.y*p.y;
-      double cpos=nu_pos/sqrt(r1sq),cneg=nu/sqrt(r2sq),xcm  =  (q/(1.0+q)-0.5)*L;
-      double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
-      out<<t+time0<<" "<<t-tpk<<" "<<p.x-xcm<<" "<<p.y<<" "<<lens.mag(thetas)<<" "<<thetas.size()<<" "<<lens.mag(wthetas)<<" "<<wthetas.size()
-	 <<" "<<modelmags[ii]<<" "<<allthetas[ii].size();
-      
-      for(int j=0;j<5;j++){
-	if(j<thetas.size())out<<" "<<thetas[j].x<<" "<<thetas[j].y;
-	else out<<" 0 0";
-      }
-      
-      for(int j=0;j<3;j++){
-	if(j<wthetas.size())out<<" "<<wthetas[j].x<<" "<<wthetas[j].y;
-	else out<<" 0 0";
-      }
-      
-      for(int j=0;j<5;j++){
-	if(j<allthetas[ii].size())out<<" "<<allthetas[ii][j].x<<" "<<allthetas[ii][j].y;
-	else out<<" 0 0";
-      }
-      out<<endl;
-      i++;
-    }
-    };*/
 
 };
 
