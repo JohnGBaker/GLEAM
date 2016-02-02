@@ -53,10 +53,38 @@ public:
   };
   ///From bayes_signal
   //
-  vector<double> get_model_signal(const state &st, const vector<double> &labels)const{
+  vector<double> get_model_signal(const state &st, const vector<double> &times)const{
     checkWorkingStateSpace();
     vector<double>params=st.get_params_vector();
-    return model_lightcurve(params,labels);
+    //return model_lightcurve(params,times);
+    double result=0;
+    double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ
+    //double I0,Fs;//2TRAJ: should look like this when we are done.
+    get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//2TRAJ mostly eliminate this.
+    vector<double> xtimes,model,modelmags;
+    vector<vector<Point> > thetas;
+    vector<int> indices;
+
+    //We need to clone lens/traj before working with them so that each omp thread is working with different copies of the objects.
+    GLens *worklens=clone_lens(st);
+    vector<double>tEs=times;
+    for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ: wont need this    
+
+    Trajectory *worktraj=clone_trajectory(worklens->getCenter(),r0,phi);
+    worktraj->set_times(tEs,0);//2TRAJ: change interface to work with physical times here
+    worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
+
+    bool burped=false;
+    for(int i=0;i<indices.size();i++ ){
+      double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
+      model.push_back(Ival);
+      if(!isfinite(Ival)&&!burped){
+	cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" I0,Fs,noise_lev,q,L,r0,phi,tE,tmax: "<<I0<<" "<<Fs<<" "<<"??????"<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;//2TRAJ:use stateSpace for this message
+	burped=true;
+      }
+    }
+    delete worktraj, worklens;//2TRAJ: Need to check for virtual destructor.
+    return model;
   };
 
   ///From StateSpaceInterface (via bayes_signal)
@@ -231,7 +259,7 @@ private:
     phi=params[idx_phi];
     tE=params[idx_tE];//either tE or log tE
     tmax=params[idx_tmax];
-    //tmax=tmax*2;//Uncommenting this recovers pre-1-Feb-2016 def of tmax (up to mach-prec diffs)
+    //tmax=tmax*2;//Uncommenting this recovers pre-1-Feb-2016 def of tmax (up to mach-prec)
     
     //derived params
     if(do_log_tE)tE=pow(10.0,tE);
@@ -264,7 +292,7 @@ private:
 
   ///This goes to ml instantiation of bayes_signal type
   ///Change this to a standard signal function get_signal_model dep on state, data etc, returns vector.
-  vector<double> model_lightcurve(const vector<double> &params,const vector<double>&times)const{
+  vector<double> old_model_lightcurve(const vector<double> &params,const vector<double>&times)const{
     double result=0;
     
     double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ
@@ -295,13 +323,13 @@ private:
     //We need to clone lens/traj before so that each omp thread is working with different copies of the objects.
     //we clone rather than copy so that we can allow derived classes.
     GLens *worklens;
-    worklens=lens->clone();
+    //worklens=lens->clone();
     //GLensBinary *worklens;
     //worklens=dynamic_cast<GLensBinary*>(lens->clone()); //HACK FIXME.  StateSpace based setup will obviate this cast
     //This next lines are appropriate for GLensBinary.  The generalization of this requires a state-space transformation which pulls out q and L.
     //Probably everything related to L/q should probably move into GLensBinary...
-    state lens_state(&lensSpace,valarray<double>({q,L}));//2TRAJLENS:Replace with clone_lens
-    worklens->setState(lens_state);//2TRAJLENS:Replace with clone_lens
+    //state lens_state(&lensSpace,valarray<double>({q,L}));//2TRAJLENS:Replace with clone_lens
+    //worklens->setState(lens_state);//2TRAJLENS:Replace with clone_lens
     //worklens->setState(q,L);
     //cout<<"signal worklens:"<<worklens->print_info()<<endl;
     //worklens=new GLensBinary(q,L);
