@@ -218,15 +218,32 @@ int main(int argc, char*argv[]){
 
   //Set up the parameter space
   stateSpace space(Npar);
+  stateSpace signalspace(3),lensspace(2),trajspace(4);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
+  string names[]={"I0","Fs","Fn","logq","logL","r0","phi","tE","tpass"};
+  if(use_additive_noise)names[2]="Mn";
+  if(use_remapped_r0)names[5]="s(r0)";
+  if(use_remapped_q)names[3]="s(1+q)";    
+  if(use_log_tE)names[7]="log(tE)";
+  if(0)
   {
-    string names[]={"I0","Fs","Fn","logq","logL","r0","phi","tE","tpass"};
-    if(use_additive_noise)names[2]="Mn";
-    if(use_remapped_r0)names[5]="s(r0)";
-    if(use_remapped_q)names[3]="s(1+q)";    
-    if(use_log_tE)names[7]="log(tE)";
     space.set_names(names);  
     space.set_bound(6,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
+  } else {  //Here we try out the new infrastructure of attaching state-spaces together
+    //cout<<"before space="<<space.show()<<endl;
+    space=stateSpace();
+    //cout<<"after space="<<space.show()<<endl;
+    signalspace.set_names(names);  
+    //cout<<"signalspace="<<signalspace.show()<<endl;
+    space.attach(signalspace);
+    lensspace.set_names(names+3);  
+    //cout<<"lens space="<<lensspace.show()<<endl;
+    space.attach(lensspace);
+    trajspace.set_names(names+5);  
+    trajspace.set_bound(1,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
+    //cout<<"traj space="<<trajspace.show()<<endl;
+    space.attach(trajspace);
   }
+  
   cout<<"&space="<<&space<<endl; 
   cout<<"Parameter space:\n"<<space.show()<<endl;
 
@@ -305,8 +322,20 @@ int main(int argc, char*argv[]){
   //types[4]=uni;  
   //**end HACK **//
 
-  mixed_dist_product prior(&space,types,centers,halfwidths);
-  cout<<"Prior is:\n"<<prior.show()<<endl;
+  sampleable_probability_function *prior;  
+  sampleable_probability_function *signalprior,*lensprior,*trajprior;  
+  if(0){
+    prior=new mixed_dist_product(&space,types,centers,halfwidths);
+  } else {
+    signalprior=new mixed_dist_product(&signalspace,types[slice(0,3,1)],centers[slice(0,3,1)],halfwidths[slice(0,3,1)]);
+    //cout<<"signalprior="<<signalprior->show()<<endl;
+    lensprior=new mixed_dist_product(&lensspace,types[slice(3,2,1)],centers[slice(3,2,1)],halfwidths[slice(3,2,1)]);
+    //cout<<"lensprior="<<lensprior->show()<<endl;
+    trajprior=new mixed_dist_product(&trajspace,types[slice(5,4,1)],centers[slice(5,4,1)],halfwidths[slice(5,4,1)]);
+    //cout<<"trajprior="<<trajprior->show()<<endl;
+    prior=new independent_dist_product(&space,signalprior,lensprior,trajprior);
+  }
+  cout<<"Prior is:\n"<<prior->show()<<endl;
 
   //Initial parameter state
   state instate(&space,params);
@@ -314,12 +343,12 @@ int main(int argc, char*argv[]){
     cout<<"Input parameters:"<<instate.show()<<endl;
   } else { //If no params give just draw something.  Perhaps only relevant for mock_data
     cout<<"Drawing a state from the prior distribution."<<endl;
-    instate=prior.drawSample(*globalRNG);
+    instate=prior->drawSample(*globalRNG);
   }
 
   //Set the likelihood
   bayes_likelihood *like=nullptr;
-  ML_photometry_likelihood mpl(&space, data, &signal, &prior);
+  ML_photometry_likelihood mpl(&space, data, &signal, prior);
   mpl.addOptions(opt,"");
   mpl.setup();
   like = &mpl;
@@ -355,7 +384,7 @@ int main(int argc, char*argv[]){
   //Just a little reporting
   if(have_pars0){
     double ll=like->evaluate_log(instate);
-    double lp=prior.evaluate_log(instate);
+    double lp=prior->evaluate_log(instate);
     cout<<"log-Likelihood at input parameters = "<<ll<<endl;
     cout<<"log-posterior at input parameters = "<<ll+lp<<endl;
   }
@@ -364,10 +393,10 @@ int main(int argc, char*argv[]){
   //assuming mcmc:
   //Set the proposal distribution 
   int Ninit;
-  proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,&prior,&halfwidths);
+  proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,prior,&halfwidths);
   cout<<"Proposal distribution (at "<<prop<<") is:\n"<<prop->show()<<endl;
   //set up the mcmc sampler (assuming mcmc)
-  mcmc.setup(Ninit,*like,prior,*prop,output_precision);
+  mcmc.setup(Ninit,*like,*prior,*prop,output_precision);
 
 
   //Prepare for chain output
@@ -392,7 +421,7 @@ int main(int argc, char*argv[]){
       asignal.Optioned::addOptions(opt,"");
       asignal.setup();
       //asignal.set_tstartHACK(tstart);
-      ML_photometry_likelihood alike(&space, data, &asignal, &prior);
+      ML_photometry_likelihood alike(&space, data, &asignal, prior);
       cout<<"alike="<<&alike<<endl;
       alike.Optioned::addOptions(opt,"");
       alike.setup();

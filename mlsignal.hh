@@ -36,20 +36,21 @@ extern bool debug_signal;
 ///There are several options for controlling/modifying the form of the parameters
 ///applied in constructing the model, with some rough motivations.
 class ML_photometry_signal : public bayes_signal{
-  double r0_ref,q_ref;
-  bool do_remap_r0, do_remap_q, do_log_tE;
+  double r0_ref,q_ref;//2TRAJLENS:move to GLensBinary/Trajectory
+  bool do_remap_r0, do_remap_q, do_log_tE;//2TRAJLENS:move to GLensBinary/Trajectory
   Trajectory *traj;
   GLens *lens;
-  int idx_I0, idx_Fs, idx_q, idx_L, idx_r0, idx_phi, idx_tE, idx_tmax; 
-  stateSpace lensSpace;
+  int idx_I0, idx_Fs, idx_q, idx_L, idx_r0, idx_phi, idx_tE, idx_tmax; //2TRAJLENS:move to GLensBinary/Traj
+  stateSpace lensSpace;//2TRAJLENS:no need?
+;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
-    do_remap_r0=false;
-    do_remap_q=false;
-    do_log_tE=false;
-    r0_ref=0;
-    q_ref=0;
-    idx_I0=idx_Fs=idx_q=idx_L=idx_r0=idx_phi=idx_tE=idx_tmax=-1; 
+    do_remap_r0=false;//2TRAJ:move to Trajectory
+    do_remap_q=false;//2TRAJLENS:move to GLensBinary
+    do_log_tE=false;//2TRAJ:move to Trajectory
+    r0_ref=0;//2TRAJ:move to Trajectory
+    q_ref=0;//2TRAJLENS:move to GLensBinary
+    idx_I0=idx_Fs=idx_q=idx_L=idx_r0=idx_phi=idx_tE=idx_tmax=-1; //2TRAJ:clean-up
   };
   ///From bayes_signal
   //
@@ -99,21 +100,20 @@ public:
     //if(use_log_tE)names[7]="log(tE)";
     idx_I0=sp.requireIndex("I0");
     idx_Fs=sp.requireIndex("Fs");
-    if(do_remap_q)idx_q=sp.requireIndex("s(1+q)");
-    else idx_q=sp.requireIndex("logq");
-    idx_L=sp.requireIndex("logL");
-    if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");
-    else idx_r0=sp.requireIndex("r0");
-    idx_phi=sp.requireIndex("phi");
-    if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");
-    else idx_tE=sp.requireIndex("tE");
-    idx_tmax=sp.requireIndex("tpass");
+    if(do_remap_q)idx_q=sp.requireIndex("s(1+q)");//2TRAJLENS:move to GLensBinary
+    else idx_q=sp.requireIndex("logq");//2TRAJLENS:move to GLensBinary
+    idx_L=sp.requireIndex("logL");//2TRAJLENS:move to GLensBinary
+    if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");//2TRAJLENS:move to Trajectory
+    else idx_r0=sp.requireIndex("r0");//2TRAJLENS:move to Trajectory
+    idx_phi=sp.requireIndex("phi");//2TRAJLENS:move to GLensBinary
+    if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");//2TRAJLENS:move to Trajectory
+    else idx_tE=sp.requireIndex("tE");//2TRAJLENS:move to Trajectory
+    idx_tmax=sp.requireIndex("tpass");//2TRAJLENS:move to Trajectory
     haveWorkingStateSpace();
     ///Eventually want to transmit these down to constituent objects:
     ///FIXME This is a temporary version.  Should replace r0 and q rescalings with a stateSpaceTransform...
     lensSpace=lens->getObjectStateSpace();
     lens->defWorkingStateSpace(lensSpace);
-    ///--or lens.defWorkingStateSpace(transform_to_lens.transform(sp))
   };
   
   ///Set up the output stateSpace for this object
@@ -122,13 +122,13 @@ public:
   stateSpace getObjectStateSpace()const{
     checkSetup();//Call this assert whenever we need options to have been processed.
     stateSpace space(9);
-    string names[]={"I0","Fs","Fn","logq","logL","r0","phi","tE","tpass"};
+    string names[]={"I0","Fs","Fn","logq","logL","r0","phi","tE","tpass"};//2TRAJLENS:clean-up
     //if(use_additive_noise)names[2]="Mn";
-    if(do_remap_r0)names[5]="s(r0)";
-    if(do_remap_q)names[3]="s(1+q)";    
-    if(do_log_tE)names[7]="log(tE)";
+    if(do_remap_r0)names[5]="s(r0)";//2TRAJ:move to Trajectory
+    if(do_remap_q)names[3]="s(1+q)";//2TRAJLENS:move to GLensBinary
+    if(do_log_tE)names[7]="log(tE)";//2TRAJ:move to Trajectory
     space.set_names(names);  
-    space.set_bound(6,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
+    space.set_bound(6,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.//2TRAJLENS:fix
     ///Eventually want to draw some of these up from constituent objects:
     ///eg space.add(lens.getObjectStateSpace())
     ///or space.add(transform_to_lens.inverse(lens.getObjectStateSpace()))
@@ -138,24 +138,24 @@ public:
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);
     //signal options
-      addOption("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value.");
-      addOption("remap_r0","Use remapped r0 coordinate.");
-      addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");
-      addOption("remap_q","Use remapped mass-ratio coordinate.");
-      addOption("q0","Prior max in q (with q>1) with remapped q0. Default=1e5/","1e5");
+      addOption("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value.");//2TRAJ:move to Trajectory
+      addOption("remap_r0","Use remapped r0 coordinate.");//2TRAJ:move to Trajectory
+      addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");//2TRAJ:move to Trajectory
+      addOption("remap_q","Use remapped mass-ratio coordinate.");//2TRAJLENS:move to GLensBinary
+      addOption("q0","Prior max in q (with q>1) with remapped q0. Default=1e5/","1e5");//2TRAJLENS:move to GLensBinary
   };
   void setup(){
-    if(optSet("remap_r0")){
+    if(optSet("remap_r0")){//2TRAJ:move to Trajectory
       double r0_ref_val;
       *optValue("remap_r0_ref_val")>>r0_ref_val;
       remap_r0(r0_ref_val);
     }
-    if(optSet("remap_q")){
+    if(optSet("remap_q")){//2TRAJLENS:move to GLensBinary
       double q0_val;
       *optValue("q0")>>q0_val;
       remap_q(q0_val);
     }
-    if(optSet("log_tE"))use_log_tE();
+    if(optSet("log_tE"))use_log_tE();//2TRAJ:move to Trajectory
     haveSetup();
   };    
 
@@ -196,7 +196,7 @@ private:
   ///the magnification excess only means a factor of ~ 1.6 decrease in prior or about -0.23 in log-prior, hopefully
   ///not yielding strong biases even for the marginal cases.
   //This goes to ml signal instantiation processOptions
-  void remap_r0(double r0_ref_val=2.0){
+  void remap_r0(double r0_ref_val=2.0){//2TRAJ:move to Trajectory (or cut but preserve comment)
     do_remap_r0=true;
     r0_ref=r0_ref_val;
   };
@@ -219,7 +219,7 @@ private:
   ///Assuming we are interested in mass ratios out to the Earth-Sun ratio q~3e5, we can set q0~1e7 to peak at an 
   ///uninteresting value which we would interpret as effectively single-lens.
   //This goes to ml signal instantiation processOptions
-  void remap_q(double q_ref_val=1e7){
+  void remap_q(double q_ref_val=1e7){//2TRAJLENS:move to GLensBinary (or cut but preserve comment)
     do_remap_q=true;
     q_ref=q_ref_val;
   };
