@@ -294,7 +294,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	  theta[2*image+1]=thetas[image].y;
 	}
 	if(rWide_int_fac>0){
-	  Point b=traj.get_obs_pos(t);
+	  //Point b=traj.get_obs_pos(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords
+	  Point b=get_obs_pos(traj,t);
 	  if(testWide(b,rWide_int_fac)){
 	    //cout<<"evol: testWide==true"<<endl;
 	    evolving=false;//switch to point-wise (WideBinary assuming rWide_int/rWide>=1)
@@ -305,18 +306,6 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	int status = gsl_odeiv2_evolve_apply (evol, control, step, &sys, &t, tgrid, &h, theta);
 	//Need some step-size control checking for near caustics?
 	if (status != GSL_SUCCESS) { 
-	  //# pragma omp critical	    
-	  if(0){//This message is deprecated...
-	    cout<<"Something went wrong with GSL integration!\n lens="<<print_info()<<"\n t="<<t<<", err= "<<status<<": '"<<gsl_strerror(status)<<"' \nthetas="<<endl;
-	    double old_t=time_series[time_series.size()-1];
-	    Point b=traj.get_obs_pos(old_t);
-	    cout<<"oldbeta("<<old_t<<")="<<sqrt(b.x*b.x+b.y*b.y)<<endl;
-	    b=traj.get_obs_pos(t);
-	    cout<<"beta="<<sqrt(b.x*b.x+b.y*b.y)<<" mg="<<mag(thetas)<<endl;
-	    for(int image=0;image<thetas.size();image++)
-	      cout<<"   theta["<<image<<"] = ("<<theta[image*2]<<","<<theta[image*2+1]<<")"<<endl;
-	    cout<<"t<tgrid="<<t<<"<"<<tgrid<<endl;
-	  }
 	  evolving=false;//switch to polynomial
 	  break;
 	}
@@ -344,7 +333,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	continue;
       }
     } else { //not evolving, solve polynomial
-      beta=traj.get_obs_pos(tgrid);
+      //beta=traj.get_obs_pos(tgrid);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords
+      beta=get_obs_pos(traj,tgrid);
       thetas.clear();
       thetas=invmap(beta);
       //record results;
@@ -399,7 +389,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
       double ttest=traj.get_obs_time(i);
       int ires=index_series[i];
       double tres=time_series[ires];
-      Point beta=traj.get_obs_pos(ttest);
+      //Point beta=traj.get_obs_pos(ttest);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
+      Point beta=get_obs_pos(traj,ttest);
       vector<Point> thetas=invmap(beta);
       int nimages=thetas.size();
       double mgtest=mag(thetas);
@@ -408,9 +399,13 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
       if(ires>0&&ires<time_series.size()-1){
 	tminus=time_series[ires-1];
 	tplus=time_series[ires+1];
-	beta=traj.get_obs_pos(tminus);thetas=invmap(beta);
+	//beta=traj.get_obs_pos(tminus);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
+	beta=get_obs_pos(traj,tminus);
+	thetas=invmap(beta);
 	mgminus=mag(thetas);
-	beta=traj.get_obs_pos(tplus);thetas=invmap(beta);
+	//beta=traj.get_obs_pos(tplus);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
+	beta=get_obs_pos(traj,tplus);
+	thetas=invmap(beta);
 	mgplus=mag(thetas);
       }
 
@@ -429,17 +424,23 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 
 }
 
+//This version seems no longer used 04.02.2016..
 int GLens::GSL_integration_func (double t, const double theta[], double thetadot[], void *instance){
+  //We make the following cast static, thinking that that should realize faster integration
+  //However, since we call functions which are virtual, this may/will give the wrong result if used
+  //with a derived class that has overloaded those functions {get_obs_pos, get_obs_vel, invjac, map}
   GLens *thisobj = static_cast<GLens *>(instance);
   const Trajectory *traj=thisobj->trajectory;
   Point p(theta[0],theta[1]);
   //double j00,j10,j01,j11,invJ = thisobj->jac(p,j00,j01,j10,j11);
   //double j00i=j11,j10i=-j10,j01i=-j01,j11i=j00;
   double j00i,j10i,j01i,j11i,invJ = thisobj->invjac(p,j00i,j01i,j10i,j11i);
-  Point beta0=traj->get_obs_pos(t);
+  //Point beta0=traj->get_obs_pos(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
+  Point beta0=thisobj->get_obs_pos(*traj,t);
   Point beta=thisobj->map(p);
   double dx=beta.x-beta0.x,dy=beta.y-beta0.y;
-  Point betadot=traj->get_obs_vel(t);
+  //Point betadot=traj->get_obs_vel(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
+  Point betadot=thisobj->get_obs_vel(*traj,t);
   double adjbetadot[2];
   //double rscale=thisobj->estimate_scale(Point(theta[0],theta[1]));
   //if our image is near one of the lenses, then we need to tread carefully
@@ -476,10 +477,15 @@ int GLens::GSL_integration_func (double t, const double theta[], double thetadot
 
 
 int GLens::GSL_integration_func_vec (double t, const double theta[], double thetadot[], void *instance){
+  //We make the following cast static, thinking that that should realize faster integration
+  //However, since we call functions which are virtual, this may/will give the wrong result if used
+  //with a derived class that has overloaded those functions {get_obs_pos, get_obs_vel, invjac, map}
   GLens *thisobj = static_cast<GLens *>(instance);
   const Trajectory *traj=thisobj->trajectory;
-  Point beta0=traj->get_obs_pos(t);
-  Point betadot=traj->get_obs_vel(t);
+  //Point beta0=traj->get_obs_pos(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
+  Point beta0=thisobj->get_obs_pos(*traj,t);
+  //Point betadot=traj->get_obs_vel(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
+  Point betadot=thisobj->get_obs_vel(*traj,t);
   bool fail=false;
   for(int k=0;k<2*thisobj->NimageMax;k++)thetadot[k]=0;
   //cout<<"beta0=("<<beta0.x<<","<<beta0.y<<")"<<endl;
@@ -544,7 +550,7 @@ void GLens::setup(){
 // ******************************************************************
 //
 
-GLensBinary::GLensBinary(double q,double L):q(q),L(L){
+GLensBinary::GLensBinary(double q,double L,double phi0):q(q),L(L),phi0(phi0),sin_phi0(sin(phi0)),cos_phi0(cos(phi0)){
   NimageMax=5;
   nu=1/(1+q);
   rWide=5;

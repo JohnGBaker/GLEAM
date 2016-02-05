@@ -62,11 +62,15 @@ class Trajectory {
   //one trajectory serve as the base for the others, providing these common parameters.
   //This could be set up at in the setup (where parameters are realized anyway)
   //though a scheme for setting up at construction might also be considered.
-  //On other consideration, we do not want to have phi be a parameter of Trajectory
+  //On other consideration, we do not want to have phi necessarily be a parameter of Trajectory
   //since this is setting the relative angle between the lens and the observer
-  //plane.  The observer plane orientation can be regarded as fixed wrt the.
-  //We thus will need a way to get the center offset, and the rotation angle from
-  //the lens/signal calling routine to complete setup...
+  //plane.  The observer plane orientation can be regarded as fixed wrt the suns motion direction.
+  //The lens rotation and center offset can be implemented as an explicit coordinate transformation
+  //as another layer with the GLens class.  That is, GLens internals will not all Traj::get_obs_pos
+  //directly, but will call GLens::get_obs_pos which will apply any offset and (null by default)
+  //rotation.  Overloaded versions of this can reorient the lens for binaries, this can be time
+  //dependent for orbiting binaries.
+  
 protected:
   Point p0;
   Point v0;
@@ -204,16 +208,20 @@ protected:
   static const double constexpr dThTol=1e-9;
   ///For temporary association with a trajectory;
   const Trajectory *trajectory;
-  ///For use with GSL integration
+  ///Transform from trajectory frame to lens frame
+  virtual Point get_obs_pos(const Trajectory & traj,double time)const {return traj.get_obs_pos(time);};
+  virtual Point get_obs_vel(const Trajectory & traj,double time)const {return traj.get_obs_vel(time);};
+  ///static access for use with non-member GSL integration routines
   static int GSL_integration_func (double t, const double theta[], double thetadot[], void *instance);
   static int GSL_integration_func_vec (double t, const double theta[], double thetadot[], void *instance);
+  //static Point get_obs_pos(const GLens* instance, const Trajectory & traj,double time){return instance->get_obs_pos(traj,time);};
+  //static Point get_obs_vel(const GLens* instance, const Trajectory & traj,double time){return instance->get_obs_vel(traj,time);};
   ///For use with GSL integration
   double kappa=.1;
   int Ntheta;
   bool use_integrate,have_integrate,do_verbose_write;
   double GL_int_tol,GL_int_mag_limit;
   virtual bool testWide(const Point & p,double scale)const{return false;};//test conditions to revert to perturbative inversion
-
 public:
   virtual ~GLens(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
   GLens(){have_integrate=false;do_verbose_write=false;};
@@ -258,6 +266,8 @@ public:
     double dy=(URcorner.y-LLcorner.y)/(samples-1);    
     //cout<<"mag-map ranges from: ("<<x0<<","<<y0<<") to ("<<x0+width<<","<<y0+width<<") stepping by: "<<dx<<endl;
     int output_precision=out.precision();
+    ios_base::fmtflags flags=out.flags();
+    //cout<<"writeMagMap:output_precision="<<output_precision<<endl;
     double ten2prec=pow(10,output_precision-2);
     out<<"#x-xc  y  magnification"<<endl;
     for(double y=LLcorner.y;y<=URcorner.y;y+=dy){
@@ -267,10 +277,11 @@ public:
       vector<vector<Point> >thetas;
       compute_trajectory(traj,times,thetas,indices,mags);//2TRAJ:Check that the new interface doesn't break this.
       for(int i : indices){
-	Point b=traj.get_obs_pos(times[i]);
+	//Point b=traj.get_obs_pos(times[i]);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords
+	Point b=get_obs_pos(traj,times[i]);
 	double mtruc=floor(mags[i]*ten2prec)/ten2prec;
-	out.precision(output_precision);
-	out<<b.x<<" "<<b.y<<" "<<setiosflags(ios::scientific)<<mtruc<<setiosflags(ios::fixed);
+	//out.precision(output_precision);
+	out<<b.x<<" "<<b.y<<" "<<setiosflags(ios::scientific)<<mtruc<<resetiosflags(flags);
 	if(do_verbose_write){
 	  out<<" "<<thetas[i].size();
 	  if(true){
@@ -295,12 +306,13 @@ public:
 class GLensBinary : public GLens{
   double q;
   double L;
+  double phi0,sin_phi0,cos_phi0;
   //mass fractions
   double nu;
   vector<Point> invmapAsaka(const Point &p);
   vector<Point> invmapWittMao(const Point &p);
   double rWide;
-  int idx_q,idx_L;
+  int idx_q,idx_L,idx_phi0;
   ///test conditions to revert to perturbative inversion
   bool testWide(const Point & p,double scale)const{
     double rs=rWide*scale;
@@ -311,7 +323,7 @@ class GLensBinary : public GLens{
     return L>rs||r2>rs*rs||(q+1/q)>2*rs*rs;
   };  
 public:
-  GLensBinary(double q=1,double L=1);
+  GLensBinary(double q=1,double L=1,double phi0=0);
   virtual GLensBinary* clone(){
     return new GLensBinary(*this);
   };
@@ -343,14 +355,15 @@ public:
     checkSetup();
     idx_q=sp.requireIndex("q");
     idx_L=sp.requireIndex("L");
+    idx_phi0=sp.requireIndex("phi0");
     haveWorkingStateSpace();
   };  
   ///Set up the output stateSpace for this object
   ///
   stateSpace getObjectStateSpace()const{
     checkSetup();//Call this assert whenever we need options to have been processed.
-    stateSpace space(2);
-    string names[]={"q","L"};
+    stateSpace space(3);
+    string names[]={"q","L","phi0"};
     space.set_names(names);  
     return space;
   };
@@ -360,9 +373,12 @@ public:
     checkWorkingStateSpace();
     q=st.get_param(idx_q);
     L=st.get_param(idx_L);
+    phi0=st.get_param(idx_phi0);
+    cos_phi0=cos(phi0);
+    sin_phi0=sin(phi0);
     nu=1/(1+q);
   };
-  ///This is a class-specific variant which 
+  ///This is a class-specific variant which (probably no longer needed)
   void setState(double q_, double L_){;
     checkWorkingStateSpace();
     q=q_;
@@ -388,6 +404,7 @@ public:
       //cout<<"case def"<<endl;
     }
     //cout<<" GLensBinary::getCenter("<<option<<"):Returning x0="<<x0<<endl;
+    //This returns the result in lens frame
     return Point(x0,0);
   };
 };

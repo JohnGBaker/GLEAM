@@ -255,7 +255,7 @@ int main(int argc, char*argv[]){
     width=params[2];
     stateSpace lensSpace=lens->getObjectStateSpace();
     lens->defWorkingStateSpace(lensSpace);
-    state lens_state(&lensSpace,valarray<double>({q,L}));
+    state lens_state(&lensSpace,valarray<double>({q,L,0}));
     lens->setState(lens_state);
     double x0=lens->getCenter(mm_center).x;
     cout<<"cent="<<mm_center<<" x0-xcm="<<x0+mm_d0x<<" xcm="<<lens->getCenter().x<<endl;
@@ -490,6 +490,7 @@ void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &
   signal.getWindow(s, LLp, URp, tstart, tend, cent);  
   cout<<"dump mag map: LL=("<<LLp.x<<","<<LLp.y<<") UR=("<<URp.x<<","<<URp.y<<")"<<endl;
   GLens *lens=signal.clone_lens(s);
+  out.precision(13);
   cout<<"lens="<<lens->print_info();
   if(output_nlens)lens->verboseWrite();
   lens->writeMagMap(out, LLp, URp, nsamples);

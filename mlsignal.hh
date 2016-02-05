@@ -168,7 +168,7 @@ public:
     double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
     get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
     worklens=lens->clone();
-    state lens_state(&lensSpace,valarray<double>({q,L}));
+    state lens_state(&lensSpace,valarray<double>({q,L,0}));
     worklens->setState(lens_state);
     return worklens;
   };
