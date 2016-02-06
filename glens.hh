@@ -89,13 +89,12 @@ public:
   Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tmax(0){
     //cout<<"Trajectory({"<<pos0.x<<","<<pos0.y<<"},{"<<vel0.x<<","<<vel0.y<<"})"<<endl;
   };
+  Trajectory():Trajectory(Point(0,0),Point(1,0)){};
   virtual ~Trajectory(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
   virtual Trajectory* clone(){
     return new Trajectory(*this);
   };
   virtual void setup(const Point &pos0, const Point &vel0){p0=pos0;v0=vel0;};
-  virtual void setup(const double tmax, const double tE, const double r0, const Point &center){};//2TRAJ: put something here
-  virtual void rotate(const double phi){};//2TRAJ: put something here
   ///Set the required eval times.  (Times are "phys" times, but "phys"=frame if tE=1,tmax=0)
   virtual void set_times(vector<double> times,double toff){this->times=times;ts=times[0];tf=times.back();have_times=true;this->toff=toff;};
   ///Return start time. (Times are "phys" times, but "phys"=frame if tE=1,tmax=0)
@@ -209,8 +208,12 @@ protected:
   ///For temporary association with a trajectory;
   const Trajectory *trajectory;
   ///Transform from trajectory frame to lens frame
-  virtual Point get_obs_pos(const Trajectory & traj,double time)const {return traj.get_obs_pos(time);};
-  virtual Point get_obs_vel(const Trajectory & traj,double time)const {return traj.get_obs_vel(time);};
+  virtual Point traj2lens(const Point tp)const {return tp;};
+  virtual Point traj2lensdot(const Point tp)const {return tp;};
+public:
+  virtual Point get_obs_pos(const Trajectory & traj,double time)const{return traj2lens(traj.get_obs_pos(time));};
+  virtual Point get_obs_vel(const Trajectory & traj,double time)const{return traj2lensdot(traj.get_obs_vel(time));};
+protected:
   ///static access for use with non-member GSL integration routines
   static int GSL_integration_func (double t, const double theta[], double thetadot[], void *instance);
   static int GSL_integration_func_vec (double t, const double theta[], double thetadot[], void *instance);
@@ -239,7 +242,7 @@ public:
       m+=abs(mag(p));//syntax is C++11
       if(debug)cout<<"    ("<<p.x<<","<<p.y<<") --> mg="<<m<<endl;
     }
-    if(plist.size()==0)return 1; //hack to more gracefully fail in trivial regions
+    if(plist.size()==0)return 1; // to more gracefully fail in trivial regions
     return m;
   };
   ///returns J=det(d(map(p))/dp)^-1, sets, j_ik = d(map(pi))/dpk
@@ -257,8 +260,10 @@ public:
   virtual void defWorkingStateSpace(const stateSpace &sp)=0;
   virtual stateSpace getObjectStateSpace()const=0;
   virtual void setState(const state &s)=0;
-  //Write a magnitude map to file.
+  //getCenter provides *lens frame* coordinates for the center.  //consider shifting
   virtual Point getCenter(int option=-2)const=0;
+  //Write a magnitude map to file.  
+  //Points in this function and its arguments are in *lens frame* coordinates //consider shifting
   virtual void writeMagMap(ostream &out, const Point &LLcorner,const Point &URcorner,int samples){//,bool output_nimg=false){
     double xc=getCenter().x;
     cout<<"GLens::writeMagMap from ("<<LLcorner.x+xc<<","<<LLcorner.y<<") to ("<<URcorner.x+xc<<","<<URcorner.y<<")"<<endl;
@@ -307,12 +312,19 @@ class GLensBinary : public GLens{
   double q;
   double L;
   double phi0,sin_phi0,cos_phi0;
+  Point cm;//center of mass in lens frame
   //mass fractions
   double nu;
   vector<Point> invmapAsaka(const Point &p);
   vector<Point> invmapWittMao(const Point &p);
   double rWide;
   int idx_q,idx_L,idx_phi0;
+  virtual Point traj2lens(const Point tp)const {
+    //Note: this looks like a -phi0 rotation here because phi0 is the rotation from the observer to lens *frame axis* and here we transform the ccordinates
+    return Point(cm.x+tp.x*cos_phi0-tp.y*sin_phi0,cm.y+tp.x*sin_phi0+tp.y*cos_phi0);
+  };
+  virtual Point traj2lensdot(const Point tp)const {
+    return Point(tp.x*cos_phi0+tp.y*sin_phi0,cm.y-tp.x*-sin_phi0+tp.y*cos_phi0);};
   ///test conditions to revert to perturbative inversion
   bool testWide(const Point & p,double scale)const{
     double rs=rWide*scale;
@@ -377,6 +389,7 @@ public:
     cos_phi0=cos(phi0);
     sin_phi0=sin(phi0);
     nu=1/(1+q);
+    cm=Point((q/(1.0+q)-0.5)*L,0);
   };
   ///This is a class-specific variant which (probably no longer needed)
   void setState(double q_, double L_){;
@@ -384,23 +397,26 @@ public:
     q=q_;
     L=L_;
     nu=1/(1+q);
+    cm=Point((q/(1.0+q)-0.5)*L,0);
   };
+
+  //getCenter provides *lens frame* coordinates for the center.  //consider shifting
   Point getCenter(int option=-2)const{
-    double x0=0,y0=0,width=0,wx,wy,xcm = (q/(1.0+q)-0.5)*L;
+    double x0=0,y0=0,width=0,wx,wy;
     //cout<<"q,L,option="<<q<<", "<<L<<", "<<option<<endl;
     //center on {rminus-CoM,CoM-CoM,rplus-CoM}, when cent={-1,0,1} otherwise CoM-nominalorigin;
     switch(option){
     case -1://minus lens rel to CoM
-      x0=-0.5*L-xcm;
+      x0=-0.5*L-cm.x;
       break;
     case 0:
       x0=0;
       break;
     case 1:
-      x0=0.5*L-xcm;//plus lens rel to CoM
+      x0=0.5*L-cm.x;//plus lens rel to CoM
       break;
     default:
-      x0=xcm;
+      x0=cm.x;
       //cout<<"case def"<<endl;
     }
     //cout<<" GLensBinary::getCenter("<<option<<"):Returning x0="<<x0<<endl;

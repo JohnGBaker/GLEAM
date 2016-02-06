@@ -52,7 +52,7 @@ int main(int argc, char*argv[]){
   bayes_sampler *s0=&mcmc;
   //Create the model components
   GLensBinary binarylens;
-  Trajectory linear_trajectory(Point(0,0), Point(1,0));
+  Trajectory linear_trajectory;
   Trajectory *traj=&linear_trajectory;
   GLens *lens=&binarylens;
   bool do_mock=false;
@@ -244,11 +244,12 @@ int main(int argc, char*argv[]){
     space.attach(trajspace);
   }
   
-  cout<<"&space="<<&space<<endl; 
+  //cout<<"&space="<<&space<<endl; 
   cout<<"Parameter space:\n"<<space.show()<<endl;
 
   //Handle separate magmap (only) option.
   if(do_magmap){//translate parameters
+    //Points referenced in this block refer to *lens frame* consider shifting
     double q,L,width;
     q=pow(10.0,params[0]);
     L=pow(10.0,params[1]);
@@ -394,7 +395,7 @@ int main(int argc, char*argv[]){
   //Set the proposal distribution 
   int Ninit;
   proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,prior,&halfwidths);
-  cout<<"Proposal distribution (at "<<prop<<") is:\n"<<prop->show()<<endl;
+  cout<<"Proposal distribution is:\n"<<prop->show()<<endl;
   //set up the mcmc sampler (assuming mcmc)
   mcmc.setup(Ninit,*like,*prior,*prop,output_precision);
 
@@ -484,6 +485,7 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
 };
 
 void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
+  //Points in the routine are in *lens frame* //consider shifting to Trajectory frame.
   ofstream out(outname);
   if(tend<=tstart)data.getDomainLimits(tstart,tend);
   Point LLp(0,0), URp(0,0);

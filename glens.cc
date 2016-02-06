@@ -20,6 +20,7 @@ const bool inv_test_mode=false;
 extern bool debugint;
 bool verbose=false;
 bool test_result=false;
+
 //
 // Interface to external Skowron&Gould fortran polynomial solver routine
 //

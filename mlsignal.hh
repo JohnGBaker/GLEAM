@@ -67,11 +67,14 @@ public:
     vector<int> indices;
 
     //We need to clone lens/traj before working with them so that each omp thread is working with different copies of the objects.
-    GLens *worklens=clone_lens(st);
+    GLens *worklens;
+    //GLens *worklens=clone_lens(st,phi);
+    Trajectory *worktraj;
+    worklens=clone_lens(st,phi);
+    worktraj=clone_trajectory(Point(0,0),r0,0);
     vector<double>tEs=times;
     for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ: wont need this    
 
-    Trajectory *worktraj=clone_trajectory(worklens->getCenter(),r0,phi);
     worktraj->set_times(tEs,0);//2TRAJ: change interface to work with physical times here
     worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
 
@@ -162,13 +165,13 @@ public:
   ///Get a new copy of the lens with appropriate parameters.
   ///This version still refers to GLensBinary parameters
   ///2TRAJLENS: This goes to GLens.
-  GLens *clone_lens(const state & s)const{
+  GLens *clone_lens(const state & s,double phi0=0)const{
     GLens *worklens;
     vector<double> params=s.get_params_vector();
     double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
     get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
     worklens=lens->clone();
-    state lens_state(&lensSpace,valarray<double>({q,L,0}));
+    state lens_state(&lensSpace,valarray<double>({q,L,phi0}));
     worklens->setState(lens_state);
     return worklens;
   };
@@ -286,111 +289,22 @@ private:
     double p0x=-r0*sin(phi), p0y=r0*cos(phi);
     double xcm  =  center.x;
     Trajectory *newtraj=traj->clone();
+    //cout<<"clone_trajectory setting p0=("<<p0x+xcm<<","<<p0y<<")"<<endl;
     newtraj->setup(Point(p0x+xcm,p0y), Point(vx,vy));
+    //cout<<"clone-traj offsetting by:"<<xcm<<endl;
     return newtraj;
   };
 
-  ///This goes to ml instantiation of bayes_signal type
-  ///Change this to a standard signal function get_signal_model dep on state, data etc, returns vector.
-  vector<double> old_model_lightcurve(const vector<double> &params,const vector<double>&times)const{
-    double result=0;
-    
-    double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ
-    //double I0,Fs;//2TRAJ: should look like this when we are done.
-    
-    get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//2TRAJ
-    //cout<<"model params:I0,Fs,q,L,r0,phi,tE,tmax="<<I0<<","<<Fs<<","<<q<<",\n"<<L<<","<<r0<<","<<phi<<","<<tE<<","<<tmax<<endl;
-    //Comment:
-    //The lightcurve model is centered at the midpoint between m1 and m2
-    //This seems like it would unnecessarily couple the parameters as
-    //the CoM should be the crucial reference point for an unresolved
-    //binary.  In the model frame, the CoM will be located at 
-    // xcm  = +/- L*( m1/(m1+m2) -1/2)  = +/- L*(m1-m2)/(m1+m2)/2
-    // xcm  = +/- L/2*(1-q)/(1+q)   : (+/- depends on the convention for q together with orientation of masses)
-    // we assume r0,phi relate to CM frame and transform below.                        
-    // we could without loss of generality assume q>=1 or q<=1, which is the same as flipping the x axis here.
-    // But the resulting hard q boundary can make trouble for MCMC., so it might be better to use a reflection 
-    // boundary in logq but consistency would require reflecting phi at the same time, and we haven't 
-    // implemented such a double reflection yet. Or maybe it doesn't matter...
-
-    //roughly translate intensity noise to a magnitude error level
-    //double noise_mag=I0-2.5*log10(noise_lev);
-    //if(do_additive_noise)noise_mag=noise_lev; 
-    vector<double> xtimes,model,modelmags;
-    vector<vector<Point> > thetas;
-    vector<int> indices;
-
-    //We need to clone lens/traj before so that each omp thread is working with different copies of the objects.
-    //we clone rather than copy so that we can allow derived classes.
-    GLens *worklens;
-    //worklens=lens->clone();
-    //GLensBinary *worklens;
-    //worklens=dynamic_cast<GLensBinary*>(lens->clone()); //HACK FIXME.  StateSpace based setup will obviate this cast
-    //This next lines are appropriate for GLensBinary.  The generalization of this requires a state-space transformation which pulls out q and L.
-    //Probably everything related to L/q should probably move into GLensBinary...
-    //state lens_state(&lensSpace,valarray<double>({q,L}));//2TRAJLENS:Replace with clone_lens
-    //worklens->setState(lens_state);//2TRAJLENS:Replace with clone_lens
-    //worklens->setState(q,L);
-    //cout<<"signal worklens:"<<worklens->print_info()<<endl;
-    //worklens=new GLensBinary(q,L);
-    //Trajectory traj(get_trajectory(q,L,r0,phi,tEs[0]));
-    //See fixme note above.  The same issue will keep us from generalizing Trajectory, until fixed.
-    //double offset=-tmax/tE;  //eliminating this changes (corrects) the meaning of t0 parameter  
-    vector<double>tEs=times;
-    for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ: wont need this    
-
-    Trajectory *worktraj;
-    //worktraj=clone_trajectory(q,L,r0,phi,offset);
-    worktraj=clone_trajectory(worklens->getCenter(),r0,phi);
-    //FIXME change the following to a generic Trajectory set up based on a stateSpace setup to support more parameters.
-    worktraj->set_times(tEs,0);//2TRAJ: change interface to work with physical times here
-    /*
-    if(debug_signal){
-      int prec=cout.precision();
-      cout.precision(20);
-      cout<<"mlsignal Times range from "<<worktraj->t_start()<<" to "<<worktraj->t_end()<<endl;
-      cout.precision(prec);
-      cout<<"mlsignal Traj:"<<worktraj->print_info()<<endl;}
-    */
-    //cout<<"worklens="<<worklens<<endl;
-    worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
-
-    bool burped=false;
-    for(int i=0;i<indices.size();i++ ){
-      double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
-      model.push_back(Ival);
-      /*
-      if(debug_signal){
-	int prec=cout.precision();
-	cout.precision(20);
-	Point p=worktraj->get_obs_pos(times[i]);
-	double xcm  =  (q/(1.0+q)-0.5)*L;
-	cout<<i<<" "<<times[i]<<" "<<xtimes[indices[i]]<<"\nq,L="<<q<<","<<L<<" ("<<p.x<<","<<p.y<<") "<<sqrt((p.x-xcm)*(p.x-xcm)+p.y*p.y);
-	cout.precision(prec);
-	cout<<"\n "<<Ival<<"\n "<<modelmags[indices[i]]<<" thetas="<<endl;
-	cout.precision(20);
-	for(int j=0;j<thetas[indices[i]].size();j++)cout<<"  ("<<thetas[indices[i]][j].x<<","<<thetas[indices[i]][j].y<<") "<<endl;
-	cout<<"]"<<endl;//debug
-	cout.precision(prec);
-      }
-      */
-      if(!isfinite(Ival)&&!burped){
-	cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" I0,Fs,noise_lev,q,L,r0,phi,tE,tmax: "<<I0<<" "<<Fs<<" "<<"??????"<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;//2TRAJ:use stateSpace for this message
-	burped=true;
-      }
-    }
-    delete worktraj, worklens;//2TRAJ: Need to check for virtual destructor.
-    return model;
-  };
-  
 public:
   //Here we always make a square window, big enough to fit the trajectory (over the specified domain) and the lens window
+  //Points referenced in this function refer to *lens frame* //consider shifting
   void getWindow(const state &s, Point &LLcorner,Point &URcorner, double tstart=0, double tend=0, int cent=-2){
     double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ: As in model_lightcurve
     get_model_params(s.get_params_vector(),I0,Fs,q,L,r0,phi,tE,tmax);//2TRAJ
     Point pstart(0,0),pend(0,0);
     double margin=0,width=0,x0,y0,wx,wy;
     GLens *worklens=clone_lens(s);
+    //GLens *worklens=clone_lens(s,phi);
     if(cent>-2){//signal to use r0 as map width and center on {rminus,CoM,rplus}, when cent={0,1,2}
       x0=worklens->getCenter(cent).x;
       width=r0;
@@ -398,7 +312,9 @@ public:
       pend=Point(x0+width/2,+width/2);
     } else {
       double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;//2TRAJ:Do we use this tstart/tend?  Probably need a Trajectory function for converting physical to lens-scaled time.
-      Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
+      //Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
+      Trajectory *tr=clone_trajectory(Point(0,0),r0,phi);
+      //Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,0);
       pstart=tr->get_obs_pos(tleft);
       pend=tr->get_obs_pos(tright);
       cout<<"making mag-map window between that fits points: ("<<pstart.x<<","<<pstart.y<<") and ("<<pend.x<<","<<pend.y<<")"<<endl;
@@ -440,9 +356,12 @@ public:
     ///double xcm  =  (q/(1.0+q)-0.5)*L;
     
     GLens *worklens=clone_lens(s);
+    //GLens *worklens=clone_lens(s,phi);
     cout<<"mlsignal:dump_trajectory: worklens="<<lens->print_info()<<endl;
     double xcm  =  worklens->getCenter().x;
-    Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
+    //Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
+    Trajectory *tr=clone_trajectory(Point(0,0),r0,phi);
+    //Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,0);
     vector<double>tEs=times;
     for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ:don't need    
     tr->set_times(tEs,0);//2TRAJ:change to physical

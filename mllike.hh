@@ -6,6 +6,7 @@
 
 using namespace std;
 
+
 #include "mlsignal.hh"
 #include "mldata.hh"
 #include <valarray>
@@ -65,7 +66,6 @@ public:
     valarray<double>params=s.get_params();
     //clock_t tstart=clock();
     double tstart=omp_get_wtime();
-
     double result=log_chi_squared(s);
     double post=result;
     if(prior)post+=prior->evaluate_log(s);
@@ -183,22 +183,11 @@ private:
     if(nsamples<0){
       times=data->getLabels();
     } else {
-      cout<<"mllike:oldWriteFine: ns,ts,te="<<nsamples<<","<<tstart<<","<<tend<<endl;
+      //cout<<"mllike:oldWriteFine: ns,ts,te="<<nsamples<<","<<tstart<<","<<tend<<endl;
       double delta_t=(tend-tstart)/(nsamples-1.0);
       for(int i=0;i<nsamples;i++){
 	double t=tstart+i*delta_t;
 	times.push_back(t);
-	//vector<double> loctimes(nsamples);
-	//double dt=(tend-tstart)/(nsamples-1.0)/tE;
-	//double t0=(tstart-tmax)/tE;
-	//cout<<"dt,t0 = "<<dt<<", "<<t0<<endl;
-	//for(int i=0;i<nsamples;i++)loctimes[i]=t0+dt*i;
-	//traj.set_times(loctimes,0);
-	/// ts = ( t - tmax )/tE
-	///    = ( tstart + i*delta_t -tmax ) / tE
-	///    = ( t0*tE + i*dt*tE )/tE
-	///    = t0 + i*dt = loctimes[i]
-
       }
     }
     //double tpk=getPeakTime();
@@ -212,23 +201,6 @@ private:
     if(do_additive_noise)noise_mag=noise_lev;
     //endhack
     
-    /*
-    //Trajectory traj(get_trajectory(q,L,r0,phi,0*tEs[0]));
-    Trajectory traj(get_trajectory(q,L,r0,phi,tEs[0]));
-
-    if(nsamples<1){//by default use the data sample times.
-      traj.set_times(tEs,0);
-      //cout<<"tEs0,tPeak,tPeak(orig) = "<<tEs[0]<<", "<<getPeakTime()<<", "<<getPeakTime(true)<<endl;
-    } else {       //otherwise we use the specified times
-      vector<double> loctimes(nsamples);
-      double dt=(tend-tstart)/(nsamples-1.0)/tE;
-      double t0=(tstart-tmax)/tE;
-      //cout<<"dt,t0 = "<<dt<<", "<<t0<<endl;
-      for(int i=0;i<nsamples;i++)loctimes[i]=t0+dt*i;
-      traj.set_times(loctimes,0);
-    }
-    */
-
     I0=st.get_param(idx_I0);
     vector<double> model=signal->get_model_signal(transformSignalState(st),times);
     vector<double> dmags=data->getDeltaValues();
