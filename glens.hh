@@ -209,6 +209,7 @@ protected:
   const Trajectory *trajectory;
   ///Transform from trajectory frame to lens frame
   virtual Point traj2lens(const Point tp)const {return tp;};
+  virtual Point lens2traj(const Point tp)const {return tp;};
   virtual Point traj2lensdot(const Point tp)const {return tp;};
 public:
   virtual Point get_obs_pos(const Trajectory & traj,double time)const{return traj2lens(traj.get_obs_pos(time));};
@@ -263,10 +264,9 @@ public:
   //getCenter provides *lens frame* coordinates for the center.  //consider shifting
   virtual Point getCenter(int option=-2)const=0;
   //Write a magnitude map to file.  
-  //Points in this function and its arguments are in *lens frame* coordinates //consider shifting
+  //Points in this function and its arguments are in *trajectory frame* coordinates 
   virtual void writeMagMap(ostream &out, const Point &LLcorner,const Point &URcorner,int samples){//,bool output_nimg=false){
-    double xc=getCenter().x;
-    cout<<"GLens::writeMagMap from ("<<LLcorner.x+xc<<","<<LLcorner.y<<") to ("<<URcorner.x+xc<<","<<URcorner.y<<")"<<endl;
+    cout<<"GLens::writeMagMap from ("<<LLcorner.x<<","<<LLcorner.y<<") to ("<<URcorner.x<<","<<URcorner.y<<")"<<endl;
     double dx=(URcorner.x-LLcorner.x)/(samples-1);    
     double dy=(URcorner.y-LLcorner.y)/(samples-1);    
     //cout<<"mag-map ranges from: ("<<x0<<","<<y0<<") to ("<<x0+width<<","<<y0+width<<") stepping by: "<<dx<<endl;
@@ -274,16 +274,17 @@ public:
     ios_base::fmtflags flags=out.flags();
     //cout<<"writeMagMap:output_precision="<<output_precision<<endl;
     double ten2prec=pow(10,output_precision-2);
-    out<<"#x-xc  y  magnification"<<endl;
+    out<<"#x  y  magnification"<<endl;
     for(double y=LLcorner.y;y<=URcorner.y;y+=dy){
-      Trajectory traj(Point(LLcorner.x+xc,y), Point(1,0), URcorner.x-LLcorner.x, dx);
+      //Trajectory traj(Point(LLcorner.x+xc,y), Point(1,0), URcorner.x-LLcorner.x, dx);
+      Trajectory traj(Point(LLcorner.x,y), Point(1,0), URcorner.x-LLcorner.x, dx);
       vector<int> indices;
       vector<double> times,mags;
       vector<vector<Point> >thetas;
       compute_trajectory(traj,times,thetas,indices,mags);//2TRAJ:Check that the new interface doesn't break this.
       for(int i : indices){
 	//Point b=traj.get_obs_pos(times[i]);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords
-	Point b=get_obs_pos(traj,times[i]);
+	Point b=traj.get_obs_pos(times[i]);//we want the result in traj frame, to match the dump_trajectory output
 	double mtruc=floor(mags[i]*ten2prec)/ten2prec;
 	//out.precision(output_precision);
 	out<<b.x<<" "<<b.y<<" "<<setiosflags(ios::scientific)<<mtruc<<resetiosflags(flags);
@@ -321,10 +322,11 @@ class GLensBinary : public GLens{
   int idx_q,idx_L,idx_phi0;
   virtual Point traj2lens(const Point tp)const {
     //Note: this looks like a -phi0 rotation here because phi0 is the rotation from the observer to lens *frame axis* and here we transform the ccordinates
-    return Point(cm.x+tp.x*cos_phi0-tp.y*sin_phi0,cm.y+tp.x*sin_phi0+tp.y*cos_phi0);
-  };
+    return Point(cm.x+tp.x*cos_phi0-tp.y*sin_phi0,cm.y+tp.x*sin_phi0+tp.y*cos_phi0);};
+  virtual Point lens2traj(const Point tp)const {
+    return Point((tp.x-cm.x)*cos_phi0+(tp.y-cm.y)*sin_phi0,-(tp.x-cm.x)*sin_phi0+(tp.y-cm.y)*cos_phi0);};
   virtual Point traj2lensdot(const Point tp)const {
-    return Point(tp.x*cos_phi0+tp.y*sin_phi0,cm.y-tp.x*-sin_phi0+tp.y*cos_phi0);};
+    return Point(tp.x*cos_phi0-tp.y*sin_phi0,cm.y+tp.x*sin_phi0+tp.y*cos_phi0);};
   ///test conditions to revert to perturbative inversion
   bool testWide(const Point & p,double scale)const{
     double rs=rWide*scale;
@@ -400,20 +402,20 @@ public:
     cm=Point((q/(1.0+q)-0.5)*L,0);
   };
 
-  //getCenter provides *lens frame* coordinates for the center.  //consider shifting
+  //getCenter provides *trajectory frame* coordinates for the center.  //be consistent with traj2lens
   Point getCenter(int option=-2)const{
     double x0=0,y0=0,width=0,wx,wy;
     //cout<<"q,L,option="<<q<<", "<<L<<", "<<option<<endl;
     //center on {rminus-CoM,CoM-CoM,rplus-CoM}, when cent={-1,0,1} otherwise CoM-nominalorigin;
     switch(option){
     case -1://minus lens rel to CoM
-      x0=-0.5*L-cm.x;
+      x0=-0.5*L;
       break;
     case 0:
       x0=0;
       break;
     case 1:
-      x0=0.5*L-cm.x;//plus lens rel to CoM
+      x0=0.5*L;//plus lens rel to CoM
       break;
     default:
       x0=cm.x;
@@ -421,7 +423,7 @@ public:
     }
     //cout<<" GLensBinary::getCenter("<<option<<"):Returning x0="<<x0<<endl;
     //This returns the result in lens frame
-    return Point(x0,0);
+    return lens2traj(Point(x0,0));
   };
 };
 

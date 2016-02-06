@@ -258,10 +258,10 @@ int main(int argc, char*argv[]){
     lens->defWorkingStateSpace(lensSpace);
     state lens_state(&lensSpace,valarray<double>({q,L,0}));
     lens->setState(lens_state);
-    double x0=lens->getCenter(mm_center).x;
-    cout<<"cent="<<mm_center<<" x0-xcm="<<x0+mm_d0x<<" xcm="<<lens->getCenter().x<<endl;
-    Point pstart(x0+mm_d0x-width/2,mm_d0y-width/2);
-    Point pend(x0+mm_d0x+width/2,mm_d0y+width/2);
+    Point x0=lens->getCenter(mm_center);
+    cout<<"cent="<<mm_center<<" = ("<<x0.x+mm_d0x<<","<<x0.y+mm_d0y<<" xcm="<<lens->getCenter().x<<endl;
+    Point pstart(x0.x+mm_d0x-width/2,x0.y+mm_d0y-width/2);
+    Point pend(x0.x+mm_d0x+width/2,x0.y+mm_d0y+width/2);
     {
       ss.str("");ss<<outname<<"_mmap.dat";
       ofstream out(ss.str());

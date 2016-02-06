@@ -34,6 +34,7 @@ set cblabel "magnification"
 set cbrange [*:10] noreverse nowriteback
 #set palette rgbformulae -7, 2, -7
 set palette rgbformulae -21, -22, -23
+set size square
 #plot  basename."_mmap.dat" using 1:2:(log10($3)-1) with image
 plot  basename."_mmap.dat" using 1:2:($3) with image, trajname u 3:4  lt 1 pointsize 0.1
 #plot  basename."_mmap.dat" using 1:2:($3) with image, basename."_d_traj.dat" u 3:4  lt 0 pointsize 0.1

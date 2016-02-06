@@ -14,20 +14,6 @@
 using namespace std;
 extern bool debug_signal;
 
-//plan:
-//Probably add an "astro_signal" class, more general from photometry  than can simultaneously be applied to phtometry and astrometry signals...
-//Photometry should reference that...  Right now GLens is playing that role...
-
-//Working on...
-// Need to abstract the model realization from the MLdata model.
-// Need a new MLmodel class which can produce lightcurve data etc
-// from a vector of params.
-// Then the MLdata class will produce a likelihood from a set of model data together with
-// a model.  The subtlety of this is that the model may need to include some instrumental 
-// parameters.
-// An ideal possibility might be to allow combining models with separately defined signal
-// and instrument components.  There may be a need to pull params by name,etc... need to
-// think more.  Maybe there is a simpler solution...
 
 ///Base class for ml_photometry_signal
 ///
@@ -45,15 +31,17 @@ class ML_photometry_signal : public bayes_signal{
 ;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
+    idx_I0=idx_Fs=-1;
     do_remap_r0=false;//2TRAJ:move to Trajectory
-    do_remap_q=false;//2TRAJLENS:move to GLensBinary
-    do_log_tE=false;//2TRAJ:move to Trajectory
     r0_ref=0;//2TRAJ:move to Trajectory
+    idx_r0=idx_tE=idx_tmax=-1; //2TRAJ:clean-up
+    do_log_tE=false;//2TRAJ:move to Trajectory
+    do_remap_q=false;//2TRAJLENS:move to GLensBinary
     q_ref=0;//2TRAJLENS:move to GLensBinary
-    idx_I0=idx_Fs=idx_q=idx_L=idx_r0=idx_phi=idx_tE=idx_tmax=-1; //2TRAJ:clean-up
+    idx_q=idx_L=idx_phi=-1;//2TRAJLENS:move to GLensBinary
   };
-  ///From bayes_signal
-  //
+
+  //Produce the signal model
   vector<double> get_model_signal(const state &st, const vector<double> &times)const{
     checkWorkingStateSpace();
     vector<double>params=st.get_params_vector();
@@ -70,8 +58,8 @@ public:
     GLens *worklens;
     //GLens *worklens=clone_lens(st,phi);
     Trajectory *worktraj;
-    worklens=clone_lens(st,phi);
-    worktraj=clone_trajectory(Point(0,0),r0,0);
+    worklens=clone_lens(st);
+    worktraj=clone_trajectory(r0);
     vector<double>tEs=times;
     for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ: wont need this    
 
@@ -165,11 +153,11 @@ public:
   ///Get a new copy of the lens with appropriate parameters.
   ///This version still refers to GLensBinary parameters
   ///2TRAJLENS: This goes to GLens.
-  GLens *clone_lens(const state & s,double phi0=0)const{
+  GLens *clone_lens(const state & s)const{
     GLens *worklens;
     vector<double> params=s.get_params_vector();
-    double I0,Fs,q,L,r0,phi,tE,tmax;//FIXME
-    get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//FIXME
+    double I0,Fs,q,L,r0,phi0,tE,tmax;//FIXME
+    get_model_params(params, I0,Fs,q,L,r0,phi0,tE,tmax);//FIXME
     worklens=lens->clone();
     state lens_state(&lensSpace,valarray<double>({q,L,phi0}));
     worklens->setState(lens_state);
@@ -283,15 +271,9 @@ private:
 
   ///2TRAJ: Ultimately this goes into the Trajectory class as a general clone and stateSpace setting...
   ///call as traj=cone_trajectory(lens->getCenter,r0,phi)
-  Trajectory *clone_trajectory(const Point &center,double r0,double phi)const{
-    //compute reference position
-    double vx=cos(phi), vy=sin(phi);
-    double p0x=-r0*sin(phi), p0y=r0*cos(phi);
-    double xcm  =  center.x;
+  Trajectory *clone_trajectory(double r0)const{
     Trajectory *newtraj=traj->clone();
-    //cout<<"clone_trajectory setting p0=("<<p0x+xcm<<","<<p0y<<")"<<endl;
-    newtraj->setup(Point(p0x+xcm,p0y), Point(vx,vy));
-    //cout<<"clone-traj offsetting by:"<<xcm<<endl;
+    newtraj->setup(Point(0,r0), Point(1,0));
     return newtraj;
   };
 
@@ -304,7 +286,6 @@ public:
     Point pstart(0,0),pend(0,0);
     double margin=0,width=0,x0,y0,wx,wy;
     GLens *worklens=clone_lens(s);
-    //GLens *worklens=clone_lens(s,phi);
     if(cent>-2){//signal to use r0 as map width and center on {rminus,CoM,rplus}, when cent={0,1,2}
       x0=worklens->getCenter(cent).x;
       width=r0;
@@ -312,9 +293,7 @@ public:
       pend=Point(x0+width/2,+width/2);
     } else {
       double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;//2TRAJ:Do we use this tstart/tend?  Probably need a Trajectory function for converting physical to lens-scaled time.
-      //Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
-      Trajectory *tr=clone_trajectory(Point(0,0),r0,phi);
-      //Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,0);
+      Trajectory *tr=clone_trajectory(r0);
       pstart=tr->get_obs_pos(tleft);
       pend=tr->get_obs_pos(tright);
       cout<<"making mag-map window between that fits points: ("<<pstart.x<<","<<pstart.y<<") and ("<<pend.x<<","<<pend.y<<")"<<endl;
@@ -347,21 +326,10 @@ public:
     //Get square bounding box size
     cout<<"Model params: I0  Fs  q  L  r0  phi tE tmax\n"
 	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;//2TRAJ: Use stateSpace or cut
-    //cout<<"making traj("<<q<<" "<<L<<" "<<r0<<" "<<phi<<")"<<endl;
-    //cout<<" vx="<<cos(phi)<<", vy="<<sin(phi)<<endl;
-    //cout<<" p0x="<<-r0*sin(phi)<<", p0y="<<r0*cos(phi)<<endl;
-    //cout<<" xcm  =  "<<(q/(1.0+q)-0.5)*L<<endl;
-    //double vx=cos(phi), vy=sin(phi);
-    //double p0x=-r0*sin(phi), p0y=r0*cos(phi);
-    ///double xcm  =  (q/(1.0+q)-0.5)*L;
-    
+
     GLens *worklens=clone_lens(s);
-    //GLens *worklens=clone_lens(s,phi);
-    cout<<"mlsignal:dump_trajectory: worklens="<<lens->print_info()<<endl;
     double xcm  =  worklens->getCenter().x;
-    //Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,phi);
-    Trajectory *tr=clone_trajectory(Point(0,0),r0,phi);
-    //Trajectory *tr=clone_trajectory(worklens->getCenter(),r0,0);
+    Trajectory *tr=clone_trajectory(r0);
     vector<double>tEs=times;
     for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ:don't need    
     tr->set_times(tEs,0);//2TRAJ:change to physical
@@ -370,7 +338,7 @@ public:
     out<<"#"<<s.get_string()<<endl;
     out<<"#1.t   2. t_rel  3.x   4.y "<<endl;
     for(auto t:tEs){//2TRAJ: this will have to be physical times
-      Point p=tr->get_obs_pos(t);//converted to lens-scaled time for this?
+      Point p=tr->get_obs_pos(t);//converted to lens-scaled time for this?  //Note: here p comes out in traj frame.
       //out<<t+tref<<" "<<t<<" "<<p.x-xcm<<" "<<p.y<<endl;
       out<<t+tref<<" "<<t<<" "<<p.x<<" "<<p.y<<endl;
     }
