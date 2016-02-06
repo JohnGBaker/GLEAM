@@ -130,7 +130,7 @@ int main(int argc, char*argv[]){
   bool parseBAD=opt.parse(argc,argv);
   if(parseBAD||(argc != Nlead_args+1 && argc!=Nlead_args+1+Npar && argc!=5)) {
     cout << "You gave " << argc-1 << " arguments. Expecting "<<Nlead_args<<" or "<<Nlead_args+Npar<<" or 4."<< endl;
-    cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ I0 Fs Fn logq logL r0 phi tE tpass ]" << endl;
+    cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ I0 Fs Fn logq logL r0 phi0 tE tpass ]" << endl;
     cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
     cout <<opt.print_usage()<<endl;
     return 1;
@@ -219,7 +219,7 @@ int main(int argc, char*argv[]){
   //Set up the parameter space
   stateSpace space(Npar);
   stateSpace signalspace(3),lensspace(2),trajspace(4);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
-  string names[]={"I0","Fs","Fn","logq","logL","r0","phi","tE","tpass"};
+  string names[]={"I0","Fs","Fn","logq","logL","r0","phi0","tE","tpass"};
   if(use_additive_noise)names[2]="Mn";
   if(use_remapped_r0)names[5]="s(r0)";
   if(use_remapped_q)names[3]="s(1+q)";    
@@ -491,7 +491,8 @@ void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &
   Point LLp(0,0), URp(0,0);
   signal.getWindow(s, LLp, URp, tstart, tend, cent);  
   cout<<"dump mag map: LL=("<<LLp.x<<","<<LLp.y<<") UR=("<<URp.x<<","<<URp.y<<")"<<endl;
-  GLens *lens=signal.clone_lens(s);
+  GLens *lens=signal.clone_lens();
+  lens->setState(s);
   out.precision(13);
   cout<<"lens="<<lens->print_info();
   if(output_nlens)lens->verboseWrite();

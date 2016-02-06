@@ -229,13 +229,13 @@ protected:
 public:
   virtual ~GLens(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
   GLens(){have_integrate=false;do_verbose_write=false;};
-  virtual GLens* clone()=0;
+  virtual GLens* clone(){return new GLens();};
   ///Lens map: map returns a point in the observer plane from a point in the lens plane.
-  virtual Point map(const Point &p)=0;
+  virtual Point map(const Point &p){cout<<"GLens::map: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};
   ///Inverse sens map: invmap returns a set of points in the lens plane which map to some point in the observer plane.  Generally multivalued;
-  virtual vector<Point> invmap(const Point &p)=0;
+  virtual vector<Point> invmap(const Point &p){cout<<"GLens::invmap: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};
   ///Given a point in the lens plane, return the magnitude
-  virtual double mag(const Point &p)=0;
+  virtual double mag(const Point &p){cout<<"GLens::mag: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};
   ///Given a set of points in the lens plane, return the combined magnitude
   virtual double mag(const vector<Point> &plist){
     double m=0;
@@ -247,22 +247,31 @@ public:
     return m;
   };
   ///returns J=det(d(map(p))/dp)^-1, sets, j_ik = d(map(pi))/dpk
-  virtual double jac(const Point &p,double &j00,double &j01,double &j10,double &j11)=0;
+  virtual double jac(const Point &p,double &j00,double &j01,double &j10,double &j11){cout<<"GLens::jac: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};
   ///returns J=det(d(map(p))/dp))^-1, sets, j_ik = (d(map(pi))/dpk)^-1
-  virtual double invjac(const Point &p,double &j00,double &j01,double &j10,double &j11)=0;
+  virtual double invjac(const Point &p,double &j00,double &j01,double &j10,double &j11){cout<<"GLens::invjac: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};;
   ///compute images and magnitudes along some trajectory
   void compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<int> &index_series,vector<double>&mag_series,bool integrate=false);
   void set_integrate(bool integrate_or_not){use_integrate=integrate_or_not;have_integrate=true;}
   //For the Optioned interface:
   virtual void addOptions(Options &opt,const string &prefix="");
+  void static addStaticOptions(Options &opt){
+    GLens l;
+    l.addTypeOptions(opt);
+  };
+  void addTypeOptions(Options &opt){
+    Optioned::addOptions(opt,"");
+    addOption("binary_lens","Apply a binary lens model.");
+  };  
   virtual void setup();
-  virtual string print_info()const=0;
+  virtual string print_info()const{ostringstream s;s<<"GLens()"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
   //For stateSpaceInterface
-  virtual void defWorkingStateSpace(const stateSpace &sp)=0;
-  virtual stateSpace getObjectStateSpace()const=0;
-  virtual void setState(const state &s)=0;
-  //getCenter provides *lens frame* coordinates for the center.  //consider shifting
-  virtual Point getCenter(int option=-2)const=0;
+  virtual void defWorkingStateSpace(const stateSpace &sp){haveWorkingStateSpace();};
+  virtual stateSpace getObjectStateSpace()const{return stateSpace(0);};
+  virtual void setState(const state &s){checkWorkingStateSpace();};
+;
+  //getCenter provides *trajectory frame* coordinates for the center. Except for with -2, which give the lens frame CM. 
+  virtual Point getCenter(int option=-2)const{return Point(0,0);};
   //Write a magnitude map to file.  
   //Points in this function and its arguments are in *trajectory frame* coordinates 
   virtual void writeMagMap(ostream &out, const Point &LLcorner,const Point &URcorner,int samples){//,bool output_nimg=false){
@@ -319,6 +328,9 @@ class GLensBinary : public GLens{
   vector<Point> invmapAsaka(const Point &p);
   vector<Point> invmapWittMao(const Point &p);
   double rWide;
+  //parameter handling
+  double q_ref;
+  bool do_remap_q;
   int idx_q,idx_L,idx_phi0;
   virtual Point traj2lens(const Point tp)const {
     //Note: this looks like a -phi0 rotation here because phi0 is the rotation from the observer to lens *frame axis* and here we transform the ccordinates
@@ -341,6 +353,7 @@ public:
   virtual GLensBinary* clone(){
     return new GLensBinary(*this);
   };
+  virtual void setup();
   Point map(const Point &p);
   //For the GLens interface:
   vector<Point> invmap(const Point &p);
@@ -353,13 +366,6 @@ public:
   double get_q(){return q;};
   double get_L(){return L;};
   double set_WideBinaryR(double r){rWide=r;};
-  /*
-  void setup(double q_, double L_){
-    GLens::setup();
-    q=q_;
-    L=L_;
-    nu=1/(1+q);
-    }*/
   virtual string print_info()const{ostringstream s;s<<"GLensBinary(q="<<q<<",L="<<L<<")"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
   //virtual string print_info()const{ostringstream s;s<<"GLensBinary(q="<<q<<",L="<<L<<")"<<endl;return s.str();};
 
@@ -367,8 +373,9 @@ public:
   ///
   void defWorkingStateSpace(const stateSpace &sp){
     checkSetup();
-    idx_q=sp.requireIndex("q");
-    idx_L=sp.requireIndex("L");
+    if(do_remap_q)idx_q=sp.requireIndex("s(1+q)");
+    else idx_q=sp.requireIndex("logq");
+    idx_L=sp.requireIndex("logL");
     idx_phi0=sp.requireIndex("phi0");
     haveWorkingStateSpace();
   };  
@@ -377,17 +384,32 @@ public:
   stateSpace getObjectStateSpace()const{
     checkSetup();//Call this assert whenever we need options to have been processed.
     stateSpace space(3);
-    string names[]={"q","L","phi0"};
+    string names[]={"logq","logL","phi0"};
+    if(do_remap_q)names[3]="s(1+q)";
+    space.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi0.
     space.set_names(names);  
     return space;
+  };
+  virtual void addOptions(Options &opt,const string &prefix=""){
+    GLens::addOptions(opt,prefix);
+    addOption("remap_q","Use remapped mass-ratio coordinate.");//2TRAJLENS:move to GLensBinary
+    addOption("q0","Prior max in q (with q>1) with remapped q0. Default=1e5/","1e5");//2TRAJLENS:move to GLensBinary
   };
   ///Set state parameters
   ///
   void setState(const state &st){;
+    //  logL separation (in log10 Einstein units)
+    //  q mass ratio
+    //  alignment angle phi0, (binary axis rel to trajectory direction) at closest approach point
     checkWorkingStateSpace();
-    q=st.get_param(idx_q);
-    L=st.get_param(idx_L);
+    double f_of_q=st.get_param(idx_q);//either log_q or remapped q
+    double logL=st.get_param(idx_L);
     phi0=st.get_param(idx_phi0);
+
+    L=pow(10.0,logL);
+    //(See discussion in remap_q() above.) otherwise sofq==ln_q.
+    if(do_remap_q)q=-1.0+(q_ref+1.0)/sqrt(1.0/f_of_q-1.0);
+    else q=pow(10.0,f_of_q);
     cos_phi0=cos(phi0);
     sin_phi0=sin(phi0);
     nu=1/(1+q);
@@ -425,6 +447,32 @@ public:
     //This returns the result in lens frame
     return lens2traj(Point(x0,0));
   };
+  
+protected:
+  
+  ///Reparameterize mass-ratio to a new variable which has a finite range.
+  ///Allowing arbitrary mass ratio and separation, essentially all stars are some kind of multiple object system with
+  ///either a comparable-mass or minor leading partner.  We make the simplifying assumption that subleading partners
+  ///are irrelevant.  In that case we can ask "What kind of binary is it?" about any system.  If the answer is that
+  ///we can't rule out a very small/distant partner, then it is a non-binary microlensing event in the usual sense.
+  ///We shouldn't need explicit model comparison as long as our prior on the mass ratio give appropriate expectation
+  ///for small versus large mass partners. A plausible expectation may be that there is roughly equal mass expectation
+  ///at all secondary masses out to some cutoff beyond which the expectation decays for an integrable result.
+  ///In terms of mass ratio, defining q>1, then with similar reasoning, we propose a PDF which is linear in 
+  ///(q+1)^{-1} up to some cutoff (default 1e7) beyond which the PDF decreases.  For this we use the same simple 
+  ///function used in the r0 scaling, s=(1-CDF)=c1/(1+(q0+1)^2/(q+1)^2). To make "CDF" a CDF the c1 needs to be
+  ///chosen to get 0 at q=1, yielding c1=(1+(q0+1)^2/4), though this constant is irrelevant for us.
+  ///If we allow values of q<1, (which are physically equivalent to 1/q>1 values, with a change of phi) then the
+  ///normalization is different, and there is some slight enhancement near q~1, but the general model is still
+  ///probably a reasonable prior
+  ///Assuming we are interested in mass ratios out to the Earth-Sun ratio q~3e5, we can set q0~1e7 to peak at an 
+  ///uninteresting value which we would interpret as effectively single-lens.
+  //This goes to ml signal instantiation processOptions
+  void remap_q(double q_ref_val=1e7){//2TRAJLENS:move to GLensBinary (or cut but preserve comment)
+    do_remap_q=true;
+    q_ref=q_ref_val;
+  };
+
 };
 
 #endif

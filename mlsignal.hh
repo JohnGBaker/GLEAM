@@ -22,12 +22,12 @@ extern bool debug_signal;
 ///There are several options for controlling/modifying the form of the parameters
 ///applied in constructing the model, with some rough motivations.
 class ML_photometry_signal : public bayes_signal{
-  double r0_ref,q_ref;//2TRAJLENS:move to GLensBinary/Trajectory
-  bool do_remap_r0, do_remap_q, do_log_tE;//2TRAJLENS:move to GLensBinary/Trajectory
+  bool do_remap_r0, do_log_tE;//2TRAJ:move to Trajectory
   Trajectory *traj;
   GLens *lens;
-  int idx_I0, idx_Fs, idx_q, idx_L, idx_r0, idx_phi, idx_tE, idx_tmax; //2TRAJLENS:move to GLensBinary/Traj
-  stateSpace lensSpace;//2TRAJLENS:no need?
+  double r0_ref;
+  int idx_I0, idx_Fs;
+  int idx_r0, idx_tE, idx_tmax; 
 ;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
@@ -36,9 +36,6 @@ public:
     r0_ref=0;//2TRAJ:move to Trajectory
     idx_r0=idx_tE=idx_tmax=-1; //2TRAJ:clean-up
     do_log_tE=false;//2TRAJ:move to Trajectory
-    do_remap_q=false;//2TRAJLENS:move to GLensBinary
-    q_ref=0;//2TRAJLENS:move to GLensBinary
-    idx_q=idx_L=idx_phi=-1;//2TRAJLENS:move to GLensBinary
   };
 
   //Produce the signal model
@@ -47,19 +44,18 @@ public:
     vector<double>params=st.get_params_vector();
     //return model_lightcurve(params,times);
     double result=0;
-    double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ
+    double I0,Fs,r0,tE,tmax;//2TRAJ
     //double I0,Fs;//2TRAJ: should look like this when we are done.
-    get_model_params(params, I0,Fs,q,L,r0,phi,tE,tmax);//2TRAJ mostly eliminate this.
+    get_model_params(params, I0,Fs,r0,tE,tmax);//2TRAJ mostly eliminate this.
     vector<double> xtimes,model,modelmags;
     vector<vector<Point> > thetas;
     vector<int> indices;
 
     //We need to clone lens/traj before working with them so that each omp thread is working with different copies of the objects.
-    GLens *worklens;
-    //GLens *worklens=clone_lens(st,phi);
-    Trajectory *worktraj;
-    worklens=clone_lens(st);
-    worktraj=clone_trajectory(r0);
+    GLens *worklens=lens->clone();
+    worklens->setState(st);
+
+    Trajectory *worktraj=clone_trajectory(r0);
     vector<double>tEs=times;
     for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ: wont need this    
 
@@ -71,7 +67,7 @@ public:
       double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
       model.push_back(Ival);
       if(!isfinite(Ival)&&!burped){
-	cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" I0,Fs,noise_lev,q,L,r0,phi,tE,tmax: "<<I0<<" "<<Fs<<" "<<"??????"<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;//2TRAJ:use stateSpace for this message
+	cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
 	burped=true;
       }
     }
@@ -91,20 +87,16 @@ public:
     //if(use_log_tE)names[7]="log(tE)";
     idx_I0=sp.requireIndex("I0");
     idx_Fs=sp.requireIndex("Fs");
-    if(do_remap_q)idx_q=sp.requireIndex("s(1+q)");//2TRAJLENS:move to GLensBinary
-    else idx_q=sp.requireIndex("logq");//2TRAJLENS:move to GLensBinary
-    idx_L=sp.requireIndex("logL");//2TRAJLENS:move to GLensBinary
-    if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");//2TRAJLENS:move to Trajectory
-    else idx_r0=sp.requireIndex("r0");//2TRAJLENS:move to Trajectory
-    idx_phi=sp.requireIndex("phi");//2TRAJLENS:move to GLensBinary
-    if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");//2TRAJLENS:move to Trajectory
-    else idx_tE=sp.requireIndex("tE");//2TRAJLENS:move to Trajectory
-    idx_tmax=sp.requireIndex("tpass");//2TRAJLENS:move to Trajectory
+    if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");//2TRAJ:move to Trajectory
+    else idx_r0=sp.requireIndex("r0");//2TRAJ:move to Trajectory
+    if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");//2TRAJ:move to Trajectory
+    else idx_tE=sp.requireIndex("tE");//2TRAJ:move to Trajectory
+    idx_tmax=sp.requireIndex("tpass");//2TRAJ:move to Trajectory
     haveWorkingStateSpace();
     ///Eventually want to transmit these down to constituent objects:
     ///FIXME This is a temporary version.  Should replace r0 and q rescalings with a stateSpaceTransform...
-    lensSpace=lens->getObjectStateSpace();
-    lens->defWorkingStateSpace(lensSpace);
+    //lensSpace=lens->getObjectStateSpace();
+    lens->defWorkingStateSpace(sp);
   };
   
   ///Set up the output stateSpace for this object
@@ -112,17 +104,14 @@ public:
   ///This is just an initial draft.  To be utilized in later round of development.
   stateSpace getObjectStateSpace()const{
     checkSetup();//Call this assert whenever we need options to have been processed.
-    stateSpace space(9);
-    string names[]={"I0","Fs","Fn","logq","logL","r0","phi","tE","tpass"};//2TRAJLENS:clean-up
+    stateSpace space(6);
+    string names[]={"I0","Fs","Fn","r0","tE","tpass"};//2TRAJ:clean-up
     //if(use_additive_noise)names[2]="Mn";
     if(do_remap_r0)names[5]="s(r0)";//2TRAJ:move to Trajectory
-    if(do_remap_q)names[3]="s(1+q)";//2TRAJLENS:move to GLensBinary
     if(do_log_tE)names[7]="log(tE)";//2TRAJ:move to Trajectory
     space.set_names(names);  
-    space.set_bound(6,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.//2TRAJLENS:fix
-    ///Eventually want to draw some of these up from constituent objects:
-    ///eg space.add(lens.getObjectStateSpace())
-    ///or space.add(transform_to_lens.inverse(lens.getObjectStateSpace()))
+    space.attach(lens->getObjectStateSpace());
+    ///or space.attach(transform_to_lens.inverse(lens.getObjectStateSpace()))
     return space;
   };
 
@@ -132,8 +121,6 @@ public:
       addOption("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value.");//2TRAJ:move to Trajectory
       addOption("remap_r0","Use remapped r0 coordinate.");//2TRAJ:move to Trajectory
       addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");//2TRAJ:move to Trajectory
-      addOption("remap_q","Use remapped mass-ratio coordinate.");//2TRAJLENS:move to GLensBinary
-      addOption("q0","Prior max in q (with q>1) with remapped q0. Default=1e5/","1e5");//2TRAJLENS:move to GLensBinary
   };
   void setup(){
     if(optSet("remap_r0")){//2TRAJ:move to Trajectory
@@ -141,28 +128,9 @@ public:
       *optValue("remap_r0_ref_val")>>r0_ref_val;
       remap_r0(r0_ref_val);
     }
-    if(optSet("remap_q")){//2TRAJLENS:move to GLensBinary
-      double q0_val;
-      *optValue("q0")>>q0_val;
-      remap_q(q0_val);
-    }
     if(optSet("log_tE"))use_log_tE();//2TRAJ:move to Trajectory
     haveSetup();
   };    
-
-  ///Get a new copy of the lens with appropriate parameters.
-  ///This version still refers to GLensBinary parameters
-  ///2TRAJLENS: This goes to GLens.
-  GLens *clone_lens(const state & s)const{
-    GLens *worklens;
-    vector<double> params=s.get_params_vector();
-    double I0,Fs,q,L,r0,phi0,tE,tmax;//FIXME
-    get_model_params(params, I0,Fs,q,L,r0,phi0,tE,tmax);//FIXME
-    worklens=lens->clone();
-    state lens_state(&lensSpace,valarray<double>({q,L,phi0}));
-    worklens->setState(lens_state);
-    return worklens;
-  };
 
 private:
 
@@ -192,42 +160,18 @@ private:
     r0_ref=r0_ref_val;
   };
 
-  ///Reparameterize mass-ratio to a new variable which has a finite range.
-  ///Allowing arbitrary mass ratio and separation, essentially all stars are some kind of multiple object system with
-  ///either a comparable-mass or minor leading partner.  We make the simplifying assumption that subleading partners
-  ///are irrelevant.  In that case we can ask "What kind of binary is it?" about any system.  If the answer is that
-  ///we can't rule out a very small/distant partner, then it is a non-binary microlensing event in the usual sense.
-  ///We shouldn't need explicit model comparison as long as our prior on the mass ratio give appropriate expectation
-  ///for small versus large mass partners. A plausible expectation may be that there is roughly equal mass expectation
-  ///at all secondary masses out to some cutoff beyond which the expectation decays for an integrable result.
-  ///In terms of mass ratio, defining q>1, then with similar reasoning, we propose a PDF which is linear in 
-  ///(q+1)^{-1} up to some cutoff (default 1e7) beyond which the PDF decreases.  For this we use the same simple 
-  ///function used in the r0 scaling, s=(1-CDF)=c1/(1+(q0+1)^2/(q+1)^2). To make "CDF" a CDF the c1 needs to be
-  ///chosen to get 0 at q=1, yielding c1=(1+(q0+1)^2/4), though this constant is irrelevant for us.
-  ///If we allow values of q<1, (which are physically equivalent to 1/q>1 values, with a change of phi) then the
-  ///normalization is different, and there is some slight enhancement near q~1, but the general model is still
-  ///probably a reasonable prior
-  ///Assuming we are interested in mass ratios out to the Earth-Sun ratio q~3e5, we can set q0~1e7 to peak at an 
-  ///uninteresting value which we would interpret as effectively single-lens.
-  //This goes to ml signal instantiation processOptions
-  void remap_q(double q_ref_val=1e7){//2TRAJLENS:move to GLensBinary (or cut but preserve comment)
-    do_remap_q=true;
-    q_ref=q_ref_val;
-  };
-
   ///optionally set to use logarithmic tE variable.
   //This goes to ml signal instantiation processOptions
   void use_log_tE(){
     do_log_tE=true;
   }
 
-  ///This goes to ml instantiation of bayes_signal type
   ///2TRAJ: This is currently hard-coded with lens and trajectory parameters.  We want to be agnostic to those.
   // Here is our developing plan for addressing this:
-  // Trajectory will own (tmax,tE,r0,phi, and other new params)
+  // Trajectory will own (tmax,tE,r0 and other new params)
   // We will do conversions for rescaling these here, as needed, as with the GLens param q and Fs.
   //
-  void get_model_params(const vector<double> &params, double &I0, double &Fs,double &q,double &L,double &r0,double &phi,double &tE,double &tmax)const{
+  void get_model_params(const vector<double> &params, double &I0, double &Fs,double &r0,double &tE,double &tmax)const{
     checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
     //Light level parameters
     //  I0 baseline unmagnitized magnitude
@@ -235,19 +179,12 @@ private:
     //Earth trajectory parameterized by:
     //  time (tmax) at point of closest approach to alignment with source and lens CoM
     //  separation (r0, in Einstein ring units) of closest approach
-    //  alignment angle (phi, rel to binary axis) to closest approach point
-    //Intrinsic system parameters
-    //  logL separation (in log10 Einstein units)
-    //  q mass ratio
     I0=params[idx_I0];
     Fs=params[idx_Fs];
 
     //2TRAJ: wont need the rest of this func: Maybe goes to Trajectory
     //noise_lev=params[idx_noise_lev];
-    double sofq=params[idx_q];//either log_q or remapped q
-    double logL=params[idx_L];
     double sofr0=params[idx_r0];
-    phi=params[idx_phi];
     tE=params[idx_tE];//either tE or log tE
     tmax=params[idx_tmax];
     //tmax=tmax*2;//Uncommenting this recovers pre-1-Feb-2016 def of tmax (up to mach-prec)
@@ -259,18 +196,9 @@ private:
     //See discussion in remap_r0() above    
     if(do_remap_r0)r0=r0_ref/sqrt(1.0/sofr0-1.0);
     else r0=sofr0;
-
-    //2TRAJLENS: won't need the rest of this, maybe goes to GLens
-    L=pow(10.0,logL);
-
-    //Perhaps use an alternative variable parameterizing the point of closest approach over a finite range,
-    //(See discussion in remap_q() above.) otherwise sofq==ln_q.
-    if(do_remap_q)q=-1.0+(q_ref+1.0)/sqrt(1.0/sofq-1.0);
-    else q=pow(10.0,sofq);
   };
 
   ///2TRAJ: Ultimately this goes into the Trajectory class as a general clone and stateSpace setting...
-  ///call as traj=cone_trajectory(lens->getCenter,r0,phi)
   Trajectory *clone_trajectory(double r0)const{
     Trajectory *newtraj=traj->clone();
     newtraj->setup(Point(0,r0), Point(1,0));
@@ -278,14 +206,18 @@ private:
   };
 
 public:
+  GLens *clone_lens()const{return lens->clone();};
   //Here we always make a square window, big enough to fit the trajectory (over the specified domain) and the lens window
   //Points referenced in this function refer to *lens frame* //consider shifting
   void getWindow(const state &s, Point &LLcorner,Point &URcorner, double tstart=0, double tend=0, int cent=-2){
-    double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ: As in model_lightcurve
-    get_model_params(s.get_params_vector(),I0,Fs,q,L,r0,phi,tE,tmax);//2TRAJ
+    double I0,Fs,r0,tE,tmax;//2TRAJ: As in model_lightcurve
+    get_model_params(s.get_params_vector(),I0,Fs,r0,tE,tmax);//2TRAJ
     Point pstart(0,0),pend(0,0);
     double margin=0,width=0,x0,y0,wx,wy;
-    GLens *worklens=clone_lens(s);
+    GLens *worklens=lens->clone();
+    worklens->setState(s);
+
+    //We start work in the lens frame
     if(cent>-2){//signal to use r0 as map width and center on {rminus,CoM,rplus}, when cent={0,1,2}
       x0=worklens->getCenter(cent).x;
       width=r0;
@@ -320,14 +252,15 @@ public:
   ///Dump the trajectory
   ///Probably moves to trajectory eventually.
   void dump_trajectory(ostream &out, state &s, vector<double> &times, double tref){
-    double I0,Fs,q,L,r0,phi,tE,tmax;//2TRAJ
-    get_model_params(s.get_params_vector(), I0,Fs,q,L,r0,phi,tE,tmax);//2TRAJ
+    double I0,Fs,r0,tE,tmax;//2TRAJ
+    get_model_params(s.get_params_vector(), I0,Fs,r0,tE,tmax);//2TRAJ
 
     //Get square bounding box size
-    cout<<"Model params: I0  Fs  q  L  r0  phi tE tmax\n"
-	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;//2TRAJ: Use stateSpace or cut
+    //cout<<"Model params: I0  Fs  q  L  r0  phi tE tmax\n"
+    //	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;//2TRAJ: Use stateSpace or cut
 
-    GLens *worklens=clone_lens(s);
+    GLens *worklens=lens->clone();
+    worklens->setState(s);
     double xcm  =  worklens->getCenter().x;
     Trajectory *tr=clone_trajectory(r0);
     vector<double>tEs=times;

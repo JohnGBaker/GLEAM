@@ -526,6 +526,7 @@ int GLens::GSL_integration_func_vec (double t, const double theta[], double thet
 
 void GLens::addOptions(Options &opt,const string &prefix){
   Optioned::addOptions(opt,prefix);
+  addTypeOptions(opt);
   opt.add(Option("GL_poly","Don't use integration method for lens magnification, use only the polynomial method."));
   opt.add(Option("poly","Same as GL_poly for backward compatibility.  (Deprecated)"));
   opt.add(Option("GL_int_tol","Tolerance for GLens inversion integration. (1e-10)","1e-10"));
@@ -555,7 +556,26 @@ GLensBinary::GLensBinary(double q,double L,double phi0):q(q),L(L),phi0(phi0),sin
   NimageMax=5;
   nu=1/(1+q);
   rWide=5;
-  //coefficients
+  do_remap_q=false;
+  q_ref=0;
+  idx_q=idx_L=idx_phi0=-1;
+};
+
+void GLensBinary::setup(){
+  set_integrate(!optSet("GL_poly")&&!optSet("poly"));
+  *optValue("GL_int_tol")>>GL_int_tol;
+  *optValue("GL_int_mag_limit")>>GL_int_mag_limit;
+  *optValue("GL_int_kappa")>>kappa;
+  haveSetup();
+  cout<<"GLens set up with:\n\tintegrate=";
+  if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
+  else cout<<"false"<<endl;
+  if(optSet("remap_q")){//2TRAJLENS:move to GLensBinary
+    double q0_val;
+    *optValue("q0")>>q0_val;
+    remap_q(q0_val);
+  }
+  GLens::setup();
 };
 
 Point GLensBinary::map(const Point &p){
@@ -1035,4 +1055,5 @@ double GLensBinary::invjac(const Point &p,double &ij00,double &ij01,double &ij10
   //cout<<"Delta J="<<mu2-mu<<" = "<<mu2<<" - "<<mu<<endl;
   return mu;
 };
+
 
