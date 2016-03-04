@@ -64,7 +64,7 @@ int main(int argc, char*argv[]){
   ///signal model.  We may need to be able to use vector-valued bayes_data::values with a vector of type
   ///channel-labels that can be checked.  Maybe the channels are just strings, but if there is important 
   ///meta-information regarding the channels, then these could become instances of a channel class.]
-  Options opt;
+  Options opt(false);
   ML_photometry_data::addStaticOptions(opt);
   //For the first-pass option check, we first make a copy of argc/argv
   int ac=argc;char* av[argc];
