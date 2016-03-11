@@ -219,9 +219,7 @@ int main(int argc, char*argv[]){
 
   //Set up the parameter space
   stateSpace space(Npar);
-  //stateSpace signalspace(3),lensspace(2),trajspace(4);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
   stateSpace signalspace(3),lensspace(3),trajspace(3);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
-  //string names[]={"I0","Fs","Fn","logq","logL","r0","phi0","tE","tpass"};
   string names[]={"I0","Fs","Fn","logq","logL","phi0","r0","tE","tpass"};
   if(use_additive_noise)names[2]="Mn";
   if(use_remapped_r0)names[6]="s(r0)";
@@ -232,20 +230,16 @@ int main(int argc, char*argv[]){
     space.set_names(names);  
     space.set_bound(6,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
   } else {  //Here we try out the new infrastructure of attaching state-spaces together
-    //cout<<"before space="<<space.show()<<endl;
     space=stateSpace();
-    //cout<<"after space="<<space.show()<<endl;
     signalspace.set_names(names);  
     cout<<"signalspace="<<signalspace.show()<<endl;
     space.attach(signalspace);
-    lensspace.set_names(names+3);  
-    lensspace.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
+    lensspace=lens->getObjectStateSpace();
+    //lensspace.set_names(names+3);  
+    //lensspace.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
     cout<<"lens space="<<lensspace.show()<<endl;
     space.attach(lensspace);
-    //trajspace.set_names(names+5);  
     trajspace.set_names(names+6);  
-    //trajspace.set_bound(1,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
-    //trajspace.set_bound(0,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
     cout<<"traj space="<<trajspace.show()<<endl;
     space.attach(trajspace);
   }
@@ -290,18 +284,11 @@ int main(int argc, char*argv[]){
   double tstart,tend;
   t0=data->getFocusLabel();
   data->getDomainLimits(tstart,tend);
-  twidth=300;//Changed for study, may return to smaller range...;
-  //twidth=10;
-  //cout<<"ts="<<tstart<<" < t0="<<t0<<" < te="<<tend<<endl;
+  twidth=300;
 
   //Set the prior:
   //Eventually this should move to the relevant constitutent code elements where the params are given meaning.
   const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
-  ////                                     I0      Fs     Fn          logq*   logL       r0     phi      tE     tpass  
-  //valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,  r0s/2.0,   M_PI, tE_max/2,  t0     });
-  //valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   1.0,  r0s/2.0,   M_PI, tE_max/2,  twidth });
-  //valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,      uni,    uni,      uni,  gauss  });
-  //                                     I0      Fs     Fn          logq*   logL     phi       r0      tE     tpass  
   valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,    M_PI, r0s/2.0, tE_max/2,  t0     });
   valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   1.0,    M_PI, r0s/2.0, tE_max/2,  twidth });
   valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,     uni,     uni,      uni,  gauss  });
@@ -323,14 +310,6 @@ int main(int argc, char*argv[]){
     centers[2]=MaxAdditiveNoiseMag-hw;
     halfwidths[2]=hw;
   }
-  //**test HACK **// //Here we set the q/L params to near particular values for testing with Jeremy's data
-  //centers[3]=log10(0.9);
-  //halfwidths[3]=0.05;
-  //types[3]=uni;
-  //centers[4]=log10(0.6);
-  //halfwidths[4]=0.05;
-  //types[4]=uni;  
-  //**end HACK **//
 
   sampleable_probability_function *prior;  
   if(0){
@@ -338,11 +317,8 @@ int main(int argc, char*argv[]){
   } else {
     sampleable_probability_function *signalprior,*lensprior,*trajprior;  
     signalprior=new mixed_dist_product(&signalspace,types[slice(0,3,1)],centers[slice(0,3,1)],halfwidths[slice(0,3,1)]);
-    //cout<<"signalprior="<<signalprior->show()<<endl;
-    //lensprior=new mixed_dist_product(&lensspace,types[slice(3,2,1)],centers[slice(3,2,1)],halfwidths[slice(3,2,1)]);
     lensprior=new mixed_dist_product(&lensspace,types[slice(3,3,1)],centers[slice(3,3,1)],halfwidths[slice(3,3,1)]);
     cout<<"lensprior="<<lensprior->show()<<endl;
-    //trajprior=new mixed_dist_product(&trajspace,types[slice(5,4,1)],centers[slice(5,4,1)],halfwidths[slice(5,4,1)]);
     trajprior=new mixed_dist_product(&trajspace,types[slice(6,3,1)],centers[slice(6,3,1)],halfwidths[slice(6,3,1)]);
     cout<<"trajprior="<<trajprior->show()<<endl;
     prior=new independent_dist_product(&space,signalprior,lensprior,trajprior);

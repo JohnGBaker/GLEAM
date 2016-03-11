@@ -95,7 +95,6 @@ public:
     haveWorkingStateSpace();
     ///Eventually want to transmit these down to constituent objects:
     ///FIXME This is a temporary version.  Should replace r0 and q rescalings with a stateSpaceTransform...
-    //lensSpace=lens->getObjectStateSpace();
     lens->defWorkingStateSpace(sp);
   };
   
@@ -104,8 +103,9 @@ public:
   ///This is just an initial draft.  To be utilized in later round of development.
   stateSpace getObjectStateSpace()const{
     checkSetup();//Call this assert whenever we need options to have been processed.
-    stateSpace space(6);
-    string names[]={"I0","Fs","Fn","r0","tE","tpass"};//2TRAJ:clean-up
+    stateSpace space(3);
+    //string names[]={"I0","Fs","Fn","r0","tE","tpass"};//2TRAJ:clean-up
+    string names[]={"I0","Fs","Fn","r0"};//2TRAJ:clean-up
     //if(use_additive_noise)names[2]="Mn";
     if(do_remap_r0)names[5]="s(r0)";//2TRAJ:move to Trajectory
     if(do_log_tE)names[7]="log(tE)";//2TRAJ:move to Trajectory

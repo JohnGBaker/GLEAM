@@ -12,12 +12,12 @@ docs:
 .PHONY: clean ${LIB}/libptmcmc.a ${LIB}/libprobdist.a
 
 
-gleam: gleam.cc glens.cc glens.hh cmplx_roots_sg.o mlsignal.hh mldata.hh mllike.hh ptmcmc ${MCMC}/bayesian.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a .ptmcmc-version
+gleam: gleam.cc glens.cc glens.hh trajectory.cc trajectory.hh cmplx_roots_sg.o mlsignal.hh mldata.hh mllike.hh ptmcmc ${MCMC}/bayesian.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a .ptmcmc-version
 	@echo "ROOT=",${ROOT}
-	${CXX} ${CFLAGS} -o gleam gleam.cc glens.cc cmplx_roots_sg.o -lgsl -L${GSLDIR} -I${GSLINC} -I${MCMC} -std=c++11 -lgfortran -lprobdist -lptmcmc -L${LIB} 
+	${CXX} ${CFLAGS} -o gleam gleam.cc glens.cc trajectory.cc cmplx_roots_sg.o -lgsl -L${GSLDIR} -I${GSLINC} -I${MCMC} -std=c++11 -lgfortran -lprobdist -lptmcmc -L${LIB} 
 
-gleam_quad: gleam.cc glens.cc glens.hh cmplx_roots_sg_quad.o ptmcmc ${MCMC}/bayesian.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a
-	${CXX} ${CFLAGS} -o gleam_quad gleam.cc glens.cc cmplx_roots_sg_quad.o -lgsl -L${GSLDIR} -I${GSLINC} -I${MCMC} -std=c++11 -lgfortran -lprobdist -lptmcmc -L${LIB} -DUSE_KIND_16 
+gleam_quad: gleam.cc glens.cc glens.hh  trajectory.cc trajectory.hh cmplx_roots_sg_quad.o ptmcmc ${MCMC}/bayesian.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a
+	${CXX} ${CFLAGS} -o gleam_quad gleam.cc glens.cc trajectory.cc cmplx_roots_sg_quad.o -lgsl -L${GSLDIR} -I${GSLINC} -I${MCMC} -std=c++11 -lgfortran -lprobdist -lptmcmc -L${LIB} -DUSE_KIND_16 
 
 cmplx_roots_sg.o: cmplx_roots_sg.f90
 	${F90} ${CFLAGS} -c cmplx_roots_sg.f90
