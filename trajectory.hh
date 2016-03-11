@@ -29,15 +29,15 @@ typedef struct Point {
 
 ///Next is a class for trajectories through the observer plane
 ///base class implements a straight-line trajectory
-class Trajectory {
+class Trajectory : public bayes_component {
   //Transition notes:
-  //We are getting ready to promote Trajectory to a bayes_component, and then
+  //We are getting ready to promote Trajectory to a bayes_component, and then                              ** FIXME **
   //to move definition of trajectory-related parameters into here.
   //My current thinking is that everything is done nominally in a frame with
   //the source-CM to lens-CM line-of-sight as origin in the observer plane.
   //Trajectory parameters indicate where the Sun/Earth passes through that
   //plane, thus Trajectory parameters include at least r0, [phi?], and probably
-  //also tmax.  An issue is that, as of now, tmax is defined in physical
+  //also tpass.  An issue is that, as of now, tpass is defined in physical
   //units while everything else about the trajectory is in Einstein units.
   //For Parallax trajectories, we also need the absolute physical time
   //this all means that we probably need tE available as trajectory parameter
@@ -69,35 +69,110 @@ protected:
   double toff;
   bool have_times;
   vector<double> times;
-  double tE,tmax;
-  double r0,phi;
+  double tE,tpass;
+  double r0,phi,r0_ref;
+  bool do_remap_r0, do_log_tE;
+  int idx_r0, idx_tE, idx_tpass; 
 public:
-  Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tmax(0){
-    //cout<<"Trajectory({"<<pos0.x<<","<<pos0.y<<"},{"<<vel0.x<<","<<vel0.y<<"},...)"<<endl;
+  Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tpass(0){
   };
-  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tmax(0){
-    //cout<<"Trajectory({"<<pos0.x<<","<<pos0.y<<"},{"<<vel0.x<<","<<vel0.y<<"})"<<endl;
+  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0){
   };
-  Trajectory():Trajectory(Point(0,0),Point(1,0)){};
+  Trajectory():Trajectory(Point(0,0),Point(1,0)){
+    r0_ref=0;
+    idx_r0=idx_tE=idx_tpass=-1;
+    do_remap_r0=false;
+    do_log_tE=false;
+  };
   virtual ~Trajectory(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
   virtual Trajectory* clone(){
     return new Trajectory(*this);
   };
   virtual void setup(const Point &pos0, const Point &vel0){p0=pos0;v0=vel0;};
-  ///Set the required eval times.  (Times are "phys" times, but "phys"=frame if tE=1,tmax=0)
+  ///Set the required eval times.  (Times are "phys" times, but "phys"=frame if tE=1,tpass=0)
   virtual void set_times(vector<double> times,double toff){this->times=times;ts=times[0];tf=times.back();have_times=true;this->toff=toff;};
-  ///Return start time. (Times are "phys" times, but "phys"=frame if tE=1,tmax=0)
+  ///Return start time. (Times are "phys" times, but "phys"=frame if tE=1,tpass=0)
   virtual double t_start()const {return ts;};
-  ///Return end time. (Times are "phys" times, but "phys"=frame if tE=1,tmax=0)
+  ///Return end time. (Times are "phys" times, but "phys"=frame if tE=1,tpass=0)
   virtual double t_end()const {return tf;};
   virtual int Nsamples()const {if(have_times)return times.size(); else return (int)((t_end()-t_start())/cad)+1;};
   virtual double get_obs_time(int ith)const {if(have_times)return times[ith]; else return ts-toff+cad*ith;};
-  virtual double get_phys_time(double frame_time){return frame_time*tE+tmax;}
-  virtual double get_frame_time(double phys_time){return (phys_time-tmax)/tE;}
+  virtual double get_phys_time(double frame_time){return frame_time*tE+tpass;}
+  virtual double get_frame_time(double phys_time){return (phys_time-tpass)/tE;}
   ///Argument takes frame time below
   virtual Point get_obs_pos(double t)const {double x=p0.x+(t-toff)*v0.x,y=p0.y+(t-toff)*v0.y;return Point(x,y);};
   virtual Point get_obs_vel(double t)const {return v0;};
   virtual string print_info()const {ostringstream s;s<<"Trajectory({"<<p0.x<<","<<p0.y<<"},{"<<v0.x<<","<<v0.y<<"})"<<endl;return s.str();};
+  //For bayes_component/stateSpaceInterface
+  virtual stateSpace getObjectStateSpace()const{
+    checkSetup();//Call this assert whenever we need options to have been processed.
+    stateSpace space(3);
+    string names[]={"r0","tE","tpass"};
+    if(do_remap_r0)names[0]="s(r0)";
+    if(do_log_tE)names[2]="log(tE)";
+    space.set_names(names);  
+    return space;
+  };
+  virtual void defWorkingStateSpace(const stateSpace &sp){
+    checkSetup();//Call this assert whenever we need options to have been processed.
+    if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");
+    else idx_r0=sp.requireIndex("r0");
+    if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");
+    else idx_tE=sp.requireIndex("tE");
+    idx_tpass=sp.requireIndex("tpass");
+    haveWorkingStateSpace();
+  };
+  virtual void setState(const state &s){
+    checkWorkingStateSpace();
+    r0=s.get_param(idx_r0);
+    tE=s.get_param(idx_tE);
+    tpass=s.get_param(idx_tpass);
+    if(do_remap_r0)r0=r0_ref/sqrt(1.0/r0-1.0);
+    if(do_log_tE)tE=pow(10.0,tE);
+    setup(Point(0,r0), Point(1,0));
+  };
+  ///This overload of setup is (defacto?) part of the StateSpaceInterface
+  void setup(){
+    if(optSet("remap_r0")){
+      *optValue("remap_r0_ref_val")>>r0_ref;
+      do_remap_r0=true;
+    }
+    if(optSet("log_tE"))do_log_tE=true;
+    haveSetup();
+  };    
+  ///Explanation of options:
+  ///
+  ///remap_r0:
+  ///Reparameterize r0 point of closest approach to a new variable which has a finite range.
+  ///Some issues are that: 1) Large r0 values are kind of similar in effect, and also less likely
+  ///because we a) suppose that events with non negligible magnification have been preselected,
+  ///and b) we need to somehow arrange finite prior probability in the interesting region.
+  ///2) For small r0 a natural prior is to expect that the cumulative probability is proportional
+  ///to cross-sectional area, ie cdf(r0) ~ r0^2.  We may thus want a cdf with this form near in, but
+  ///with cdf->1 as r0->infinity.
+  ///Appropriately this implies a maximal pdf somewhere in the middle, which should be near the 
+  ///expected sensitivity limit (large r0 means small magnification).
+  ///A simple such function is s=(1-cdf)=1/(1+(r0_ref/r0)^2).  The max in the pdf will be at r0=r0_ref/sqrt(3) ~ r0_ref
+  ///We realize this by choosing from the unit interval for s with r0=r0_ref/sqrt(1/s-1) (thi inverse cdf).
+  ///Calling this function turns this behavior on and sets r0_ref.  To understand how to scale r0_ref,
+  ///think of setting a cut_off magnification level A~A0.  The pdf should be maximal near this cut-off level
+  ///where, because r0 is somewhat >1 we can think only of a single lens.  Then using the expression for
+  ///single lens magnification we want A0~(1-9/r0_ref^4)^{-1} or r0_ref/sqrt(3)=(1+1/A0)^0.25.
+  ///If we expect typical peak magnification at factor of 2 levels, then set r0_ref ~ 3*sqrt(3)/2 ~ 2.6.  If we
+  ///expect most cases with 10% magnification, then set r0_ref ~ 1.9.  Default value is r0_ref=2.0 with pdf 
+  ///peak at a0 ~ 1.25.  Note that for large r0, the pdf ~ 1/r0^3 ~ (A0-1)^0.75. Thus a factor of 2 decrease in
+  ///the magnification excess only means a factor of ~ 1.6 decrease in prior or about -0.23 in log-prior, hopefully
+  ///not yielding strong biases even for the marginal cases.
+  ///
+  ///log_tE:
+  ///Set to use logarithmic tE variable parameter;
+  ///
+  void addOptions(Options &opt,const string &prefix=""){
+    Optioned::addOptions(opt,prefix);
+    addOption("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value.");
+    addOption("remap_r0","Use remapped r0 coordinate.");
+    addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");
+  };
 };
 
 ///Here is ParallaxTrajectory class for when the observer motion cannot be neglected.
@@ -112,7 +187,7 @@ public:
 ///to do a re-think of the parameterization of the trajectory/lens parameters.
 ///
 ///Parameter rethink:
-/// So far, the trajectory parameters are interpreted in the lens-frame, with an angle parameter
+/// Previously, the trajectory parameters were interpreted in the lens-frame, with an angle parameter
 /// which specifies the rotation between the lens frame and the velocity direction of the
 /// Earth-sun projected to the image plane.  Since the velocity is assumed to be constant, we
 /// are free to more precisely interpret this angle as orientation at the point of closest

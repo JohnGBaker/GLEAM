@@ -32,9 +32,9 @@ class ML_photometry_signal : public bayes_signal{
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
     idx_I0=idx_Fs=-1;
-    do_remap_r0=false;//2TRAJ:move to Trajectory
     r0_ref=0;//2TRAJ:move to Trajectory
     idx_r0=idx_tE=idx_tmax=-1; //2TRAJ:clean-up
+    do_remap_r0=false;//2TRAJ:move to Trajectory
     do_log_tE=false;//2TRAJ:move to Trajectory
   };
 
