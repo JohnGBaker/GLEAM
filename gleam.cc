@@ -130,7 +130,8 @@ int main(int argc, char*argv[]){
   bool parseBAD=opt.parse(argc,argv);
   if(parseBAD||(argc != Nlead_args+1 && argc!=Nlead_args+1+Npar && argc!=5)) {
     cout << "You gave " << argc-1 << " arguments. Expecting "<<Nlead_args<<" or "<<Nlead_args+Npar<<" or 4."<< endl;
-    cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ I0 Fs Fn logq logL r0 phi0 tE tpass ]" << endl;
+    //cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ I0 Fs Fn logq logL r0 phi0 tE tpass ]" << endl;
+    cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ I0 Fs Fn logq logL phi0 r0 tE tpass ]" << endl;
     cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
     cout <<opt.print_usage()<<endl;
     return 1;
@@ -218,10 +219,12 @@ int main(int argc, char*argv[]){
 
   //Set up the parameter space
   stateSpace space(Npar);
-  stateSpace signalspace(3),lensspace(2),trajspace(4);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
-  string names[]={"I0","Fs","Fn","logq","logL","r0","phi0","tE","tpass"};
+  //stateSpace signalspace(3),lensspace(2),trajspace(4);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
+  stateSpace signalspace(3),lensspace(3),trajspace(3);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
+  //string names[]={"I0","Fs","Fn","logq","logL","r0","phi0","tE","tpass"};
+  string names[]={"I0","Fs","Fn","logq","logL","phi0","r0","tE","tpass"};
   if(use_additive_noise)names[2]="Mn";
-  if(use_remapped_r0)names[5]="s(r0)";
+  if(use_remapped_r0)names[6]="s(r0)";
   if(use_remapped_q)names[3]="s(1+q)";    
   if(use_log_tE)names[7]="log(tE)";
   if(0)
@@ -233,14 +236,17 @@ int main(int argc, char*argv[]){
     space=stateSpace();
     //cout<<"after space="<<space.show()<<endl;
     signalspace.set_names(names);  
-    //cout<<"signalspace="<<signalspace.show()<<endl;
+    cout<<"signalspace="<<signalspace.show()<<endl;
     space.attach(signalspace);
     lensspace.set_names(names+3);  
-    //cout<<"lens space="<<lensspace.show()<<endl;
+    lensspace.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
+    cout<<"lens space="<<lensspace.show()<<endl;
     space.attach(lensspace);
-    trajspace.set_names(names+5);  
-    trajspace.set_bound(1,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
-    //cout<<"traj space="<<trajspace.show()<<endl;
+    //trajspace.set_names(names+5);  
+    trajspace.set_names(names+6);  
+    //trajspace.set_bound(1,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
+    //trajspace.set_bound(0,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
+    cout<<"traj space="<<trajspace.show()<<endl;
     space.attach(trajspace);
   }
   
@@ -291,11 +297,14 @@ int main(int argc, char*argv[]){
   //Set the prior:
   //Eventually this should move to the relevant constitutent code elements where the params are given meaning.
   const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
-  //                                     I0      Fs     Fn          logq*   logL       r0     phi      tE     tpass  
-  valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,  r0s/2.0,   M_PI, tE_max/2,  t0     });
-  //valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   2.0,  r0s/2.0,   M_PI, tE_max/2,  twidth });
-  valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   1.0,  r0s/2.0,   M_PI, tE_max/2,  twidth });
-  valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,      uni,    uni,      uni,  gauss  });
+  ////                                     I0      Fs     Fn          logq*   logL       r0     phi      tE     tpass  
+  //valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,  r0s/2.0,   M_PI, tE_max/2,  t0     });
+  //valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   1.0,  r0s/2.0,   M_PI, tE_max/2,  twidth });
+  //valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,      uni,    uni,      uni,  gauss  });
+  //                                     I0      Fs     Fn          logq*   logL     phi       r0      tE     tpass  
+  valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,    M_PI, r0s/2.0, tE_max/2,  t0     });
+  valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   1.0,    M_PI, r0s/2.0, tE_max/2,  twidth });
+  valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,     uni,     uni,      uni,  gauss  });
   if(use_remapped_q){//* 
     double qq=2.0/(q0+1.0);
     double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
@@ -324,16 +333,18 @@ int main(int argc, char*argv[]){
   //**end HACK **//
 
   sampleable_probability_function *prior;  
-  sampleable_probability_function *signalprior,*lensprior,*trajprior;  
   if(0){
     prior=new mixed_dist_product(&space,types,centers,halfwidths);
   } else {
+    sampleable_probability_function *signalprior,*lensprior,*trajprior;  
     signalprior=new mixed_dist_product(&signalspace,types[slice(0,3,1)],centers[slice(0,3,1)],halfwidths[slice(0,3,1)]);
     //cout<<"signalprior="<<signalprior->show()<<endl;
-    lensprior=new mixed_dist_product(&lensspace,types[slice(3,2,1)],centers[slice(3,2,1)],halfwidths[slice(3,2,1)]);
-    //cout<<"lensprior="<<lensprior->show()<<endl;
-    trajprior=new mixed_dist_product(&trajspace,types[slice(5,4,1)],centers[slice(5,4,1)],halfwidths[slice(5,4,1)]);
-    //cout<<"trajprior="<<trajprior->show()<<endl;
+    //lensprior=new mixed_dist_product(&lensspace,types[slice(3,2,1)],centers[slice(3,2,1)],halfwidths[slice(3,2,1)]);
+    lensprior=new mixed_dist_product(&lensspace,types[slice(3,3,1)],centers[slice(3,3,1)],halfwidths[slice(3,3,1)]);
+    cout<<"lensprior="<<lensprior->show()<<endl;
+    //trajprior=new mixed_dist_product(&trajspace,types[slice(5,4,1)],centers[slice(5,4,1)],halfwidths[slice(5,4,1)]);
+    trajprior=new mixed_dist_product(&trajspace,types[slice(6,3,1)],centers[slice(6,3,1)],halfwidths[slice(6,3,1)]);
+    cout<<"trajprior="<<trajprior->show()<<endl;
     prior=new independent_dist_product(&space,signalprior,lensprior,trajprior);
   }
   cout<<"Prior is:\n"<<prior->show()<<endl;

@@ -83,7 +83,7 @@ public:
         best_post=post;
         best=state(s);
       }
-      //cout<<"loglike="<<result<<"<="<<maxLike<<endl;   
+      //cout<<"loglike="<<result<<endl;   
       if(!isfinite(result)){
         cout<<"Whoa dude, loglike is NAN! What's up with that?"<<endl;
         cout<<"params="<<s.get_string()<<endl;
