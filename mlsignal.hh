@@ -104,14 +104,10 @@ public:
   stateSpace getObjectStateSpace()const{
     checkSetup();//Call this assert whenever we need options to have been processed.
     stateSpace space(3);
-    //string names[]={"I0","Fs","Fn","r0","tE","tpass"};//2TRAJ:clean-up
-    string names[]={"I0","Fs","Fn","r0"};//2TRAJ:clean-up
-    //if(use_additive_noise)names[2]="Mn";
-    if(do_remap_r0)names[5]="s(r0)";//2TRAJ:move to Trajectory
-    if(do_log_tE)names[7]="log(tE)";//2TRAJ:move to Trajectory
+    string names[]={"I0","Fs","Fn"};//2TRAJ:clean-up
     space.set_names(names);  
     space.attach(lens->getObjectStateSpace());
-    ///or space.attach(transform_to_lens.inverse(lens.getObjectStateSpace()))
+    space.attach(traj->getObjectStateSpace());
     return space;
   };
 

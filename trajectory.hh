@@ -109,7 +109,7 @@ public:
     stateSpace space(3);
     string names[]={"r0","tE","tpass"};
     if(do_remap_r0)names[0]="s(r0)";
-    if(do_log_tE)names[2]="log(tE)";
+    if(do_log_tE)names[1]="log(tE)";
     space.set_names(names);  
     return space;
   };

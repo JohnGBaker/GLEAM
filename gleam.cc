@@ -99,6 +99,7 @@ int main(int argc, char*argv[]){
 
   s0->addOptions(opt,"");
   lens->addOptions(opt,"");
+  traj->addOptions(opt,"");
   data->addOptions(opt,"");
   signal.addOptions(opt,"");
 
@@ -141,6 +142,7 @@ int main(int argc, char*argv[]){
 
   //Post parse setup
   lens->setup();  
+  traj->setup();  
   double nburn_frac,Tmax,Fn_max,tE_max,tcut,seed;
   int Nchain;
   int mm_center,mm_samples,save_every;
@@ -232,14 +234,13 @@ int main(int argc, char*argv[]){
   } else {  //Here we try out the new infrastructure of attaching state-spaces together
     space=stateSpace();
     signalspace.set_names(names);  
+    //signalspace=signal.getObjectStateSpace();
     cout<<"signalspace="<<signalspace.show()<<endl;
     space.attach(signalspace);
     lensspace=lens->getObjectStateSpace();
-    //lensspace.set_names(names+3);  
-    //lensspace.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
     cout<<"lens space="<<lensspace.show()<<endl;
     space.attach(lensspace);
-    trajspace.set_names(names+6);  
+    trajspace=traj->getObjectStateSpace();
     cout<<"traj space="<<trajspace.show()<<endl;
     space.attach(trajspace);
   }
