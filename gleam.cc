@@ -221,7 +221,7 @@ int main(int argc, char*argv[]){
 
   //Set up the parameter space
   stateSpace space(Npar);
-  stateSpace signalspace(3),lensspace(3),trajspace(3);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
+  stateSpace dataspace(1),signalspace(2),lensspace(3),trajspace(3);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
   string names[]={"Fn","I0","Fs","logq","logL","phi0","r0","tE","tpass"};
   if(use_additive_noise)names[0]="Mn";
   if(use_remapped_r0)names[6]="s(r0)";
@@ -233,16 +233,19 @@ int main(int argc, char*argv[]){
     space.set_bound(6,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
   } else {  //Here we try out the new infrastructure of attaching state-spaces together
     space=stateSpace();
-    signalspace.set_names(names);  
-    //signalspace=signal.getObjectStateSpace();
+    dataspace.set_names(names);  
+    cout<<"dataspace="<<dataspace.show()<<endl;
+    space.attach(dataspace);
+    signalspace.set_names(names+1);  
     cout<<"signalspace="<<signalspace.show()<<endl;
-    space.attach(signalspace);
+    //space.attach(signalspace);
     lensspace=lens->getObjectStateSpace();
     cout<<"lens space="<<lensspace.show()<<endl;
-    space.attach(lensspace);
+    //space.attach(lensspace);
     trajspace=traj->getObjectStateSpace();
     cout<<"traj space="<<trajspace.show()<<endl;
-    space.attach(trajspace);
+    //space.attach(trajspace);
+    space.attach(signal.getObjectStateSpace());
   }
   
   //cout<<"&space="<<&space<<endl; 
@@ -319,13 +322,14 @@ int main(int argc, char*argv[]){
   if(0){
     prior=new mixed_dist_product(&space,types,centers,halfwidths);
   } else {
-    sampleable_probability_function *signalprior,*lensprior,*trajprior;  
-    signalprior=new mixed_dist_product(&signalspace,types[slice(0,3,1)],centers[slice(0,3,1)],halfwidths[slice(0,3,1)]);
+    sampleable_probability_function *dataprior,*signalprior,*lensprior,*trajprior;  
+    dataprior=new mixed_dist_product(&dataspace,types[slice(0,1,1)],centers[slice(0,1,1)],halfwidths[slice(0,1,1)]);
+    signalprior=new mixed_dist_product(&signalspace,types[slice(1,2,1)],centers[slice(1,2,1)],halfwidths[slice(1,2,1)]);
     lensprior=new mixed_dist_product(&lensspace,types[slice(3,3,1)],centers[slice(3,3,1)],halfwidths[slice(3,3,1)]);
     cout<<"lensprior="<<lensprior->show()<<endl;
     trajprior=new mixed_dist_product(&trajspace,types[slice(6,3,1)],centers[slice(6,3,1)],halfwidths[slice(6,3,1)]);
     cout<<"trajprior="<<trajprior->show()<<endl;
-    prior=new independent_dist_product(&space,signalprior,lensprior,trajprior);
+    prior=new independent_dist_product(&space,dataprior,signalprior,lensprior,trajprior);
   }
   cout<<"Prior is:\n"<<prior->show()<<endl;
 

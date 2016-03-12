@@ -103,11 +103,12 @@ public:
   ///This is just an initial draft.  To be utilized in later round of development.
   stateSpace getObjectStateSpace()const{
     checkSetup();//Call this assert whenever we need options to have been processed.
-    stateSpace space(3);
-    string names[]={"I0","Fs","Fn"};//2TRAJ:clean-up
+    stateSpace space(2);
+    string names[]={"I0","Fs"};//2TRAJ:clean-up
     space.set_names(names);  
     space.attach(lens->getObjectStateSpace());
     space.attach(traj->getObjectStateSpace());
+    ///or space.attach(transform_to_lens.inverse(lens.getObjectStateSpace()))
     return space;
   };
 

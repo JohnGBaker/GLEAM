@@ -218,10 +218,12 @@ public:
     space.set_names(names);  
     return space;
   };
+  //sampleable_probability_function getObjectPrior()const{
+  //};
   virtual void addOptions(Options &opt,const string &prefix=""){
     GLens::addOptions(opt,prefix);
-    addOption("remap_q","Use remapped mass-ratio coordinate.");//2TRAJLENS:move to GLensBinary
-    addOption("q0","Prior max in q (with q>1) with remapped q0. Default=1e5/","1e5");//2TRAJLENS:move to GLensBinary
+    addOption("remap_q","Use remapped mass-ratio coordinate.");
+    addOption("q0","Prior max in q (with q>1) with remapped q0. Default=1e5/","1e5");
   };
   ///Set state parameters
   ///
