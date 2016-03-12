@@ -132,16 +132,6 @@ public:
     haveWorkingStateSpace();
   };
 
-  ///Set up the output stateSpace for this object
-  ///
-  ///This is just an initial draft.  To be utilized in later round of development.
-  virtual stateSpace getObjectStateSpace()const{
-    checkSetup();//Call this assert whenever we need options to have been processed.
-    stateSpace space(1);
-    string names[]={"Mn"};
-    space.set_names(names);  
-    return space;
-  };
   ///Optioned interface
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);
@@ -166,7 +156,14 @@ public:
     time0=t0;
     have_time0=true;
   };
-  virtual void setup(){};
+  virtual void setup(){
+    ///Set up the output stateSpace for this object
+    stateSpace space(1);
+    string names[]={"Mn"};
+    space.set_names(names);  
+    nativeSpace=space;
+  };
+
 private:
   void addTypeOptions(Options &opt){
     Optioned::addOptions(opt,"");
@@ -207,6 +204,7 @@ public:
     *optValue("mock_jitter")>>jitter;
     cout<<"Preparing mock data."<<endl;
     setup(tstart,tend,cadence,jitter);
+    ML_photometry_data::setup();
   };
   void setup(double tmin, double tmax, double cadence, double log_dt_var=0){
     GaussianDist gauss(0.0,log_dt_var);
@@ -244,6 +242,7 @@ public:
     *optValue("OGLE_data")>>filename;
     cout<<"OGLE data file='"<<filename<<"'"<<endl;
     setup(filename);
+    ML_photometry_data::setup();
   };
   void setup(const string &filepath){
     ifstream file(filepath.c_str());
@@ -280,6 +279,7 @@ public:
     *optValue("gen_data")>>filename;
     cout<<"generic data file='"<<filename<<"'"<<endl;
     setup(filename);
+    ML_photometry_data::setup();
   };
   void setup(const string &filepath){
     //assemble soruce column info

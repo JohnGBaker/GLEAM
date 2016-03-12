@@ -104,33 +104,6 @@ public:
   virtual Point get_obs_vel(double t)const {return v0;};
   virtual string print_info()const {ostringstream s;s<<"Trajectory({"<<p0.x<<","<<p0.y<<"},{"<<v0.x<<","<<v0.y<<"})"<<endl;return s.str();};
   //For bayes_component/stateSpaceInterface
-  virtual stateSpace getObjectStateSpace()const{
-    checkSetup();//Call this assert whenever we need options to have been processed.
-    stateSpace space(3);
-    string names[]={"r0","tE","tpass"};
-    if(do_remap_r0)names[0]="s(r0)";
-    if(do_log_tE)names[1]="log(tE)";
-    space.set_names(names);  
-    return space;
-  };
-  sampleable_probability_function* newObjectPrior()const{
-    checkSetup();//Call this assert whenever we need options to have been processed.
-    double twidth=300,t0=0;
-    double r0s=6.0;
-    if(do_remap_r0){
-      r0s=1.0;
-    }
-    const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
-    valarray<double>    centers((initializer_list<double>){ r0s/2.0, tE_max/2,  t0     });
-    valarray<double> halfwidths((initializer_list<double>){ r0s/2.0, tE_max/2,  twidth });
-    valarray<int>         types((initializer_list<int>){        uni,      uni,  gauss  });
-    if(do_log_tE){
-      centers[1]=log10(tE_max)/2;
-      halfwidths[1]=log10(tE_max)/2;
-      types[1]=gauss;
-    }
-    return new mixed_dist_product(&nativespace,types,centers,halfwidths);
-  };
   virtual void defWorkingStateSpace(const stateSpace &sp){
     checkSetup();//Call this assert whenever we need options to have been processed.
     if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");
@@ -158,7 +131,27 @@ public:
     if(optSet("log_tE"))do_log_tE=true;
     *optValue("tE_max")>>tE_max;
     haveSetup();
-    nativespace=getObjectStateSpace();
+    //Set nativeSpace;
+    stateSpace space(3);
+    string names[]={"r0","tE","tpass"};
+    if(do_remap_r0)names[0]="s(r0)";
+    if(do_log_tE)names[1]="log(tE)";
+    space.set_names(names);  
+    nativeSpace=space;
+    //set nativePrior
+    double twidth=300,t0=0;
+    double r0s=6.0;
+    if(do_remap_r0)r0s=1.0;
+    const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+    valarray<double>    centers((initializer_list<double>){ r0s/2.0, tE_max/2,  t0     });
+    valarray<double> halfwidths((initializer_list<double>){ r0s/2.0, tE_max/2,  twidth });
+    valarray<int>         types((initializer_list<int>){        uni,      uni,  gauss  });
+    if(do_log_tE){
+      centers[1]=log10(tE_max)/2;
+      halfwidths[1]=log10(tE_max)/2;
+      types[1]=gauss;
+    }
+    setPrior(new mixed_dist_product(&nativeSpace,types,centers,halfwidths));
   };    
   ///Explanation of options:
   ///

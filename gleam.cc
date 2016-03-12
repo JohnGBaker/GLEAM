@@ -96,7 +96,6 @@ int main(int argc, char*argv[]){
       
   //Eventually want to handle signal polymorphism similarly
   ML_photometry_signal signal(traj, lens);
-
   s0->addOptions(opt,"");
   lens->addOptions(opt,"");
   traj->addOptions(opt,"");
@@ -143,7 +142,8 @@ int main(int argc, char*argv[]){
   //Post parse setup
   lens->setup();  
   traj->setup();  
-  double nburn_frac,Tmax,Fn_max,tE_max,tcut,seed;
+  //double nburn_frac,Tmax,Fn_max,tE_max,tcut,seed;
+  double nburn_frac,Tmax,Fn_max,tcut,seed;
   int Nchain;
   int mm_center,mm_samples,save_every;
   double mm_d0x,mm_d0y;
@@ -165,7 +165,7 @@ int main(int argc, char*argv[]){
   istringstream(opt.value("mm_lens_rWB"))>>mm_lens_rWB;
   //Prior params (should move out to objects which manage specific parameters.)
   istringstream(opt.value("Fn_max"))>>Fn_max;
-  istringstream(opt.value("tE_max"))>>tE_max;
+  //istringstream(opt.value("tE_max"))>>tE_max;
 
   //read args
   string outname;
@@ -206,43 +206,44 @@ int main(int argc, char*argv[]){
   else data->setup();
 
   //Create the data object (This block is setting up the model.  If/when we separate model from data, then data obj may be defined below)
-  double q0;
-  istringstream(opt.value("q0"))>>q0;
-  bool use_remapped_r0,use_remapped_q,use_log_tE,use_additive_noise=false;
-  use_remapped_r0=opt.set("remap_r0");
-  use_remapped_q=opt.set("remap_q");
+  //double q0;
+  //istringstream(opt.value("q0"))>>q0;
+  //bool use_remapped_r0,use_remapped_q,use_log_tE,
+  bool use_additive_noise=false;
+  //use_remapped_r0=opt.set("remap_r0");
+  //use_remapped_q=opt.set("remap_q");
   use_additive_noise=opt.set("additive_noise");
-  use_log_tE=opt.set("log_tE");
+  //use_log_tE=opt.set("log_tE");
 
-  double r0s=6.0;
-  if(use_remapped_r0){
-    r0s=1.0;
-  }
+  //double r0s=6.0;
+  //if(use_remapped_r0){
+  //  r0s=1.0;
+  //}
 
   //Set up the parameter space
   stateSpace space(Npar);
-  stateSpace dataspace(1),signalspace(2),lensspace(3),trajspace(3);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
+  stateSpace dataspace(1),signalspace(2);//,lensspace(3),trajspace(3);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
   string names[]={"Fn","I0","Fs","logq","logL","phi0","r0","tE","tpass"};
   if(use_additive_noise)names[0]="Mn";
-  if(use_remapped_r0)names[6]="s(r0)";
-  if(use_remapped_q)names[3]="s(1+q)";    
-  if(use_log_tE)names[7]="log(tE)";
+  //if(use_remapped_r0)names[6]="s(r0)";
+  //if(use_remapped_q)names[3]="s(1+q)";    
+  //if(use_log_tE)names[7]="log(tE)";
   {  //Here we try out the new infrastructure of attaching state-spaces together
     space=stateSpace();
     //dataspace.set_names(names);  
-    dataspace=data->getObjectStateSpace();
+    dataspace=*data->getObjectStateSpace();
     cout<<"dataspace="<<dataspace.show()<<endl;
     space.attach(dataspace);
     signalspace.set_names(names+1);  
     cout<<"signalspace="<<signalspace.show()<<endl;
     //space.attach(signalspace);
-    lensspace=lens->getObjectStateSpace();
-    cout<<"lens space="<<lensspace.show()<<endl;
+    //lensspace=lens->getObjectStateSpace();
+    //cout<<"lens space="<<lensspace.show()<<endl;
     //space.attach(lensspace);
-    trajspace=traj->getObjectStateSpace();
-    cout<<"traj space="<<trajspace.show()<<endl;
+    //trajspace=traj->getObjectStateSpace();
+    //cout<<"traj space="<<trajspace.show()<<endl;
     //space.attach(trajspace);
-    space.attach(signal.getObjectStateSpace());
+    space.attach(*signal.getObjectStateSpace());
   }
   
   //cout<<"&space="<<&space<<endl; 
@@ -255,7 +256,7 @@ int main(int argc, char*argv[]){
     q=pow(10.0,params[0]);
     L=pow(10.0,params[1]);
     width=params[2];
-    stateSpace lensSpace=lens->getObjectStateSpace();
+    stateSpace lensSpace=*lens->getObjectStateSpace();
     lens->defWorkingStateSpace(lensSpace);
     state lens_state(&lensSpace,valarray<double>({q,L,0}));
     lens->setState(lens_state);
@@ -281,22 +282,23 @@ int main(int argc, char*argv[]){
 
   //Prune data
   cout<<"Ndata="<<data->size()<<endl;
-  double t0,twidth;
+  //double t0,twidth;
   double tstart,tend;
-  t0=data->getFocusLabel();
-  cout<<"t0="<<t0<<endl;
+  //t0=data->getFocusLabel();
+  //cout<<"t0="<<t0<<endl;
   data->getDomainLimits(tstart,tend);
-  twidth=300;
+  //twidth=300;
 
   //Set the prior:
   //Eventually this should move to the relevant constitutent code elements where the params are given meaning.
   const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
-  //valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,    M_PI, r0s/2.0, tE_max/2,  t0     });
-  //valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   1.0,    M_PI, r0s/2.0, tE_max/2,  twidth });
-  //valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,     uni,     uni,      uni,  gauss  });
-  valarray<double>    centers((dlist){ 0.5*Fn_max, 18.0,    0.5,    0.0,   0.0,    M_PI, r0s/2.0, tE_max/2,  t0     });
-  valarray<double> halfwidths((dlist){ 0.5*Fn_max,  5.0,    0.5,    4.0,   1.0,    M_PI, r0s/2.0, tE_max/2,  twidth });
-  valarray<int>         types((ilist){    uni,    gauss,    uni,    uni, gauss,     uni,     uni,      uni,  gauss  });
+  //valarray<double>    centers((dlist){ 0.5*Fn_max, 18.0,    0.5,    0.0,   0.0,    M_PI, r0s/2.0, tE_max/2,  t0     });
+  //valarray<double> halfwidths((dlist){ 0.5*Fn_max,  5.0,    0.5,    4.0,   1.0,    M_PI, r0s/2.0, tE_max/2,  twidth });
+  //valarray<int>         types((ilist){    uni,    gauss,    uni,    uni, gauss,     uni,     uni,      uni,  gauss  });
+  valarray<double>    centers((dlist){ 0.5*Fn_max, 18.0,    0.5});
+  valarray<double> halfwidths((dlist){ 0.5*Fn_max,  5.0,    0.5});
+  valarray<int>         types((ilist){    uni,    gauss,    uni});
+  /*
   if(use_remapped_q){//* 
     double qq=2.0/(q0+1.0);
     double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
@@ -304,11 +306,11 @@ int main(int argc, char*argv[]){
     halfwidths[3]=ds;          //ie range=[s(q=1),s(q=inf)=1.0]
     types[3]=uni;
   }
-  if(use_log_tE){
+   if(use_log_tE){
     centers[7]=log10(tE_max)/2;
     halfwidths[7]=log10(tE_max)/2;
     types[7]=gauss;
-  }
+    }*/
   if(use_additive_noise){
     if(Fn_max<=1)Fn_max=18.0;
     double hw=(MaxAdditiveNoiseMag-Fn_max)/2.0;
@@ -317,21 +319,22 @@ int main(int argc, char*argv[]){
   }
 
   sampleable_probability_function *prior;  
+  const sampleable_probability_function *dataprior,*signalprior,*lensprior,*trajprior;  
   if(0){
     prior=new mixed_dist_product(&space,types,centers,halfwidths);
   } else {
-    sampleable_probability_function *dataprior,*signalprior,*lensprior,*trajprior;  
-    dataprior=new mixed_dist_product(&dataspace,types[slice(0,1,1)],centers[slice(0,1,1)],halfwidths[slice(0,1,1)]);
+    dataprior=new mixed_dist_product(&dataspace,types[slice(0,1,1)],centers[slice(0,1,1)],halfwidths[slice(0,1,1)]);//This either moves into mllike or mldata.  If the latter then the additive_noise Mn/Fn option also needs to move there.
     signalprior=new mixed_dist_product(&signalspace,types[slice(1,2,1)],centers[slice(1,2,1)],halfwidths[slice(1,2,1)]);
     //lensprior=new mixed_dist_product(&lensspace,types[slice(3,3,1)],centers[slice(3,3,1)],halfwidths[slice(3,3,1)]);
-    lensprior=lens->newObjectPrior();
+    lensprior=lens->getObjectPrior();
     cout<<"lensprior="<<lensprior->show()<<endl;
     //trajprior=new mixed_dist_product(&trajspace,types[slice(6,3,1)],centers[slice(6,3,1)],halfwidths[slice(6,3,1)]);
-    trajprior=traj->newObjectPrior();
+    trajprior=traj->getObjectPrior();
     cout<<"trajprior="<<trajprior->show()<<endl;
     prior=new independent_dist_product(&space,dataprior,signalprior,lensprior,trajprior);
   }
   cout<<"Prior is:\n"<<prior->show()<<endl;
+
 
   //Initial parameter state
   state instate(&space,params);

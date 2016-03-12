@@ -21,7 +21,7 @@ using namespace std;
 #include "bayesian.hh"
 
 class ML_photometry_likelihood: public bayes_likelihood{
-  sampleable_probability_function * prior;
+  const sampleable_probability_function * prior;
   int count;
   double total_eval_time;
   double best_post;
@@ -44,6 +44,7 @@ public:
     //noise_trans = stateSpaceTransformND(2,{"I0","Mn"},{"I0","Fn"},[](vector<double>&v){return vector<double>({v[0],v[0]-2.5*log10(v[1])});});
     idx_Fn=idx_I0=-1;
     nevery=0;
+    cout<<"like prior = "<<prior->show()<<endl;
   };
   void info_every(int n){nevery=n;};
   void reset(){
@@ -112,23 +113,6 @@ public:
     }
   };
 
-  ///Set up the output stateSpace for this object
-  ///
-  ///This is just an initial draft.  To be utilized in later round of development.
-  stateSpace getObjectStateSpace(){
-    checkSetup();//Call this assert whenever we need options to have been processed.
-    checkPointers();
-    stateSpace space(1);
-    space=signal->getObjectStateSpace();
-    cout<<"ML_photometry_likelihood::getObjectStateSpace(): This function is not yet implemented.  Need more development of stateSpace."<<endl;
-    exit(1);
-    /*
-    space.add(getObjectStateSpace(*data));
-    ///This is just a temporary hack for backward compatibility in testing.
-    if(!space.relocate("Fn",2))space.relocate("Mn",2);  
-    */
-    return space;
-  };
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);   
     addOption("additive_noise","Interpret Fn->Mn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)");
@@ -139,6 +123,10 @@ public:
     //cout<<"setup:options="<<reportOptions()<<endl;
     //cout<<"setup:do_additive_noise="<<(do_additive_noise?"true":"false")<<endl;
     haveSetup();
+    ///Set up the output stateSpace for this object
+    checkPointers();
+    nativeSpace=*data->getObjectStateSpace();
+    nativeSpace.attach(*signal->getObjectStateSpace());
   };  
   state transformDataState(const state &s)const{
     //cout<<"ML_photometrylike:transfDataSt: this="<<this<<endl;

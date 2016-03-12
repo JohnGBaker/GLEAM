@@ -28,16 +28,18 @@ class ML_photometry_signal : public bayes_signal{
   double r0_ref;
   int idx_I0, idx_Fs;
   int idx_r0, idx_tE, idx_tmax; 
-;
+  stateSpace localSpace;
+  shared_ptr<sampleable_probability_function> localPrior;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
     idx_I0=idx_Fs=-1;
+    localPrior=nullptr;
     r0_ref=0;//2TRAJ:move to Trajectory
     idx_r0=idx_tE=idx_tmax=-1; //2TRAJ:clean-up
     do_remap_r0=false;//2TRAJ:move to Trajectory
-    do_log_tE=false;//2TRAJ:move to Trajectory
+    do_log_tE=false;//2TRAJ:move to Trajectory    
   };
-
+  ~ML_photometry_signal(){};
   //Produce the signal model
   vector<double> get_model_signal(const state &st, const vector<double> &times)const{
     checkWorkingStateSpace();
@@ -98,20 +100,6 @@ public:
     lens->defWorkingStateSpace(sp);
   };
   
-  ///Set up the output stateSpace for this object
-  ///
-  ///This is just an initial draft.  To be utilized in later round of development.
-  stateSpace getObjectStateSpace()const{
-    checkSetup();//Call this assert whenever we need options to have been processed.
-    stateSpace space(2);
-    string names[]={"I0","Fs"};//2TRAJ:clean-up
-    space.set_names(names);  
-    space.attach(lens->getObjectStateSpace());
-    space.attach(traj->getObjectStateSpace());
-    ///or space.attach(transform_to_lens.inverse(lens.getObjectStateSpace()))
-    return space;
-  };
-
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);
     //signal options
@@ -127,6 +115,21 @@ public:
     }
     if(optSet("log_tE"))use_log_tE();//2TRAJ:move to Trajectory
     haveSetup();
+    ///Set up the full output stateSpace for this object
+    stateSpace space(2);
+    string names[]={"I0","Fs"};//2TRAJ:clean-up
+    space.set_names(names);  
+    localSpace=space;
+    nativeSpace=localSpace;
+    nativeSpace.attach(*lens->getObjectStateSpace());
+    nativeSpace.attach(*traj->getObjectStateSpace());
+    //set the prior
+    const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+    valarray<double>    centers((initializer_list<double>){ 18.0,    0.5});
+    valarray<double> halfwidths((initializer_list<double>){  5.0,    0.5});
+    valarray<int>         types((initializer_list<int>){   gauss,    uni});
+    localPrior.reset(new mixed_dist_product(&localSpace,types,centers,halfwidths));
+    setPrior(new independent_dist_product(&nativeSpace,localPrior.get(),lens->getObjectPrior(),traj->getObjectPrior()));
   };    
 
 private:

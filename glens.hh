@@ -95,7 +95,6 @@ public:
   virtual string print_info()const{ostringstream s;s<<"GLens()"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
   //For stateSpaceInterface
   virtual void defWorkingStateSpace(const stateSpace &sp){haveWorkingStateSpace();};
-  virtual stateSpace getObjectStateSpace()const{return stateSpace(0);};
   virtual void setState(const state &s){checkWorkingStateSpace();};
 ;
   //getCenter provides *trajectory frame* coordinates for the center. Except for with -2, which give the lens frame CM. 
@@ -209,31 +208,6 @@ public:
   };  
   ///Set up the output stateSpace for this object
   ///
-  stateSpace getObjectStateSpace()const{
-    checkSetup();//Call this assert whenever we need options to have been processed.
-    stateSpace space(3);
-    string names[]={"logq","logL","phi0"};
-    if(do_remap_q)names[3]="s(1+q)";
-    space.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi0.
-    space.set_names(names);  
-    return space;
-  };
-  sampleable_probability_function* newObjectPrior()const{
-    checkSetup();//Call this assert whenever we need options to have been processed.
-typedef initializer_list<double> dlist;
-    const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
-    valarray<double>    centers((initializer_list<double>){0.0,   0.0,  M_PI});
-    valarray<double> halfwidths((initializer_list<double>){4.0,   1.0,  M_PI});
-    valarray<int>         types((initializer_list<int>){uni, gauss,   uni});
-    if(do_remap_q){
-      double qq=2.0/(q_ref+1.0);
-      double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
-      centers[0]=1.0-ds;
-      halfwidths[0]=ds;          //ie range=[s(q=1),s(q=inf)=1.0]
-      types[0]=uni;
-    }
-    return new mixed_dist_product(&nativespace,types,centers,halfwidths);
-  };
   virtual void addOptions(Options &opt,const string &prefix=""){
     GLens::addOptions(opt,prefix);
     addOption("remap_q","Use remapped mass-ratio coordinate.");

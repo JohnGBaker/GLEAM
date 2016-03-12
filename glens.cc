@@ -427,7 +427,7 @@ void GLens::setup(){
   cout<<"GLens set up with:\n\tintegrate=";
   if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
   else cout<<"false"<<endl;
-  nativespace=getObjectStateSpace();
+  nativeSpace=stateSpace(0);
 };
 
 
@@ -461,6 +461,25 @@ void GLensBinary::setup(){
     remap_q(q0_val);
   }
   GLens::setup();
+  //set nativeSpace
+  stateSpace space(3);
+  string names[]={"logq","logL","phi0"};
+  if(do_remap_q)names[3]="s(1+q)";
+  space.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi0.
+  space.set_names(names);  
+  nativeSpace=space;
+  const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+  valarray<double>    centers((initializer_list<double>){0.0,   0.0,  M_PI});
+  valarray<double> halfwidths((initializer_list<double>){4.0,   1.0,  M_PI});
+  valarray<int>         types((initializer_list<int>){uni, gauss,   uni});
+  if(do_remap_q){
+    double qq=2.0/(q_ref+1.0);
+    double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
+    centers[0]=1.0-ds;
+    halfwidths[0]=ds;          //ie range=[s(q=1),s(q=inf)=1.0]
+    types[0]=uni;
+  }
+  setPrior(new mixed_dist_product(&nativeSpace,types,centers,halfwidths));
 };
 
 Point GLensBinary::map(const Point &p){
