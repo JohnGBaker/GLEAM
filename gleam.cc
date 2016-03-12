@@ -132,7 +132,7 @@ int main(int argc, char*argv[]){
   if(parseBAD||(argc != Nlead_args+1 && argc!=Nlead_args+1+Npar && argc!=5)) {
     cout << "You gave " << argc-1 << " arguments. Expecting "<<Nlead_args<<" or "<<Nlead_args+Npar<<" or 4."<< endl;
     //cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ I0 Fs Fn logq logL r0 phi0 tE tpass ]" << endl;
-    cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ I0 Fs Fn logq logL phi0 r0 tE tpass ]" << endl;
+    cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ Fn I0 Fs logq logL phi0 r0 tE tpass ]" << endl;
     cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
     cout <<opt.print_usage()<<endl;
     return 1;
@@ -222,8 +222,8 @@ int main(int argc, char*argv[]){
   //Set up the parameter space
   stateSpace space(Npar);
   stateSpace signalspace(3),lensspace(3),trajspace(3);//2TRAJLENS for a test of the parameterspace prior splitting infrastructure...  
-  string names[]={"I0","Fs","Fn","logq","logL","phi0","r0","tE","tpass"};
-  if(use_additive_noise)names[2]="Mn";
+  string names[]={"Fn","I0","Fs","logq","logL","phi0","r0","tE","tpass"};
+  if(use_additive_noise)names[0]="Mn";
   if(use_remapped_r0)names[6]="s(r0)";
   if(use_remapped_q)names[3]="s(1+q)";    
   if(use_log_tE)names[7]="log(tE)";
@@ -290,9 +290,12 @@ int main(int argc, char*argv[]){
   //Set the prior:
   //Eventually this should move to the relevant constitutent code elements where the params are given meaning.
   const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
-  valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,    M_PI, r0s/2.0, tE_max/2,  t0     });
-  valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   1.0,    M_PI, r0s/2.0, tE_max/2,  twidth });
-  valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,     uni,     uni,      uni,  gauss  });
+  //valarray<double>    centers((dlist){ 18.0,    0.5,   0.5*Fn_max,   0.0,   0.0,    M_PI, r0s/2.0, tE_max/2,  t0     });
+  //valarray<double> halfwidths((dlist){  5.0,    0.5,   0.5*Fn_max,   4.0,   1.0,    M_PI, r0s/2.0, tE_max/2,  twidth });
+  //valarray<int>         types((ilist){gauss,    uni,   uni,          uni, gauss,     uni,     uni,      uni,  gauss  });
+  valarray<double>    centers((dlist){ 0.5*Fn_max, 18.0,    0.5,    0.0,   0.0,    M_PI, r0s/2.0, tE_max/2,  t0     });
+  valarray<double> halfwidths((dlist){ 0.5*Fn_max,  5.0,    0.5,    4.0,   1.0,    M_PI, r0s/2.0, tE_max/2,  twidth });
+  valarray<int>         types((ilist){    uni,    gauss,    uni,    uni, gauss,     uni,     uni,      uni,  gauss  });
   if(use_remapped_q){//* 
     double qq=2.0/(q0+1.0);
     double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
@@ -308,8 +311,8 @@ int main(int argc, char*argv[]){
   if(use_additive_noise){
     if(Fn_max<=1)Fn_max=18.0;
     double hw=(MaxAdditiveNoiseMag-Fn_max)/2.0;
-    centers[2]=MaxAdditiveNoiseMag-hw;
-    halfwidths[2]=hw;
+    centers[0]=MaxAdditiveNoiseMag-hw;
+    halfwidths[0]=hw;
   }
 
   sampleable_probability_function *prior;  

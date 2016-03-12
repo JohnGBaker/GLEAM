@@ -4,9 +4,9 @@ if(exists("file")){
     filenamebase = "ptmlc_2014-001_l_0256k_4"
 }
 chain=-1
-pnames = "I0 Fs Fn log(q) log(L) log(r0) phi tE tmax"
+pnames = "Fn I0 Fs log(q) log(L) phi0 log(r0) tE tmax"
 npar=9
-#pnames = "Ω_f  b  k  A_x  n_x  dt"
+
 #set terminal postscript eps color enhanced font ",10"
 multi=1
 if(multi==1){
@@ -57,21 +57,21 @@ name(ifile)="pmpc_nrun".ifile."_100k"
 		set title word(pnames,par1).' posterior samples'
 		#set key bottom right
 		if( chain<0){
-		    plot filenamebase.ext index 0 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==6?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):(column(2)) ti "ch0",\
-#		    "" index 1 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==6?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):(column(2)) ti "ch1",\
-		    "" index 2 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==6?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):(column(2)) ti "ch2"
+		    plot filenamebase.ext index 0 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==7?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):(column(2)) ti "ch0",\
+#		    "" index 1 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==7?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):(column(2)) ti "ch1",\
+		    "" index 2 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==7?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):(column(2)) ti "ch2"
 		} else {    
-		  plot filenamebase.ext index chain ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==6?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):(column(2)) ti "ch".chain
+		  plot filenamebase.ext index chain ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==7?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):(column(2)) ti "ch".chain
 		}
 	    } else {	
 		set title word(pnames,par1).' x '.word(pnames,par2)
 		#set key bottom right
 		if(chain<0){
-			plot filenamebase.ext index 0 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==6?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):((par2==4?qfn(column(par2+leadcol)):par2==6?r0fn(column(par2+leadcol)):column(par2+leadcol))) ti "ch0",\
-#			"" index 1 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==6?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):((par2==4?qfn(column(par2+leadcol)):par2==6?r0fn(column(par2+leadcol)):column(par2+leadcol))) ti "ch1",\
-			"" index 2 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==6?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):((par2==4?qfn(column(par2+leadcol)):par2==6?r0fn(column(par2+leadcol)):column(par2+leadcol))) ti "ch2"
+			plot filenamebase.ext index 0 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==7?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):((par2==4?qfn(column(par2+leadcol)):par2==7?r0fn(column(par2+leadcol)):column(par2+leadcol))) ti "ch0",\
+#			"" index 1 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==7?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):((par2==4?qfn(column(par2+leadcol)):par2==7?r0fn(column(par2+leadcol)):column(par2+leadcol))) ti "ch1",\
+			"" index 2 ev ievery::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==7?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):((par2==4?qfn(column(par2+leadcol)):par2==7?r0fn(column(par2+leadcol)):column(par2+leadcol))) ti "ch2"
 		} else {
-			plot filenamebase.ext index chain ev ievery*5::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==6?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):((par2==4?qfn(column(par2+leadcol)):par2==6?r0fn(column(par2+leadcol)):column(par2+leadcol))) ti "ch".chain
+			plot filenamebase.ext index chain ev ievery*5::istart u ($1>st0?(par1==4?qfn(column(par1+leadcol)):par1==7?r0fn(column(par1+leadcol)):column(par1+leadcol)):1/0):((par2==4?qfn(column(par2+leadcol)):par2==7?r0fn(column(par2+leadcol)):column(par2+leadcol))) ti "ch".chain
 		}
 	    }
 	}     
