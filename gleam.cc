@@ -107,8 +107,8 @@ int main(int argc, char*argv[]){
   opt.add(Option("seed","Pseudo random number grenerator seed in [0,1). (Default=-1, use clock to seed.)","-1"));
 
   //prior options:
-  opt.add(Option("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value."));
-  opt.add(Option("tE_max","Uniform prior max in tE. Default=100.0/","100.0"));
+  //opt.add(Option("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value."));
+  //opt.add(Option("tE_max","Uniform prior max in tE. Default=100.0/","100.0"));
 
   //likelihood or data option?
   opt.add(Option("additive_noise","Interpret Fn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)"));
@@ -227,13 +227,10 @@ int main(int argc, char*argv[]){
   if(use_remapped_r0)names[6]="s(r0)";
   if(use_remapped_q)names[3]="s(1+q)";    
   if(use_log_tE)names[7]="log(tE)";
-  if(0)
-  {
-    space.set_names(names);  
-    space.set_bound(6,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi.
-  } else {  //Here we try out the new infrastructure of attaching state-spaces together
+  {  //Here we try out the new infrastructure of attaching state-spaces together
     space=stateSpace();
-    dataspace.set_names(names);  
+    //dataspace.set_names(names);  
+    dataspace=data->getObjectStateSpace();
     cout<<"dataspace="<<dataspace.show()<<endl;
     space.attach(dataspace);
     signalspace.set_names(names+1);  
@@ -287,6 +284,7 @@ int main(int argc, char*argv[]){
   double t0,twidth;
   double tstart,tend;
   t0=data->getFocusLabel();
+  cout<<"t0="<<t0<<endl;
   data->getDomainLimits(tstart,tend);
   twidth=300;
 
@@ -328,7 +326,8 @@ int main(int argc, char*argv[]){
     //lensprior=new mixed_dist_product(&lensspace,types[slice(3,3,1)],centers[slice(3,3,1)],halfwidths[slice(3,3,1)]);
     lensprior=lens->newObjectPrior();
     cout<<"lensprior="<<lensprior->show()<<endl;
-    trajprior=new mixed_dist_product(&trajspace,types[slice(6,3,1)],centers[slice(6,3,1)],halfwidths[slice(6,3,1)]);
+    //trajprior=new mixed_dist_product(&trajspace,types[slice(6,3,1)],centers[slice(6,3,1)],halfwidths[slice(6,3,1)]);
+    trajprior=traj->newObjectPrior();
     cout<<"trajprior="<<trajprior->show()<<endl;
     prior=new independent_dist_product(&space,dataprior,signalprior,lensprior,trajprior);
   }

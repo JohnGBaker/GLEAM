@@ -70,7 +70,7 @@ protected:
   bool have_times;
   vector<double> times;
   double tE,tpass;
-  double r0,phi,r0_ref;
+  double r0,phi,r0_ref,tE_max;
   bool do_remap_r0, do_log_tE;
   int idx_r0, idx_tE, idx_tpass; 
 public:
@@ -113,6 +113,24 @@ public:
     space.set_names(names);  
     return space;
   };
+  sampleable_probability_function* newObjectPrior()const{
+    checkSetup();//Call this assert whenever we need options to have been processed.
+    double twidth=300,t0=0;
+    double r0s=6.0;
+    if(do_remap_r0){
+      r0s=1.0;
+    }
+    const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+    valarray<double>    centers((initializer_list<double>){ r0s/2.0, tE_max/2,  t0     });
+    valarray<double> halfwidths((initializer_list<double>){ r0s/2.0, tE_max/2,  twidth });
+    valarray<int>         types((initializer_list<int>){        uni,      uni,  gauss  });
+    if(do_log_tE){
+      centers[1]=log10(tE_max)/2;
+      halfwidths[1]=log10(tE_max)/2;
+      types[1]=gauss;
+    }
+    return new mixed_dist_product(&nativespace,types,centers,halfwidths);
+  };
   virtual void defWorkingStateSpace(const stateSpace &sp){
     checkSetup();//Call this assert whenever we need options to have been processed.
     if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");
@@ -138,7 +156,9 @@ public:
       do_remap_r0=true;
     }
     if(optSet("log_tE"))do_log_tE=true;
+    *optValue("tE_max")>>tE_max;
     haveSetup();
+    nativespace=getObjectStateSpace();
   };    
   ///Explanation of options:
   ///
@@ -172,10 +192,14 @@ public:
     addOption("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value.");
     addOption("remap_r0","Use remapped r0 coordinate.");
     addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");
+    addOption("tE_max","Uniform prior max in tE. Default=100.0/","100.0");
   };
-};
 
-///Here is ParallaxTrajectory class for when the observer motion cannot be neglected.
+};
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+///Here is a ParallaxTrajectory class for when the observer motion cannot be neglected.
 ///The nominal version of this class includes the Earth's trajectory accurate to
 ///1e4 km or about a few minutes motion.  The class is designed to be easily generalizable
 ///to other orbits by overloading the function that provides the orbital trajectory.
