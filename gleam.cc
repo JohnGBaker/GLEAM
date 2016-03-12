@@ -325,7 +325,8 @@ int main(int argc, char*argv[]){
     sampleable_probability_function *dataprior,*signalprior,*lensprior,*trajprior;  
     dataprior=new mixed_dist_product(&dataspace,types[slice(0,1,1)],centers[slice(0,1,1)],halfwidths[slice(0,1,1)]);
     signalprior=new mixed_dist_product(&signalspace,types[slice(1,2,1)],centers[slice(1,2,1)],halfwidths[slice(1,2,1)]);
-    lensprior=new mixed_dist_product(&lensspace,types[slice(3,3,1)],centers[slice(3,3,1)],halfwidths[slice(3,3,1)]);
+    //lensprior=new mixed_dist_product(&lensspace,types[slice(3,3,1)],centers[slice(3,3,1)],halfwidths[slice(3,3,1)]);
+    lensprior=lens->newObjectPrior();
     cout<<"lensprior="<<lensprior->show()<<endl;
     trajprior=new mixed_dist_product(&trajspace,types[slice(6,3,1)],centers[slice(6,3,1)],halfwidths[slice(6,3,1)]);
     cout<<"trajprior="<<trajprior->show()<<endl;

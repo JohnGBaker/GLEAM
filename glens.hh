@@ -218,8 +218,22 @@ public:
     space.set_names(names);  
     return space;
   };
-  //sampleable_probability_function getObjectPrior()const{
-  //};
+  sampleable_probability_function* newObjectPrior()const{
+    checkSetup();//Call this assert whenever we need options to have been processed.
+typedef initializer_list<double> dlist;
+    const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+    valarray<double>    centers((initializer_list<double>){0.0,   0.0,  M_PI});
+    valarray<double> halfwidths((initializer_list<double>){4.0,   1.0,  M_PI});
+    valarray<int>         types((initializer_list<int>){uni, gauss,   uni});
+    if(do_remap_q){
+      double qq=2.0/(q_ref+1.0);
+      double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
+      centers[0]=1.0-ds;
+      halfwidths[0]=ds;          //ie range=[s(q=1),s(q=inf)=1.0]
+      types[0]=uni;
+    }
+    return new mixed_dist_product(&nativespace,types,centers,halfwidths);
+  };
   virtual void addOptions(Options &opt,const string &prefix=""){
     GLens::addOptions(opt,prefix);
     addOption("remap_q","Use remapped mass-ratio coordinate.");

@@ -427,6 +427,7 @@ void GLens::setup(){
   cout<<"GLens set up with:\n\tintegrate=";
   if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
   else cout<<"false"<<endl;
+  nativespace=getObjectStateSpace();
 };
 
 
