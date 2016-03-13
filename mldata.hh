@@ -137,6 +137,7 @@ public:
     Optioned::addOptions(opt,prefix);
     addTypeOptions(opt);
     addOption("tcut","Cut times before tcut (relative to tmax). Default=-1e20","-1e20");
+    opt.add(Option("Fn_max","Uniform prior max (min for additive) in Fn. Default=1.0 (18.0 additive)/","1"));
   };
   ///Here provide options for the known types of ML_photometry_data...
   ///This is provided statically to allow options to select one or more types of data before specifying the 
@@ -160,8 +161,22 @@ public:
     ///Set up the output stateSpace for this object
     stateSpace space(1);
     string names[]={"Mn"};
+    double Fn_max;
+    *optValue("Fn_max")>>Fn_max;
+    //set stateSpace
     space.set_names(names);  
     nativeSpace=space;
+    //set prior
+    const double MaxAdditiveNoiseMag=22;
+    const int uni=mixed_dist_product::uniform;
+    valarray<double>    centers(1),halfwidths(1);
+    valarray<int>         types(1);
+    if(Fn_max<=1)Fn_max=18.0;
+    double hw=(MaxAdditiveNoiseMag-Fn_max)/2.0;
+    centers[0]=MaxAdditiveNoiseMag-hw;
+    halfwidths[0]=hw;
+    types[0]=uni;
+    setPrior(new mixed_dist_product(&nativeSpace,types,centers,halfwidths));
   };
 
 private:

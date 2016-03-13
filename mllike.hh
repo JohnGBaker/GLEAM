@@ -36,15 +36,15 @@ class ML_photometry_likelihood: public bayes_likelihood{
   stateSpaceTransformND noise_trans{2,{"I0","Fn"},{"I0","Mn"},[](vector<double>&v){return vector<double>({v[0],v[0]-2.5*log10(v[1])});}};
   int nevery;
 public:
-  ML_photometry_likelihood(stateSpace *sp, ML_photometry_data *data, ML_photometry_signal *signal, sampleable_probability_function *prior=nullptr):prior(prior),bayes_likelihood(sp,data,signal){
+  ML_photometry_likelihood(ML_photometry_data *data, ML_photometry_signal *signal):ML_photometry_likelihood(nullptr,data,signal,nullptr){};
+  ML_photometry_likelihood(stateSpace *sp, ML_photometry_data *data, ML_photometry_signal *signal, const sampleable_probability_function *prior=nullptr):prior(prior),bayes_likelihood(sp,data,signal){
     ///Note: here, as before, we assume that the state space is passed in.  Maybe we should be able to compute it from the signal and data though.
-    do_additive_noise=false;
-    best=state(sp,sp->size());
+    do_additive_noise=true;
+    if(sp)best=state(sp,sp->size());
     reset();
     //noise_trans = stateSpaceTransformND(2,{"I0","Mn"},{"I0","Fn"},[](vector<double>&v){return vector<double>({v[0],v[0]-2.5*log10(v[1])});});
     idx_Fn=idx_I0=-1;
     nevery=0;
-    cout<<"like prior = "<<prior->show()<<endl;
   };
   void info_every(int n){nevery=n;};
   void reset(){
@@ -115,19 +115,29 @@ public:
 
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);   
-    addOption("additive_noise","Interpret Fn->Mn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)");
+    addOption("additive_noise","Interpret Fn->Mn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)(now deprecated, on by default)");
   };
   void setup(){    
     if(optSet("additive_noise"))useAdditiveNoise();
     set_like0();
-    //cout<<"setup:options="<<reportOptions()<<endl;
-    //cout<<"setup:do_additive_noise="<<(do_additive_noise?"true":"false")<<endl;
     haveSetup();
     ///Set up the output stateSpace for this object
     checkPointers();
     nativeSpace=*data->getObjectStateSpace();
+    if(!do_additive_noise)
+      nativeSpace=noise_trans.transform(nativeSpace);
     nativeSpace.attach(*signal->getObjectStateSpace());
-  };  
+    //Set the prior...
+    setPrior(new independent_dist_product(&nativeSpace,data->getObjectPrior(),signal->getObjectPrior()));
+    //and set the internal (now redundant) prior and space to match.
+    prior=getObjectPrior();
+    space=&nativeSpace;
+    best=state(space,space->size());
+    //Unless otherwise externally specified, assume nativeSpace as the parameter space
+    defWorkingStateSpace(nativeSpace);
+    
+  };
+  
   state transformDataState(const state &s)const{
     //cout<<"ML_photometrylike:transfDataSt: this="<<this<<endl;
     if(!do_additive_noise){
@@ -154,6 +164,7 @@ public:
 private:
   
   ///Reparameterize Fn as the magnitude of strictly additive noise magnitude, rather than a fractional noise level.
+  ///Recently we always do this and may eliminate the option not to...
   void useAdditiveNoise(){
     do_additive_noise=true;
   };
