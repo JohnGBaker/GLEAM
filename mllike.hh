@@ -128,9 +128,9 @@ public:
       nativeSpace=noise_trans.transform(nativeSpace);
     nativeSpace.attach(*signal->getObjectStateSpace());
     //Set the prior...
-    setPrior(new independent_dist_product(&nativeSpace,data->getObjectPrior(),signal->getObjectPrior()));
+    setPrior(new independent_dist_product(&nativeSpace,data->getObjectPrior().get(),signal->getObjectPrior().get()));
     //and set the internal (now redundant) prior and space to match.
-    prior=getObjectPrior();
+    prior=getObjectPrior().get();
     space=&nativeSpace;
     best=state(space,space->size());
     //Unless otherwise externally specified, assume nativeSpace as the parameter space

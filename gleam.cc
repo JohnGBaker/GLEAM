@@ -30,22 +30,19 @@ bool debug_signal = false;
 shared_ptr<Random> globalRNG;//used for some debugging... 
 
 //Global Control parameters (see more in main())
-const int Npar=9;
 const double MaxAdditiveNoiseMag=22;
 int output_precision;
 double mm_lens_rWB;
 
 //Analysis functions defined below.
 void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &signal, bayes_likelihood &like,state &s,double tstart,double tend,int nsamples);
-void dump_mag_map(const string &outname,bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples=301,int cent=-2,bool output_nlens=false);
+void dump_mag_map(const string &outname,bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples=301);//,int cent=-2,bool output_nlens=false);
 void dump_lightcurve(const string &outname,bayes_likelihood&like,state &s,double tstart,double tend,int nsamples=301);
 
 
 //***************************************************************************************8
 //main test program
 int main(int argc, char*argv[]){
-  //string datafile;
-  const int NparRead=Npar; 
 
   //Create the sampler
   ptmcmc_sampler mcmc;
@@ -131,10 +128,8 @@ int main(int argc, char*argv[]){
   if(filename)Nlead_args++;
 
   bool parseBAD=opt.parse(argc,argv);
-  if(parseBAD||(argc != Nlead_args+1 && argc!=Nlead_args+1+Npar && argc!=5)) {
-    cout << "You gave " << argc-1 << " arguments. Expecting "<<Nlead_args<<" or "<<Nlead_args+Npar<<" or 4."<< endl;
-    //cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ I0 Fs Fn logq logL r0 phi0 tE tpass ]" << endl;
-    cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ Fn I0 Fs logq logL phi0 r0 tE tpass ]" << endl;
+  if(parseBAD) {
+    cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ params ]" << endl;
     cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
     cout <<opt.print_usage()<<endl;
     return 1;
@@ -171,28 +166,17 @@ int main(int argc, char*argv[]){
   //istringstream(opt.value("Fn_max"))>>Fn_max;
   //istringstream(opt.value("tE_max"))>>tE_max;
 
-  //read args
+  //read non-parameter args
   string outname;
   ostringstream ss("");
-  valarray<double>params(Npar);
-  bool have_pars0=false;
-  if(do_magmap&&argc==5){//different parameters in this case
-    //datafile="";
-    outname=argv[1];
-    if(Npar<3){
-      cout<<"We expected Npar>=3"<<endl;
-      exit(1);
-    }
-    for(int i=0;i<3;i++)stringstream(argv[i+2])>>params[i];  
-    have_pars0=true;
-  } else if(argc>=Nlead_args+1){
-    outname=argv[Nlead_args];
-    if(argc>Nlead_args+1){
-      for(int i=0;i<NparRead;i++)stringstream(argv[i+1+Nlead_args])>>params[i];
-      have_pars0=true;
-    }
+  if(argc<Nlead_args+1) {
+    cout << "You gave " << argc-1 << " arguments. Expecting "<<Nlead_args<< endl;
+    cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ params ]" << endl;
+    cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
+    cout <<opt.print_usage()<<endl;
+    return 1;
   }
-
+  outname=argv[1];
 
   //report
   cout.precision(output_precision);
@@ -214,16 +198,47 @@ int main(int argc, char*argv[]){
 
   //Get the space/prior for use here
   stateSpace space;
-  const sampleable_probability_function *prior;  
+  shared_ptr<const sampleable_probability_function> prior;  
   space=*like->getObjectStateSpace();
   cout<<"like.nativeSpace=\n"<<space.show()<<endl;
   prior=like->getObjectPrior();
   cout<<"Prior is:\n"<<prior->show()<<endl;
   valarray<double> halfw;prior->getHalfwidths(halfw);
 
+  //Read Params
+  int Npar=space.size();
+  cout<<"Npar="<<Npar<<endl;
+  valarray<double>params;
+  bool have_pars0=false;
+  if(do_magmap){//different parameters in this case
+    Npar=3;
+    if(argc!=5) {
+      cout << "You gave " << argc-1 << " arguments. Expecting 4."<< endl;
+      cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ params ]" << endl;
+      cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
+      cout <<opt.print_usage()<<endl;
+      return 1;
+    }
+    params.resize(3);
+    for(int i=0;i<3;i++)stringstream(argv[i+2])>>params[i];  
+    have_pars0=true;
+  } else if(argc==Nlead_args+Npar+1){
+    params.resize(Npar);
+    if(argc>Nlead_args+1){
+      for(int i=0;i<Npar;i++)stringstream(argv[i+1+Nlead_args])>>params[i];
+      have_pars0=true;
+    }
+  } else if(!argc==Nlead_args+1){
+    cout << "You gave " << argc-1 << " arguments. Expecting "<<Nlead_args<<"."<< endl;
+      cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ params ]" << endl;
+      cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
+      cout <<opt.print_usage()<<endl;
+      return 1;
+  }
   //Initial parameter state
-  state instate(&space,params);
+  state instate(&space,Npar);
   if(have_pars0){
+    instate=state(&space,params);
     cout<<"Input parameters:"<<instate.show()<<endl;
   } else { //If no params give just draw something.  Perhaps only relevant for mock_data
     cout<<"Drawing a state from the prior distribution."<<endl;
@@ -305,7 +320,7 @@ int main(int argc, char*argv[]){
   //Set the proposal distribution 
   int Ninit;
   //proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,prior,&halfwidths);
-  proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,prior,&halfw);
+  proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,prior.get(),&halfw);
   cout<<"Proposal distribution is:\n"<<prop->show()<<endl;
   //set up the mcmc sampler (assuming mcmc)
   mcmc.setup(Ninit,*like,*prior,*prop,output_precision);
@@ -333,7 +348,7 @@ int main(int argc, char*argv[]){
       asignal.Optioned::addOptions(opt,"");
       asignal.setup();
       //asignal.set_tstartHACK(tstart);
-      ML_photometry_likelihood alike(&space, data, &asignal, prior);
+      ML_photometry_likelihood alike(&space, data, &asignal, prior.get());
       cout<<"alike="<<&alike<<endl;
       alike.Optioned::addOptions(opt,"");
       alike.setup();
@@ -395,18 +410,19 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
 
 };
 
-void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples,int cent,bool output_nlens){
+void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples){//,int cent,bool output_nlens){
   //Points in the routine are in *lens frame* //consider shifting to Trajectory frame.
   ofstream out(outname);
   if(tend<=tstart)data.getDomainLimits(tstart,tend);
   Point LLp(0,0), URp(0,0);
-  signal.getWindow(s, LLp, URp, tstart, tend, cent);  
+  //signal.getWindow(s, LLp, URp, tstart, tend, cent);  
+  signal.getWindow(s, LLp, URp, tstart, tend);  
   cout<<"dump mag map: LL=("<<LLp.x<<","<<LLp.y<<") UR=("<<URp.x<<","<<URp.y<<")"<<endl;
   GLens *lens=signal.clone_lens();
   lens->setState(s);
   out.precision(13);
   cout<<"lens="<<lens->print_info();
-  if(output_nlens)lens->verboseWrite();
+  //if(output_nlens)lens->verboseWrite();
   lens->writeMagMap(out, LLp, URp, nsamples);
   delete lens;
 };

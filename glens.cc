@@ -140,17 +140,6 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   vector<Point> thetas;
   bool evolving=false;
   double mg;
-  /*
-  double tgrid=traj.t_start();
-  double tgrid_next=traj.get_obs_time(1);
-  beta=traj.get_obs_pos(tgrid);
-  thetas=invmap(beta);
-  mg=mag(thetas);
-  //cout<<"Recording at t="<<traj.t_start()<<" beta=("<<beta.x<<","<<beta.y<<")"<<endl;
-  time_series.push_back(traj.t_start());
-  thetas_series.push_back(thetas);
-  mag_series.push_back(mg);
-  */
 
   int Ngrid=traj.Nsamples();
   double t_old;
@@ -269,7 +258,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 
   if(test_result){
   //initialization
-    double delta=traj.get_obs_time(1)-traj.t_start();
+    //double delta=traj.get_obs_time(1)-traj.t_start();
     for(int i=0; i<Ngrid;i++){
       double ttest=traj.get_obs_time(i);
       int ires=index_series[i];

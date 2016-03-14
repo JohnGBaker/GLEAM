@@ -22,33 +22,33 @@ extern bool debug_signal;
 ///There are several options for controlling/modifying the form of the parameters
 ///applied in constructing the model, with some rough motivations.
 class ML_photometry_signal : public bayes_signal{
-  bool do_remap_r0, do_log_tE;//2TRAJ:move to Trajectory
+  //bool do_remap_r0, do_log_tE;//2TRAJ:move to Trajectory
   Trajectory *traj;
   GLens *lens;
-  double r0_ref;
+  //double r0_ref;
   int idx_I0, idx_Fs;
-  int idx_r0, idx_tE, idx_tmax; 
+  //int idx_r0, idx_tE, idx_tmax; 
   stateSpace localSpace;
-  shared_ptr<sampleable_probability_function> localPrior;
+  shared_ptr<const sampleable_probability_function> localPrior;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
     idx_I0=idx_Fs=-1;
     localPrior=nullptr;
-    r0_ref=0;//2TRAJ:move to Trajectory
-    idx_r0=idx_tE=idx_tmax=-1; //2TRAJ:clean-up
-    do_remap_r0=false;//2TRAJ:move to Trajectory
-    do_log_tE=false;//2TRAJ:move to Trajectory    
+    //r0_ref=0;//2TRAJ:move to Trajectory
+    //idx_r0=idx_tE=idx_tmax=-1; //2TRAJ:clean-up
+    //do_remap_r0=false;//2TRAJ:move to Trajectory
+    //do_log_tE=false;//2TRAJ:move to Trajectory    
   };
   ~ML_photometry_signal(){};
   //Produce the signal model
   vector<double> get_model_signal(const state &st, const vector<double> &times)const{
     checkWorkingStateSpace();
-    vector<double>params=st.get_params_vector();
+    //vector<double>params=st.get_params_vector();
     //return model_lightcurve(params,times);
     double result=0;
-    double I0,Fs,r0,tE,tmax;//2TRAJ
-    //double I0,Fs;//2TRAJ: should look like this when we are done.
-    get_model_params(params, I0,Fs,r0,tE,tmax);//2TRAJ mostly eliminate this.
+    double I0,Fs,r0;//,tE,tmax;//2TRAJ
+    //get_model_params(params, I0,Fs,r0,tE,tmax);//2TRAJ mostly eliminate this.
+    get_model_params(st,I0,Fs);
     vector<double> xtimes,model,modelmags;
     vector<vector<Point> > thetas;
     vector<int> indices;
@@ -57,11 +57,10 @@ public:
     GLens *worklens=lens->clone();
     worklens->setState(st);
 
-    Trajectory *worktraj=clone_trajectory(r0);
-    vector<double>tEs=times;
-    for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ: wont need this    
-
-    worktraj->set_times(tEs,0);//2TRAJ: change interface to work with physical times here
+    //Trajectory *worktraj=clone_trajectory(r0);
+    Trajectory *worktraj=traj->clone();
+    worktraj->setState(st);
+    worktraj->set_times(times);
     worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
 
     bool burped=false;
@@ -73,7 +72,7 @@ public:
 	burped=true;
       }
     }
-    delete worktraj, worklens;//2TRAJ: Need to check for virtual destructor.
+    delete worktraj, worklens;
     return model;
   };
 
@@ -89,31 +88,35 @@ public:
     //if(use_log_tE)names[7]="log(tE)";
     idx_I0=sp.requireIndex("I0");
     idx_Fs=sp.requireIndex("Fs");
-    if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");//2TRAJ:move to Trajectory
-    else idx_r0=sp.requireIndex("r0");//2TRAJ:move to Trajectory
-    if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");//2TRAJ:move to Trajectory
-    else idx_tE=sp.requireIndex("tE");//2TRAJ:move to Trajectory
-    idx_tmax=sp.requireIndex("tpass");//2TRAJ:move to Trajectory
+
+    //if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");//2TRAJ:move to Trajectory
+    //else idx_r0=sp.requireIndex("r0");//2TRAJ:move to Trajectory
+    //if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");//2TRAJ:move to Trajectory
+    //else idx_tE=sp.requireIndex("tE");//2TRAJ:move to Trajectory
+    //idx_tmax=sp.requireIndex("tpass");//2TRAJ:move to Trajectory
     haveWorkingStateSpace();
     ///Eventually want to transmit these down to constituent objects:
     ///FIXME This is a temporary version.  Should replace r0 and q rescalings with a stateSpaceTransform...
     lens->defWorkingStateSpace(sp);
+    traj->defWorkingStateSpace(sp);
   };
   
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);
     //signal options
-      addOption("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value.");//2TRAJ:move to Trajectory
-      addOption("remap_r0","Use remapped r0 coordinate.");//2TRAJ:move to Trajectory
-      addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");//2TRAJ:move to Trajectory
+    //addOption("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value.");//2TRAJ:move to Trajectory
+    //addOption("remap_r0","Use remapped r0 coordinate.");//2TRAJ:move to Trajectory
+    //addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");//2TRAJ:move to Trajectory
   };
   void setup(){
+    /*
     if(optSet("remap_r0")){//2TRAJ:move to Trajectory
       double r0_ref_val;
       *optValue("remap_r0_ref_val")>>r0_ref_val;
       remap_r0(r0_ref_val);
     }
     if(optSet("log_tE"))use_log_tE();//2TRAJ:move to Trajectory
+    */
     haveSetup();
     ///Set up the full output stateSpace for this object
     stateSpace space(2);
@@ -129,11 +132,12 @@ public:
     valarray<double> halfwidths((initializer_list<double>){  5.0,    0.5});
     valarray<int>         types((initializer_list<int>){   gauss,    uni});
     localPrior.reset(new mixed_dist_product(&localSpace,types,centers,halfwidths));
-    setPrior(new independent_dist_product(&nativeSpace,localPrior.get(),lens->getObjectPrior(),traj->getObjectPrior()));
+    setPrior(new independent_dist_product(&nativeSpace,localPrior.get(),lens->getObjectPrior().get(),traj->getObjectPrior().get()));
   };    
 
 private:
 
+  /*
   ///Reparameterize r0 point of closest approach to a new variable which has a finite range.
   ///Some issues are that: 1) Large r0 values are kind of similar in effect, and also less likely
   ///because we a) suppose that events with non negligible magnification have been preselected,
@@ -164,13 +168,22 @@ private:
   //This goes to ml signal instantiation processOptions
   void use_log_tE(){
     do_log_tE=true;
-  }
+    }*/
 
+  void get_model_params(const state &st, double &I0, double &Fs)const{
+    checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
+    //Light level parameters
+    //  I0 baseline unmagnitized magnitude
+    //  Fs fraction of I0 light from the magnetized source
+    I0=st.get_param(idx_I0);
+    Fs=st.get_param(idx_Fs);
+  };
   ///2TRAJ: This is currently hard-coded with lens and trajectory parameters.  We want to be agnostic to those.
   // Here is our developing plan for addressing this:
   // Trajectory will own (tmax,tE,r0 and other new params)
   // We will do conversions for rescaling these here, as needed, as with the GLens param q and Fs.
   //
+  /*
   void get_model_params(const vector<double> &params, double &I0, double &Fs,double &r0,double &tE,double &tmax)const{
     checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
     //Light level parameters
@@ -196,7 +209,7 @@ private:
     //See discussion in remap_r0() above    
     if(do_remap_r0)r0=r0_ref/sqrt(1.0/sofr0-1.0);
     else r0=sofr0;
-  };
+    };*/
 
   ///2TRAJ: Ultimately this goes into the Trajectory class as a general clone and stateSpace setting...
   Trajectory *clone_trajectory(double r0)const{
@@ -209,23 +222,29 @@ public:
   GLens *clone_lens()const{return lens->clone();};
   //Here we always make a square window, big enough to fit the trajectory (over the specified domain) and the lens window
   //Points referenced in this function refer to *lens frame* //consider shifting
-  void getWindow(const state &s, Point &LLcorner,Point &URcorner, double tstart=0, double tend=0, int cent=-2){
-    double I0,Fs,r0,tE,tmax;//2TRAJ: As in model_lightcurve
-    get_model_params(s.get_params_vector(),I0,Fs,r0,tE,tmax);//2TRAJ
+  void getWindow(const state &s, Point &LLcorner,Point &URcorner, double tstart=0, double tend=0){//, int cent=-2){
+    double I0,Fs;//,r0,tE,tmax;//2TRAJ: As in model_lightcurve
+    //get_model_params(s.get_params_vector(),I0,Fs,r0,tE,tmax);//2TRAJ
+    get_model_params(s,I0,Fs);
     Point pstart(0,0),pend(0,0);
     double margin=0,width=0,x0,y0,wx,wy;
     GLens *worklens=lens->clone();
     worklens->setState(s);
 
     //We start work in the lens frame
+    /*
     if(cent>-2){//signal to use r0 as map width and center on {rminus,CoM,rplus}, when cent={0,1,2}
       x0=worklens->getCenter(cent).x;
       width=r0;
       pstart=Point(x0-width/2,-width/2);
       pend=Point(x0+width/2,+width/2);
-    } else {
-      double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;//2TRAJ:Do we use this tstart/tend?  Probably need a Trajectory function for converting physical to lens-scaled time.
-      Trajectory *tr=clone_trajectory(r0);
+      } else */
+    {
+      //Trajectory *tr=clone_trajectory(r0);
+      Trajectory *tr=traj->clone();
+      tr->setState(s);
+      //double tleft=(tstart-tmax)/tE,tright=(tend-tmax)/tE;//2TRAJ:Do we use this tstart/tend?  Probably need a Trajectory function for converting physical to lens-scaled time.
+      double tleft=tr->get_frame_time(tstart),tright=tr->get_frame_time(tend);
       pstart=tr->get_obs_pos(tleft);
       pend=tr->get_obs_pos(tright);
       cout<<"making mag-map window between that fits points: ("<<pstart.x<<","<<pstart.y<<") and ("<<pend.x<<","<<pend.y<<")"<<endl;
@@ -253,26 +272,22 @@ public:
   ///Probably moves to trajectory eventually.
   void dump_trajectory(ostream &out, state &s, vector<double> &times, double tref){
     double I0,Fs,r0,tE,tmax;//2TRAJ
-    get_model_params(s.get_params_vector(), I0,Fs,r0,tE,tmax);//2TRAJ
-
-    //Get square bounding box size
-    //cout<<"Model params: I0  Fs  q  L  r0  phi tE tmax\n"
-    //	<<I0<<" "<<Fs<<" "<<q<<" "<<L<<" "<<r0<<" "<<phi<<" "<<tE<<" "<<tmax<<endl;//2TRAJ: Use stateSpace or cut
+    //get_model_params(s.get_params_vector(), I0,Fs,r0,tE,tmax);//2TRAJ
+    get_model_params(s, I0,Fs);
 
     GLens *worklens=lens->clone();
     worklens->setState(s);
     double xcm  =  worklens->getCenter().x;
-    Trajectory *tr=clone_trajectory(r0);
-    vector<double>tEs=times;
-    for(double &t : tEs)t=(t-tmax)/tE;//2TRAJ:don't need    
-    tr->set_times(tEs,0);//2TRAJ:change to physical
+    Trajectory *tr=traj->clone();
+    tr->setState(s);
+    tr->set_times(times);
     cout<<"times range from "<<tr->t_start()<<" to "<<tr->t_end()<<endl;
     cout<<tr->print_info()<<endl;
     out<<"#"<<s.get_string()<<endl;
     out<<"#1.t   2. t_rel  3.x   4.y "<<endl;
-    for(auto t:tEs){//2TRAJ: this will have to be physical times
-      Point p=tr->get_obs_pos(t);//converted to lens-scaled time for this?  //Note: here p comes out in traj frame.
-      //out<<t+tref<<" "<<t<<" "<<p.x-xcm<<" "<<p.y<<endl;
+    for(auto tph:times){//2TRAJ: this will have to be physical times
+      double t=tr->get_frame_time(tph);
+      Point p=tr->get_obs_pos(t);//Note: here p comes out in traj frame.
       out<<t+tref<<" "<<t<<" "<<p.x<<" "<<p.y<<endl;
     }
   };

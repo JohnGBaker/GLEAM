@@ -86,16 +86,28 @@ public:
   };
   virtual ~Trajectory(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
   virtual Trajectory* clone(){
-    return new Trajectory(*this);
+    Trajectory*cloned=new Trajectory(*this);
+    //cout<<"Trajectory::clone:: nativePrior:count="<<nativePrior.use_count()<<endl;//<<" localPrior:count="<<localPrior.use_count()<<endl;
+    return cloned;
+    
   };
   virtual void setup(const Point &pos0, const Point &vel0){p0=pos0;v0=vel0;};
   ///Set the required eval times.  (Times are "phys" times, but "phys"=frame if tE=1,tpass=0)
-  virtual void set_times(vector<double> times,double toff){this->times=times;ts=times[0];tf=times.back();have_times=true;this->toff=toff;};
-  ///Return start time. (Times are "phys" times, but "phys"=frame if tE=1,tpass=0)
+  virtual void set_times(vector<double> times,double toff=0){
+    vector<double>tEs=times;
+    for(double &t : tEs)t=get_frame_time(t);
+    this->times=tEs;
+    this->toff=toff;
+    ts=this->times[0];
+    tf=this->times.back();
+    have_times=true;
+  };
+  ///Return start time. (Times are "frame" times, but "phys"=frame if tE=1,tpass=0)
   virtual double t_start()const {return ts;};
-  ///Return end time. (Times are "phys" times, but "phys"=frame if tE=1,tpass=0)
+  ///Return end time. (Times are "frame" times, but "phys"=frame if tE=1,tpass=0)
   virtual double t_end()const {return tf;};
   virtual int Nsamples()const {if(have_times)return times.size(); else return (int)((t_end()-t_start())/cad)+1;};
+  ///Return frame time of ith obs. 
   virtual double get_obs_time(int ith)const {if(have_times)return times[ith]; else return ts-toff+cad*ith;};
   virtual double get_phys_time(double frame_time){return frame_time*tE+tpass;}
   virtual double get_frame_time(double phys_time){return (phys_time-tpass)/tE;}
