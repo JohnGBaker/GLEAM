@@ -258,12 +258,10 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 
   if(test_result){
   //initialization
-    //double delta=traj.get_obs_time(1)-traj.t_start();
     for(int i=0; i<Ngrid;i++){
       double ttest=traj.get_obs_time(i);
       int ires=index_series[i];
       double tres=time_series[ires];
-      //Point beta=traj.get_obs_pos(ttest);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
       Point beta=get_obs_pos(traj,ttest);
       vector<Point> thetas=invmap(beta);
       int nimages=thetas.size();
@@ -273,11 +271,9 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
       if(ires>0&&ires<time_series.size()-1){
 	tminus=time_series[ires-1];
 	tplus=time_series[ires+1];
-	//beta=traj.get_obs_pos(tminus);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
 	beta=get_obs_pos(traj,tminus);
 	thetas=invmap(beta);
 	mgminus=mag(thetas);
-	//beta=traj.get_obs_pos(tplus);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
 	beta=get_obs_pos(traj,tplus);
 	thetas=invmap(beta);
 	mgplus=mag(thetas);
@@ -306,14 +302,10 @@ int GLens::GSL_integration_func (double t, const double theta[], double thetadot
   GLens *thisobj = static_cast<GLens *>(instance);
   const Trajectory *traj=thisobj->trajectory;
   Point p(theta[0],theta[1]);
-  //double j00,j10,j01,j11,invJ = thisobj->jac(p,j00,j01,j10,j11);
-  //double j00i=j11,j10i=-j10,j01i=-j01,j11i=j00;
   double j00i,j10i,j01i,j11i,invJ = thisobj->invjac(p,j00i,j01i,j10i,j11i);
-  //Point beta0=traj->get_obs_pos(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
   Point beta0=thisobj->get_obs_pos(*traj,t);
   Point beta=thisobj->map(p);
   double dx=beta.x-beta0.x,dy=beta.y-beta0.y;
-  //Point betadot=traj->get_obs_vel(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
   Point betadot=thisobj->get_obs_vel(*traj,t);
   double adjbetadot[2];
   //double rscale=thisobj->estimate_scale(Point(theta[0],theta[1]));
@@ -323,26 +315,6 @@ int GLens::GSL_integration_func (double t, const double theta[], double thetadot
   adjbetadot[1] = betadot.y-rk*dy;
   thetadot[0] = j00i*adjbetadot[0]+j01i*adjbetadot[1];
   thetadot[1] = j10i*adjbetadot[0]+j11i*adjbetadot[1];
-  //thetadot[0] *= invJ;
-  //thetadot[1] *= invJ;
-  //debug:
-  //double dt=1e-7;
-  //Point betap = Point(beta.x+betadot.x*dt,beta.y+betadot.y*dt);
-  //vector<Point> thetas=thisobj->invmap(beta), thetaps=thisobj->invmap(betap);
-  //double d2min = 1e100;
-  //int kmin=-1;
-  //for(int k = 0; k<thetas.size(); k++){
-  //  double dx= thetas[k].x-theta[0], dy= thetas[k].y-theta[1];
-  //  double d2=dx*dx+dy*dy;
-  //  if(d2min>d2){
-  //    d2min=d2;
-  //    kmin=k;
-  //  }
-  //}
-  //double  dthx=(thetaps[kmin].x-thetas[kmin].x)/dt,  dthy=(thetaps[kmin].y-thetas[kmin].y)/dt;
-  //double  ddthx=dthx-thetadot[0],ddthy=dthy-thetadot[1];
-  //cout <<" t = "<<t<<", dtheta/dt = ("<<thetadot[0]<<","<<thetadot[1]<<")"<<endl;
-  //cout <<" t =          dtheta/dt(num) = ("<<dthx<<","<<dthy<<"),  diff="<< sqrt(ddthx*ddthx+ddthy*ddthy)<< endl;
 
   if(!isfinite(invJ))cout<<"GLens::GSL_integration_func: invJ=inf, |beta|="<<sqrt(beta0.x*beta0.x+beta0.y*beta0.y)<<endl;
 
@@ -356,21 +328,16 @@ int GLens::GSL_integration_func_vec (double t, const double theta[], double thet
   //with a derived class that has overloaded those functions {get_obs_pos, get_obs_vel, invjac, map}
   GLens *thisobj = static_cast<GLens *>(instance);
   const Trajectory *traj=thisobj->trajectory;
-  //Point beta0=traj->get_obs_pos(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
   Point beta0=thisobj->get_obs_pos(*traj,t);
-  //Point betadot=traj->get_obs_vel(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords;
   Point betadot=thisobj->get_obs_vel(*traj,t);
   bool fail=false;
   for(int k=0;k<2*thisobj->NimageMax;k++)thetadot[k]=0;
   //cout<<"beta0=("<<beta0.x<<","<<beta0.y<<")"<<endl;
   for(int image =0; image<thisobj->Ntheta;image++){
     Point p(theta[image*2+0],theta[image*2+1]);
-    //double j00,j10,j01,j11,invJ = thisobj->jac(p,j00,j01,j10,j11);
-    //double j00i=j11,j10i=-j10,j01i=-j01,j11i=j00;
     double j00i,j10i,j01i,j11i,invJ = thisobj->invjac(p,j00i,j01i,j10i,j11i);
     Point beta=thisobj->map(p);
     double dx=beta.x-beta0.x,dy=beta.y-beta0.y;
-    //cout<<" beta["<<image<<"]=("<<beta.x<<","<<beta.y<<")"<<endl;
     double adjbetadot[2];
     //double rscale=thisobj->estimate_scale(Point(theta[0],theta[1]));
     //if our image is near one of the lenses, then we need to tread carefully
@@ -444,7 +411,7 @@ void GLensBinary::setup(){
   cout<<"GLens set up with:\n\tintegrate=";
   if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
   else cout<<"false"<<endl;
-  if(optSet("remap_q")){//2TRAJLENS:move to GLensBinary
+  if(optSet("remap_q")){
     double q0_val;
     *optValue("q0")>>q0_val;
     remap_q(q0_val);
@@ -480,10 +447,6 @@ Point GLensBinary::map(const Point &p){
 vector<Point> GLensBinary::invmap(const Point &p){
   const double rTest=1.1*rWide;
   double r2=p.x*p.x+p.y*p.y;
-  //double xcm  = (q/(1.0+q)-0.5)*L;//debug
-  //if(p.x-xcm>16&&p.x-xcm<17&&abs(p.y)<5)debug=true;
-  //else debug=false;
-  //if(rWide>0&&(L>rWide||r2>rWide*rWide)){
   if(testWide(p,1.0)){
     if(debug||inv_test_mode&&debugint){
       debug=true;
@@ -625,17 +588,6 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
       cout<<"  zmfac="<<zmfac<<"  ym2="<<ym2<<" c="<<c<<endl;
       cout<<"  zffac="<<zffac<<"  yf2="<<yf2<<" -c="<<-c<<endl;
     }
-    /*
-    double ypmag=abs(zeta+ep);
-    double ymmag=abs(zeta+em);
-    double yfmag=abs(zeta-c+ef);
-    double zpmag=ypmag*(sqrt(1+4*nu_n/ypmag/ypmag)+1.0)/2.0;
-    double zmmag=-ymmag*(sqrt(1+4*nu_n/ymmag/ymmag)-1.0)/2.0;
-    double zfmag=-yfmag*(sqrt(1+4*nu_f/yfmag/yfmag)-1.0)/2.0;
-    zp=(zeta+ep)*zpmag/ypmag;
-    zm=(zeta+em)*zmmag/ymmag;
-    zf=(zeta-c+ef)*zfmag/yfmag;
-    */
     ep=nu_f/conj(zp-c);
     em=nu_f/conj(zm-c);
     ef=nu_n/conj(zf+c);
@@ -656,21 +608,6 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   result.push_back(Point(real(zp)-c/2.0L,imag(zp)));
   result.push_back(Point(real(zm)-c/2.0L,imag(zm)));
   result.push_back(Point(real(zf)+c/2.0L,imag(zf)));
-  /*
-  double_type rx,ry,rx1,rx2,rr1sq,rr2sq,rc1,rc2;
-  rx=real(zp)-c/2.0L;ry=imag(zp);
-  rx1=rx-(double_type)L/2.0L;rx2=rx+(double_type)L/2.0L;rr1sq=rx1*rx1+ry*ry;rr2sq=rx2*rx2+ry*ry;
-  rc1=(1.0L-nu_neg)/rr1sq;rc2=nu_neg/rr2sq;
-  cout<<"dx="<<rx-rx1*rc1-rx2*rc2-xL<<" dy="<<ry-ry*(rc1+rc2)-yL<<endl;
-  rx=real(zm)-c/2.0L;ry=imag(zm);
-  rx1=rx-(double_type)L/2.0L;rx2=rx+(double_type)L/2.0L;rr1sq=rx1*rx1+ry*ry;rr2sq=rx2*rx2+ry*ry;
-  rc1=(1.0L-nu_neg)/rr1sq;rc2=nu_neg/rr2sq;
-  cout<<"dx="<<rx-rx1*rc1-rx2*rc2-xL<<" dy="<<ry-ry*(rc1+rc2)-yL<<endl;
-  rx=real(zf)+c/2.0L;ry=imag(zf);
-  rx1=rx-(double_type)L/2.0L;rx2=rx+(double_type)L/2.0L;rr1sq=rx1*rx1+ry*ry;rr2sq=rx2*rx2+ry*ry;
-  rc1=(1.0L-nu_neg)/rr1sq;rc2=nu_neg/rr2sq;
-  cout<<"dx="<<rx-rx1*rc1-rx2*rc2-xL<<" dy="<<ry-ry*(rc1+rc2)-yL<<endl;
-  */
   return result;
 };
 
@@ -773,9 +710,6 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
       complex<double> double_dP4;double_dP4=dP4;
       complex<double> delta=-c[5]/double_dP4;
       if(debug)cout<<"dP4="<<double_dP4<<" delta="<<delta<<endl;
-      /*if(abs(delta)<0.2) //some approximation of <<1  (might not be true for approx double roots)
-      roots[i]*=(1.0+delta);
-      */
       ///We can derive this following expression by setting P5(x+eps)-P4(x)=0, then solve liniarly for eps
       ///For abs(delta)<<0.2 and abs(delta)>>0.2 the result approximates that in the comment above, but all values other than
       ///delta=-0.2 are allowed.  In this case, the 0.2 arises because n=5, not arbitrarily.
@@ -799,8 +733,6 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
   }
   
   vector<Point> result;
-  //const double TOL=LEADTOL*LEADTOL*(100000000+p.x*p.x+p.y*p.y+M);
-  //const double TOL=LEADTOL*LEADTOL*(p.x*p.x+p.y*p.y+1.0/z12);
   const double TOL=LEADTOL*LEADTOL;
   for(int i=0;i<nroots;i++){
     Point newp=Point(0,0);
@@ -815,94 +747,14 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
     double x=newp.x,y=newp.y,x1=x-L/2,x2=x+L/2,r1sq=x1*x1+y*y,r2sq=x2*x2+y*y;
     double c1=(1-nu)/r1sq,c2=nu/r2sq;
     if(debug){
-      //cout.precision(15);
-      //cout<<"testing: "<<roots[i]<<" -> ("<<btheta.x<<"-"<<p.x<<","<<btheta.y<<"-"<<p.y<<")^2 "<<(dx*dx+dy*dy<TOL*(1+dbx*dbx+dby*dby)?" < ":"!< ")<<TOL*(1+dbx*dbx+dby*dby)<<endl;
       cout<<"testing: "<<roots[i]<<" -> |("<<btheta.x<<"-"<<p.x<<","<<btheta.y<<"-"<<p.y<<")|="<<sqrt(dx*dx+dy*dy)<<" "<<(dx*dx+dy*dy<TOL*(1+c1+c2)?" < ":"!< ")<<LEADTOL*sqrt(1+c1+c2)<<"="<<LEADTOL<<"*√(1+"<<c1<<"+"<<c2<<")"<<endl;
     }
-    //if(dx*dx+dy*dy<TOL)result.push_back(newp);      
-    //if(dx*dx+dy*dy<TOL*(1+dbx*dbx+dby*dby))result.push_back(newp);      
     if(dx*dx+dy*dy<TOL*(1+c1+c2))result.push_back(newp);      //RHS is squared estimate in propagating error of LEADTOL in root through map()
     //For now we just adopt the ordering from the SG code.  Might change to something else if needed...
   };
   if(debug)cout<<"Found "<<result.size()<<" images."<<endl;
 
   return result;
-};
-
-vector<Point> GLensBinary::invmapAsaka(const Point &p){
-  //This isn't working...
-  double a=p.x;
-  double b=p.y;
-  double L2=L*L,aL=a*L;
-  double a2=a*a,b2=b*b,R2=a2+b2;
-  vector<pair<double,int> >ym;
-  vector<Point> roots;
-  //get y;
-  double e[6],z[10];
-  e[5]=-4*R2*(R2-2*aL+L2);
-  e[4]=4*b*(R2*(R2-1-2*aL+L2)+nu*(2*aL-L2));
-  e[3]=R2*(8*b2-1)-2*aL*(a2+5*b2-aL)+L2*(6*b2+R2*(-R2+2*aL-L2))+nu*(2*aL*(1+2*R2)+2*L2*(-3*a2-b2+aL)-L2*nu);
-  e[2]=b*(a2+5*b2+R2*(2*aL+L2*(R2-2*(1+aL)+L2))+nu*(-2*aL*(1+2*R2)+L2*(4+6*a2+2*b2-2*aL-3*nu)));
-  e[1]=b2*(1+2*aL+L2*(-2+R2-2*aL+L2)+nu*(-4*aL+L2*(5+2*aL-L2-3*nu)));
-  e[0]=-b*b2*L2*nu*(1-nu);
-  //Next use GSL to solve the polynomial with coeffs e_i for the y's 
-  gsl_poly_complex_workspace * w = gsl_poly_complex_workspace_alloc (6);
-  gsl_poly_complex_solve (e, 6, w, z);
-  gsl_poly_complex_workspace_free (w);
-  for(int i=0;i<5;i++){
-    double yr=z[2*i],yi=z[2*i+1];
-    //cout<<"root: "<<yr<<","<<yi<<endl;
-    //test for real roots
-    if(abs(yi)>dThTol)continue;
-    //test for multiplicity
-    for(int j=0;j<ym.size();j++){
-      if(abs(yr-ym[j].first)<dThTol){//multiple root
-	ym[j].second+=1;
-	//For multiplicity>1 then another approach is needed (see Asada), which we have not yet implemented.
-	//For now we just issue a notice
-	//cout<<"Multiplicity="<<ym[j].second<<" for root at y="<<yr<<endl;
-	continue;
-      }
-    }
-    ym.push_back(make_pair(yr,0));
-  }
-  //order the roots by y
-  sort(ym.begin(),ym.end());
-  
-  //Next, for debugging, test the results;
-  /*
-  for( int i=0;i<ym.size();i++){
-    double result=0;
-    double y=ym[i].first;
-    for(int k=0;k<5;k++){
-      result+=e[k];
-      if(k>0)result/=y;
-    }
-    result+=e[5];
-    cout<<i<<": "<<result<<endl;
-    }*/
-    
-  //then loop over the solutions for y and get x for each:
-  for(int i=0;i<ym.size();i++){
-    double x,y=ym[i].first;
-    double y2=y*y;
-    //get x;
-    double E,D;
-    D=b*b2*L2*(1+2*nu*(-1+nu))
-      + y*b2*( -2+4*(-aL+L2)) + L2*R2 + nu*(8*aL + L2*(-10 - 2*aL + L2 + 6*nu) )
-      + y2*(b*( -4*b2 + R2*(-2-4*aL+3*L2) + nu*( 4*a*L*(1+2*R2)+L2*(-8-12*a2-4*b2+6*aL-L2+6*nu)))
-	    + y*( (2+4*(-b2+aL-L2))*R2 + aL*nu*(-4-8*a2+12*aL-4*L2) + 2*L2*nu*nu)
-	    + y2*b*( 4*R2 + nu*(-8*aL+4*L2)));
-    E=b*b2*L2*L*(-1+nu*(2-nu))
-      + y*b2*L*( 1+3*(aL-L2) - L2*R2 + nu*(-4*aL + L2*(6 + R2 - 3*nu) ) )
-      + y2*(b*L*( R2*(1+3*aL-2*L2) + nu*( 4*b2 - 2*a*L*(1+2*R2)+L2*(4+4*a2+2*b2-aL-3*nu)))
-	    + y*( 4*(a-L)*b2+L*(-1+3*(-aL+L2))*R2 + L*nu*(+4*b2*(1+R2) +aL*(2+4*(a2-b2)-5*aL) + L2*(b2+aL-nu) )
-		  + y*b*( 4*R2*(a-L) + nu*L*(-8*a2+12*aL-4*L2))
-		  + y2*(+4*(-a+L)*R2+4*nu*L*(a2-b2-aL)) ) );
-    x=-E/D;
-    roots.push_back(Point(x,y));
-  }
-  return roots;
 };
 
 double GLensBinary::mag(const Point &p){
@@ -939,13 +791,9 @@ double GLensBinary::invjac(const Point &p,double &ij00,double &ij01,double &ij10
   double mu=r8/invmuR8;
   double E1wr8=2*E1r4*r2sq,E2wr8=2*E2r4*r1sq;
   double fr8=(E1wr8+E2wr8)*y2 - Er4*r4;
-  //double mu2=jac(p,ij00,ij01,ij10,ij11);
-  //double mu2=mag(p);
   ij10 = ij01 = -(E1wr8*x1+E2wr8*x2)*y/invmuR8;
   ij00       = (r8+fr8)/invmuR8;
   ij11       = (r8-fr8)/invmuR8;
-  //double mu2=ij00*ij11-ij01*ij10;
-  //cout<<"Delta J="<<mu2-mu<<" = "<<mu2<<" - "<<mu<<endl;
   return mu;
 };
 

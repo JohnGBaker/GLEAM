@@ -2,4 +2,42 @@ ba1b61ce5b935c1634091ef2f729179b7bc38e95
 On branch master
 Your branch is ahead of 'origin/master' by 7 commits.
   (use "git push" to publish your local commits)
-nothing to commit, working directory clean
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git checkout -- <file>..." to discard changes in working directory)
+
+	modified:   chain.cc
+	modified:   options.hh
+
+no changes added to commit (use "git add" and/or "git commit -a")
+diff --git a/chain.cc b/chain.cc
+index f234f09..2f1a795 100644
+--- a/chain.cc
++++ b/chain.cc
+@@ -241,8 +241,11 @@ void MH_chain::dumpChain(ostream &os,int Nburn,int ievery){
+     int np=states[0].size();
+     os<<"#Ninit="<<Ninit<<", Nburn="<<Nburn<<"\n";
+     os<<"#eval: log(posterior) log(likelihood) acceptance_ratio prop_type: ";
+-    for(int i=0;i<np-1;i++)os<<"param("<<i<<") ";
+-    os<<"param("<<np-1<<")"<<endl;
++    //for(int i=0;i<np-1;i++)os<<"param("<<i<<") ";
++    //os<<"param("<<np-1<<")"<<endl;
++    const stateSpace *sp=states[0].getSpace();
++    for(int i=0;i<np;i++)os<<sp->get_name(i)<<" ";
++    os<<endl;
+     if(Nburn+Ninit<0)Nburn=-Ninit;
+     for(int i=Nburn;i<Nhist;i+=ievery){
+       int idx=Ninit+i;
+diff --git a/options.hh b/options.hh
+index 465d75c..f85ad13 100644
+--- a/options.hh
++++ b/options.hh
+@@ -166,7 +166,7 @@ protected:
+ public:
+   ///Add options to the program's option list.
+   Optioned(){have_options=false;};
+-  virtual void addOptions(Options &opts,const string &prefix_){opt=&opts,prefix=prefix_;have_options=true;};
++  virtual void addOptions(Options &opts,const string &prefix_=""){opt=&opts,prefix=prefix_;have_options=true;};
+   //set the options for processing.
+   unique_ptr<istringstream> optValue(const string & name){
+     check_opt();return unique_ptr<istringstream>(new istringstream(opt->value((prefix+name).c_str())));

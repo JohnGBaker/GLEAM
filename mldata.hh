@@ -14,19 +14,8 @@
 #include <cstring>
 
 using namespace std;
-//plan:
-// This is functional as is, but not extensible (and not logical).
-// Need to abstract the model realization from the MLdata model.
-// Need a new MLmodel class which can produce lightcurve data etc
-// from a vector of params.
-// Then the MLdata class will produce a likelihood from a set of model data together with
-// a model.  The subtlety of this is that the model may need to include some instrumental 
-// parameters.
-// An ideal possibility might be to allow combining models with separately defined signal
-// and instrument components.  There may be a need to pull params by name,etc... need to
-// think more.  Maybe there is a simpler solution...
 
-//base class for data
+///base class for photometry data
 class ML_photometry_data : public bayes_data{
 protected:
   vector<double>&times,&mags,&dmags;
@@ -76,58 +65,21 @@ public:
       dmags.erase(dmags.begin());
     }
   };
-  //vector<double>getMags()const{return mags;};
-  ///May eliminate/change to only reference the state-dependent version (now realized with mag_noise_var)
-  //vector<double>getDeltaMags()const{return dmags;};
-  /*
-    virtual double getVariance(int i)const{
-    checkData();
-    if(i<0||i>size()){
-      cout<<"ML_photometry_data:getVariance: Index out of range."<<endl;
-      exit(1);
-    }
-    double var = dmags[i]*dmags[i];
-    static const double logfactor=2.0*log10(2.5/log(10));
-    var +=pow(10.0,logfactor+0.8*(-extra_noise_mag+mags[i]));
-    return var;
-    //return dmags[i]*dmags[i]+pow(10.0,logfactor+0.8*(-noise_mag+mags[i]));
-    };*/
   virtual vector<double> getVariances(const state &st)const{
     checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
     checkData();//Call this assert whenever we need the data to be loaded
     checkSetup();//Call this assert whenever we need options to have been processed.
-    //cout<<"dataVar for state:"<<st.show()<<endl;
     double extra_noise_mag=st.get_param(idx_Mn);
-    //cout<<"extra_noise_mag:st["<<idx_Mn<<"]="<<extra_noise_mag<<endl;
-    //cout<<"noise_mag:"<<extra_noise_mag<<endl;
     static const double logfactor=2.0*log10(2.5/log(10));
     vector<double>var(size());
     for(int i=0;i<size();i++){
       var[i] = dmags[i]*dmags[i] + pow(10.0,logfactor+0.8*(-extra_noise_mag+mags[i]));
     }
     return var;
-    //return dmags[i]*dmags[i]+pow(10.0,logfactor+0.8*(-noise_mag+mags[i]));
   };
-  /*
-  ///Do we need a write function?
-  virtual void write(ostream &out,vector<double>vparams,bool integrate=false, int nsamples=-1, double tstart=0, double tend=0)=0;
-  //This one is for the nascent "signal" interface.
-  virtual void write(ostream &out,state &st, int nsamples=-1, double tstart=0, double tend=0){
-    write(out,st.get_params_vector(),true,nsamples,tstart,tend);
-  };
-  */
-  /*
-  virtual void set_model(state &st){
-    bayes_data::set_model(st);
-    extra_noise_mag=st.get_param(idx_Mn);
-    cout<<"extra_noise_mag:"<<extra_noise_mag<<endl;
-  };
-  */
   ///from stateSpaceInterface
   virtual void defWorkingStateSpace(const stateSpace &sp){
     checkSetup();//Call this assert whenever we need options to have been processed.
-    ///This is how the names were hard-coded.  We want to have these space components be supplied by the signal/data objects
-    //string names[]={"I0","Fs","Mn","logq","logL","r0","phi","tE","tpass"};
     idx_Mn=sp.requireIndex("Mn");
     haveWorkingStateSpace();
   };

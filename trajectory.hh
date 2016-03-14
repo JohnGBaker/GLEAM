@@ -87,7 +87,6 @@ public:
   virtual ~Trajectory(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
   virtual Trajectory* clone(){
     Trajectory*cloned=new Trajectory(*this);
-    //cout<<"Trajectory::clone:: nativePrior:count="<<nativePrior.use_count()<<endl;//<<" localPrior:count="<<localPrior.use_count()<<endl;
     return cloned;
     
   };

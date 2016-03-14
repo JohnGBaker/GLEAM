@@ -112,14 +112,12 @@ public:
     double ten2prec=pow(10,output_precision-2);
     out<<"#x  y  magnification"<<endl;
     for(double y=LLcorner.y;y<=URcorner.y;y+=dy){
-      //Trajectory traj(Point(LLcorner.x+xc,y), Point(1,0), URcorner.x-LLcorner.x, dx);
       Trajectory traj(Point(LLcorner.x,y), Point(1,0), URcorner.x-LLcorner.x, dx);
       vector<int> indices;
       vector<double> times,mags;
       vector<vector<Point> >thetas;
       compute_trajectory(traj,times,thetas,indices,mags);//2TRAJ:Check that the new interface doesn't break this.
       for(int i : indices){
-	//Point b=traj.get_obs_pos(times[i]);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords
 	Point b=traj.get_obs_pos(times[i]);//we want the result in traj frame, to match the dump_trajectory output
 	double mtruc=floor(mags[i]*ten2prec)/ten2prec;
 	//out.precision(output_precision);
@@ -286,7 +284,7 @@ protected:
   ///Assuming we are interested in mass ratios out to the Earth-Sun ratio q~3e5, we can set q0~1e7 to peak at an 
   ///uninteresting value which we would interpret as effectively single-lens.
   //This goes to ml signal instantiation processOptions
-  void remap_q(double q_ref_val=1e7){//2TRAJLENS:move to GLensBinary (or cut but preserve comment)
+  void remap_q(double q_ref_val=1e7){
     do_remap_q=true;
     q_ref=q_ref_val;
   };

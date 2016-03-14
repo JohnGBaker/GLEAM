@@ -54,7 +54,6 @@ int main(int argc, char*argv[]){
   GLens *lens=&binarylens;
   bool do_mock=false;
   
-  ///We are at the point now that we need to generalize the data types on the command line
   ///So far there are 2 tested types ML_OGLE_data and ML_generic_data while ML_photometry_mock_data is
   ///under development.  [Thinking ahead, we may later have
   ///astrometric data as well. These might be similarly added, but they will involve a different type of
@@ -95,23 +94,16 @@ int main(int argc, char*argv[]){
   ML_photometry_signal signal(traj, lens);
   bayes_likelihood *like=nullptr;
   ML_photometry_likelihood mpl(data, &signal);
-  mpl.addOptions(opt,"");
+  mpl.addOptions(opt);
   like=&mpl;
-  s0->addOptions(opt,"");
-  lens->addOptions(opt,"");
-  traj->addOptions(opt,"");
-  data->addOptions(opt,"");
-  signal.addOptions(opt,"");
+  s0->addOptions(opt);
+  lens->addOptions(opt);
+  traj->addOptions(opt);
+  data->addOptions(opt);
+  signal.addOptions(opt);
 
   opt.add(Option("nchains","Number of consequtive chain runs. Default 1","1"));
   opt.add(Option("seed","Pseudo random number grenerator seed in [0,1). (Default=-1, use clock to seed.)","-1"));
-
-  //prior options:
-  //opt.add(Option("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value."));
-  //opt.add(Option("tE_max","Uniform prior max in tE. Default=100.0/","100.0"));
-
-  //likelihood or data option?
-  //opt.add(Option("additive_noise","Interpret Fn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)"));
   opt.add(Option("view","Don't run any chains, instead take a set of parameters and produce a set of reports about that lens model."));
 
   //other options
@@ -162,9 +154,6 @@ int main(int argc, char*argv[]){
   istringstream(opt.value("mm_samples"))>>mm_samples;
   istringstream(opt.value("precision"))>>output_precision;
   istringstream(opt.value("mm_lens_rWB"))>>mm_lens_rWB;
-  //Prior params (should move out to objects which manage specific parameters.)
-  //istringstream(opt.value("Fn_max"))>>Fn_max;
-  //istringstream(opt.value("tE_max"))>>tE_max;
 
   //read non-parameter args
   string outname;
@@ -222,7 +211,7 @@ int main(int argc, char*argv[]){
     params.resize(3);
     for(int i=0;i<3;i++)stringstream(argv[i+2])>>params[i];  
     have_pars0=true;
-  } else if(argc==Nlead_args+Npar+1){
+  } else if(argc==Nlead_args+Npar+1){//Read params as defined via the flags
     params.resize(Npar);
     if(argc>Nlead_args+1){
       for(int i=0;i<Npar;i++)stringstream(argv[i+1+Nlead_args])>>params[i];
@@ -290,8 +279,6 @@ int main(int argc, char*argv[]){
     exit(0);
   }    
 
-
-
   ///At this point we are ready for analysis in the case that we are asked to view a model
   ///Note that we still have needed the data file to create the OGLEdata object, and concretely
   ///to set the domain.  This could be changed...
@@ -336,24 +323,6 @@ int main(int argc, char*argv[]){
     bayes_sampler *s=s0->clone();
     s->initialize();
     s->run(base,ic);
-    if(0){//For exact backward compatibility we need to override the command-line flag -poly and always set integrate=true for the analysis
-      //Here we try first working exclusively with the new code ML_photometry_likelihood, rather than MLFitProb...
-      //As coded here this is not very general...
-      GLensBinary alens;
-      alens.Optioned::addOptions(opt,"");
-      alens.setup();
-      alens.set_integrate(true);//This line is the point of remaing all this.
-      cout<<"alens:"<<alens.print_info()<<endl;
-      ML_photometry_signal asignal(traj, &alens);
-      asignal.Optioned::addOptions(opt,"");
-      asignal.setup();
-      //asignal.set_tstartHACK(tstart);
-      ML_photometry_likelihood alike(&space, data, &asignal, prior.get());
-      cout<<"alike="<<&alike<<endl;
-      alike.Optioned::addOptions(opt,"");
-      alike.setup();
-      alike.defWorkingStateSpace(space);
-    }
     s->analyze(base,ic,Nsigma,Nbest,*like);
     delete s;
   }
