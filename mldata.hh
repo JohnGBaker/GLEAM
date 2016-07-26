@@ -29,6 +29,7 @@ public:
     have_time0=false;
   };
   int size()const{return times.size();};
+  /*
   virtual void getDomainLimits(double &start, double &end)const{
     checkData();
     if(times.size()==0){
@@ -37,10 +38,10 @@ public:
     }
     start=times.front();
     end=times.back();
-  };
+    };*/
   //double getPeakTime(bool original=false)const{
   virtual double getFocusLabel(bool original=false)const{
-    checkData();
+    assertData(LABELS|VALUES|DVALUES);
     if(original||times.size()<1)return time0; 
     //we assume monotonic time and magnitude data.
     double mpk=-INFINITY;
@@ -53,12 +54,12 @@ public:
       }
     }
     return times[ipk];
-  };
+    };
   ///Crop out some early data.
   ///
   ///Permanently remove early portion of data
   virtual void cropBefore(double tstart){
-    checkData();
+    assertData(LABELS|VALUES|DVALUES);
     while (times.size()>0&&times[0]<tstart){
       times.erase(times.begin());
       mags.erase(mags.begin());
@@ -67,7 +68,7 @@ public:
   };
   virtual vector<double> getVariances(const state &st)const{
     checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
-    checkData();//Call this assert whenever we need the data to be loaded
+    assertData(LABELS|VALUES|DVALUES);
     checkSetup();//Call this assert whenever we need options to have been processed.
     double extra_noise_mag=st.get_param(idx_Mn);
     static const double logfactor=2.0*log10(2.5/log(10));
@@ -184,7 +185,7 @@ public:
       mags.push_back(0);
       dmags.push_back(0);
     }
-    have_data=true;
+    haveData();
     if(!have_time0)set_reference_time(0);
     processData();
   };
@@ -230,7 +231,7 @@ public:
 	exit(1);
       }
     }
-    have_data=true;//Do we need this in addition to checkSetup?
+    haveData();
     processData();
     return;
   };
@@ -288,7 +289,7 @@ public:
 	exit(1);
       }
     }
-    have_data=true;//Do we need this in addition to checkSetup?
+    haveData();
     processData();
     return;
   };

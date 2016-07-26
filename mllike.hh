@@ -119,7 +119,7 @@ public:
   };
   void setup(){    
     if(optSet("additive_noise"))useAdditiveNoise();
-    set_like0();
+    set_like0_chi_squared();
     haveSetup();
     ///Set up the output stateSpace for this object
     checkPointers();
