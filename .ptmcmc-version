@@ -1,25 +1,4 @@
-1033ad524786726172e6d1a5861db2666feb89a4
+fc4e78866f40d498a9f8532cf4658868670f0133
 On branch master
 Your branch is up-to-date with 'origin/master'.
-Changes not staged for commit:
-  (use "git add <file>..." to update what will be committed)
-  (use "git checkout -- <file>..." to discard changes in working directory)
-
-	modified:   bayesian.hh
-
-no changes added to commit (use "git add" and/or "git commit -a")
-diff --git a/bayesian.hh b/bayesian.hh
-index 11b1aca..e4a3935 100644
---- a/bayesian.hh
-+++ b/bayesian.hh
-@@ -107,8 +107,8 @@ public:
-     start=labels.front();
-     end=labels.back();
-   };
--  virtual int size()const=0;
--  virtual double getFocusLabel(bool original=false)const=0;
-+  virtual int size()const{return labels.size();};
-+  virtual double getFocusLabel(bool original=false)const{return 0;};
-   virtual double getValue(int i )const{return values[i];};
-   virtual vector<double>getValues()const{checkData(VALUES);return values;};
-   virtual vector<double>getDeltaValues()const{checkData(DVALUES);return dvalues;};
+nothing to commit, working directory clean
