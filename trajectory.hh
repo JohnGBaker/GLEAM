@@ -31,9 +31,7 @@ typedef struct Point {
 ///base class implements a straight-line trajectory
 class Trajectory : public bayes_component {
   //Transition notes:
-  //We are getting ready to promote Trajectory to a bayes_component, and then                              ** FIXME **
-  //to move definition of trajectory-related parameters into here.
-  //My current thinking is that everything is done nominally in a frame with
+  //In defining Trajectory parameters everything is done nominally in a frame with
   //the source-CM to lens-CM line-of-sight as origin in the observer plane.
   //Trajectory parameters indicate where the Sun/Earth passes through that
   //plane, thus Trajectory parameters include at least r0, [phi?], and probably

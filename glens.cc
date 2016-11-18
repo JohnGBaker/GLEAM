@@ -393,7 +393,7 @@ void GLens::setup(){
 // ******************************************************************
 //
 
-GLensBinary::GLensBinary(double q,double L,double phi0):q(q),L(L),phi0(phi0),sin_phi0(sin(phi0)),cos_phi0(cos(phi0)){
+GLensBinary::GLensBinary(double q,double L,double phi0):GLens("GLens","BinaryLens","Fixed binary point-mass lens"),q(q),L(L),phi0(phi0),sin_phi0(sin(phi0)),cos_phi0(cos(phi0)){
   NimageMax=5;
   nu=1/(1+q);
   rWide=5;

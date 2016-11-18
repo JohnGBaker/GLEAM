@@ -56,7 +56,7 @@ protected:
   virtual bool testWide(const Point & p,double scale)const{return false;};//test conditions to revert to perturbative inversion
 public:
   virtual ~GLens(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
-  GLens(){have_integrate=false;do_verbose_write=false;};
+  GLens(string typestring="GLens",string option_name="SingleLens",string option_info="Single point-mass lens"):bayes_component(typestring,option_name,option_info){have_integrate=false;do_verbose_write=false;};
   virtual GLens* clone(){return new GLens();};
   ///Lens map: map returns a point in the observer plane from a point in the lens plane.
   virtual Point map(const Point &p){cout<<"GLens::map: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};

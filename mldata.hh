@@ -28,7 +28,7 @@ public:
     idx_Mn=-1;
     have_time0=false;
   };
-  int size()const{return times.size();};
+  //int size()const{return times.size();};
   /*
   virtual void getDomainLimits(double &start, double &end)const{
     checkData();

@@ -48,7 +48,9 @@ int main(int argc, char*argv[]){
   ptmcmc_sampler mcmc;
   bayes_sampler *s0=&mcmc;
   //Create the model components
+  GLens singlelens;
   GLensBinary binarylens;
+  bayes_component_selector(vector<bayes_component*>({&singlelens,&binarylens}));
   Trajectory linear_trajectory;
   Trajectory *traj=&linear_trajectory;
   GLens *lens=&binarylens;
