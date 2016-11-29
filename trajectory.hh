@@ -73,8 +73,10 @@ protected:
   int idx_r0, idx_tE, idx_tpass; 
 public:
   Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tpass(0){
+  typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
   Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0){
+  typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
   Trajectory():Trajectory(Point(0,0),Point(1,0)){
     r0_ref=0;
@@ -88,7 +90,7 @@ public:
     return cloned;
     
   };
-  virtual void setup(const Point &pos0, const Point &vel0){p0=pos0;v0=vel0;};
+  //virtual void setup(const Point &pos0, const Point &vel0){p0=pos0;v0=vel0;};
   ///Set the required eval times.  (Times are "phys" times, but "phys"=frame if tE=1,tpass=0)
   virtual void set_times(vector<double> times,double toff=0){
     vector<double>tEs=times;
@@ -129,7 +131,9 @@ public:
     tpass=s.get_param(idx_tpass);
     if(do_remap_r0)r0=r0_ref/sqrt(1.0/r0-1.0);
     if(do_log_tE)tE=pow(10.0,tE);
-    setup(Point(0,r0), Point(1,0));
+    //setup(Point(0,r0), Point(1,0));
+    p0=Point(0,r0);
+    v0=Point(1,0);
   };
   ///This overload of setup is (defacto?) part of the StateSpaceInterface
   void setup(){
@@ -227,9 +231,11 @@ public:
 /// called \f$ \pi_E \f$. A 1AU displacement in the observer plane corresponds to a piE displacement
 /// in \beta in Einstein units.  This is related to the mass and distances by:
 /// piE^2 = (1AU/Drel/thetaE)^2 = (1/4)(1AU/Drel)(1AU/M)
-/// where Drel = D_s*D_l/(D_s-D_l)
+/// where Drel = D_s*D_l/(D_s-D_l).
 class ParallaxTrajectory : public Trajectory {
-protected: 
+protected:
+  int idx_logpiE;
+  int idx_phimu;
   ///We need to know the approximate location of the source to compute the parallax
   double source_ra, source_dec;
   double source_lon,source_lat;
@@ -240,17 +246,21 @@ protected:
   double dphi,cos_dphi,sin_dphi;
 public:
   virtual ~ParallaxTrajectory(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
-  ParallaxTrajectory(Point pos0, Point vel0, double t_end, double caden, double source_ra, double source_dec, double t2000off, double ts=0):Trajectory(pos0,vel0,t_end,caden,ts){
+  ParallaxTrajectory();
+  /*
+    ParallaxTrajectory(Point pos0, Point vel0, double t_end, double caden, double source_ra=0, double source_dec=0, double t2000off=0, double ts=0):Trajectory(pos0,vel0,t_end,caden,ts){
+    typestring="Trajectory";option_name="EarthTraj";option_info="Earth parallax relative trajectory.";
     equatorial2ecliptic(source_ra,source_dec,source_lat,source_lon);
     cos_source_lon=cos(source_lon);
     sin_source_lon=sin(source_lon);
     cos_source_lat=cos(source_lat);
     sin_source_lat=sin(source_lat);
-  };
+    };
+  */
   virtual ParallaxTrajectory* clone(){
     return new ParallaxTrajectory(*this);
   };
-  virtual void setup(double pieE,double phimu){};//2TRAJ: put something here
+  //virtual void setup(double pieE,double phimu){};//2TRAJ: put something here
   virtual void rotate(double pieE,double phimu){};//2TRAJ: put something here
   Point get_obs_pos(double t)const {return Trajectory::get_obs_pos(t)+get_obs_pos_offset(t);};
   Point get_obs_vel(double t)const {return Trajectory::get_obs_vel(t)+get_obs_vel_offset(t);};
@@ -288,6 +298,48 @@ protected:
     source_lon=atan2(sa*ceps+sd/cd*seps,ca);
     source_lat=sd*ceps-cd*seps*sa;
   };
+  //For bayes_component/stateSpaceInterface
+  virtual void defWorkingStateSpace(const stateSpace &sp){
+    checkSetup();//Call this assert whenever we need options to have been processed.
+    idx_logpiE=sp.requireIndex("logpiE");
+    idx_phimu=sp.requireIndex("phimu");
+    Trajectory::defWorkingStateSpace(sp);//Also inherit params linear Trajectory params
+  };
+  virtual void setState(const state &s){
+    checkWorkingStateSpace();
+    piE=pow(10.0,s.get_param(idx_logpiE));
+    phimu=s.get_param(idx_phimu);
+    Trajectory::setState(s);
+  };
+  ///This overload of setup is (defacto?) part of the StateSpaceInterface
+  void setup(){
+    Trajectory::setup();
+    if(not ( optSet("source_ra") and optSet("source_dec") )){
+      cout<<"ParallaxTrajectory::setup(): Options source_ra and source_dec must be set to something."<<endl;
+      exit(1);
+    }
+    *optValue("source_ra")>>source_ra;
+    *optValue("source_dec")>>source_dec;
+    equatorial2ecliptic(source_ra,source_dec,source_lat,source_lon);
+    cos_source_lon=cos(source_lon);
+    sin_source_lon=sin(source_lon);
+    cos_source_lat=cos(source_lat);
+    sin_source_lat=sin(source_lat);
+    //Augment nativeSpace;
+    stateSpace space(2);
+    string names[]={"logpiE","phimu"};
+    space.set_bound(1,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phimu.
+    space.set_names(names);  
+    nativeSpace.attach(space);
+    //set nativePrior
+    double logpimin=-4.0;
+    double logpimax=1.0;
+    valarray<double>    centers((initializer_list<double>){  (logpimax+logpimin)/2.0, M_PI                        });
+    valarray<double> halfwidths((initializer_list<double>){  (logpimax-logpimin)/2.0, M_PI                        });
+    valarray<int>         types((initializer_list<int>){ mixed_dist_product::uniform, mixed_dist_product::uniform });
+    sampleable_probability_function *prior_aug=new mixed_dist_product(&space,types,centers,halfwidths);
+    setPrior(new independent_dist_product(&nativeSpace,getObjectPrior().get(),prior_aug));//append to prior
+  };    
 };
 
 #endif

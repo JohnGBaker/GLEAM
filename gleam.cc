@@ -50,10 +50,11 @@ int main(int argc, char*argv[]){
   //Create the model components
   GLens singlelens;
   GLensBinary binarylens;
-  bayes_component_selector(vector<bayes_component*>({&singlelens,&binarylens}));
+  bayes_component_selector lenses(vector<bayes_component*>({&binarylens,&singlelens}));
   Trajectory linear_trajectory;
   Trajectory *traj=&linear_trajectory;
-  GLens *lens=&binarylens;
+  //GLens *lens=&binarylens;
+  GLens *lens;
   bool do_mock=false;
   
   ///So far there are 2 tested types ML_OGLE_data and ML_generic_data while ML_photometry_mock_data is
@@ -69,6 +70,8 @@ int main(int argc, char*argv[]){
   char * filename=NULL;
   for(int i=0;i<argc;i++){av[i]=argv[i];};
   opt.parse(ac,av,false);
+  //select lens
+  lens=dynamic_cast<GLens*>(lenses.select(opt));
   //now select the data obj
   ML_photometry_data *data;
   if(opt.set("OGLE_data"))
@@ -78,8 +81,7 @@ int main(int argc, char*argv[]){
   else if(opt.set("mock_data")){
     data=new ML_mock_data();
     do_mock=true;
-  }
-  else {
+  } else {
     //for backward compatibility [deprecated] default is to assume OGLE data and try to read the data from a file named in the (extra) first argument
     if(argc>=1){
       cout<<"Setting filename from first argument for backward compatibility [deprecated]."<<endl;
