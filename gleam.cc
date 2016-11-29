@@ -50,6 +50,9 @@ int main(int argc, char*argv[]){
   //Create the model components
   GLens singlelens;
   GLensBinary binarylens;
+  //vector<bayes_component*> lens_list(
+  //cout<<"lens_list len="<<lens_list.size()<<endl;
+  //bayes_component_selector lenses(lens_list);
   bayes_component_selector lenses(vector<bayes_component*>({&binarylens,&singlelens}));
   Trajectory linear_trajectory;
   Trajectory *traj=&linear_trajectory;
