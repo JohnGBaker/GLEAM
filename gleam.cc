@@ -50,13 +50,12 @@ int main(int argc, char*argv[]){
   //Create the model components
   GLens singlelens;
   GLensBinary binarylens;
-  //vector<bayes_component*> lens_list(
-  //cout<<"lens_list len="<<lens_list.size()<<endl;
-  //bayes_component_selector lenses(lens_list);
   bayes_component_selector lenses(vector<bayes_component*>({&binarylens,&singlelens}));
   Trajectory linear_trajectory;
-  Trajectory *traj=&linear_trajectory;
-  //GLens *lens=&binarylens;
+  ParallaxTrajectory parallax_trajectory;
+  bayes_component_selector trajs(vector<bayes_component*>({&linear_trajectory,&parallax_trajectory}));
+  //Trajectory *traj=&linear_trajectory;
+  Trajectory *traj;
   GLens *lens;
   bool do_mock=false;
   
@@ -69,6 +68,7 @@ int main(int argc, char*argv[]){
   Options opt(false);
   ML_photometry_data::addStaticOptions(opt);
   lenses.addOptions(opt);
+  trajs.addOptions(opt);
   //For the first-pass option check, we first make a copy of argc/argv
   int ac=argc;char* av[argc];
   char * filename=NULL;
@@ -76,6 +76,8 @@ int main(int argc, char*argv[]){
   opt.parse(ac,av,false);
   //select lens
   lens=dynamic_cast<GLens*>(lenses.select(opt));
+  //select traj
+  traj=dynamic_cast<Trajectory*>(trajs.select(opt));
   //now select the data obj
   ML_photometry_data *data;
   if(opt.set("OGLE_data"))

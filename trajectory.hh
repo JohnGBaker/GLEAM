@@ -246,7 +246,7 @@ protected:
   double dphi,cos_dphi,sin_dphi;
 public:
   virtual ~ParallaxTrajectory(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
-  ParallaxTrajectory();
+  ParallaxTrajectory(){};
   /*
     ParallaxTrajectory(Point pos0, Point vel0, double t_end, double caden, double source_ra=0, double source_dec=0, double t2000off=0, double ts=0):Trajectory(pos0,vel0,t_end,caden,ts){
     typestring="Trajectory";option_name="EarthTraj";option_info="Earth parallax relative trajectory.";
