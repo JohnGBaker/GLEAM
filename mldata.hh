@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 #include <valarray>
 #include "bayesian.hh"
 #include <cerrno>
@@ -25,7 +26,6 @@ protected:
 public:
   ///We relabel the generic bayes_data names as times/mags/etc...
   ML_photometry_data():bayes_data(),times(labels),mags(values),dmags(dvalues),time0(label0){
-    idx_Mn=-1;
     have_time0=false;
   };
   //int size()const{return times.size();};
@@ -146,6 +146,7 @@ protected:
       time0=getFocusLabel();
       have_time0=true;
     }
+    cout<<"ML_photometry data offset by "<<setprecision(15)<<time0<<" -> 0"<<endl;
     for(double &t : times)t-=time0;//permanently offset times from their to put the peak at 0.
     double tcut;
     *optValue("tcut")>>tcut;
@@ -160,7 +161,9 @@ protected:
 ///The "extra noise" parameter becomes the actual noise parameter.
 class ML_mock_data : public ML_photometry_data {
 public:
-  ML_mock_data(){allow_fill=true;};
+  ML_mock_data(){
+    typestring="MLphotometryData";option_name="MLPMockData";option_info="Mock microlensing photometry data.";
+    allow_fill=true;};
   ///The time samples are generated from a regular grid, or randomly...
   ///...not yet complete...
   ///Note that cadence is the most probable size of timestep, with fractional variance scale set by log_dtvar
@@ -204,7 +207,9 @@ public:
 class ML_OGLEdata : public ML_photometry_data {
   //OGLE-IV:Photometry data file containing 5 columns: Hel.JD, I magnitude, magnitude error, seeing estimation (in pixels - 0.26"/pixel) and sky level.
 public:
-  ML_OGLEdata(){};
+  ML_OGLEdata(){
+    typestring="MLphotometryData";option_name="MLPOGLEData";option_info="OGLE microlensing photometry data.";
+};
   void setup(){
     string filename;
     *optValue("OGLE_data")>>filename;
@@ -241,7 +246,9 @@ public:
 //class for generic two column time/mag data
 class ML_generic_data : public ML_photometry_data {
 public:
-  ML_generic_data(){};
+  ML_generic_data(){
+    typestring="MLphotometryData";option_name="MLPGenData";option_info="Generic microlensing photometry data.";
+  };
   void setup(){
     string filename;
     *optValue("gen_data")>>filename;
@@ -296,7 +303,7 @@ public:
   void addOptions(Options &opt,const string &prefix=""){
     ML_photometry_data::addOptions(opt,prefix);
     addOption("gen_data_time_col","Column with data values. Default=0","0");
-    addOption("gen_data_col","Column with data values. Default=0","1");
+    addOption("gen_data_col","Column with data values. Default=1","1");
     addOption("gen_data_err_col","Column with data values. Default=(next after data)","-1");
     addOption("gen_data_err_lev","Set a uniform error, instead of reading from file. Default=none","-1");
   };
