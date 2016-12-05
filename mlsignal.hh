@@ -61,7 +61,8 @@ public:
 	burped=true;
       }
     }
-    delete worktraj, worklens;
+    delete worktraj;
+    delete worklens;
     return model;
   };
 
