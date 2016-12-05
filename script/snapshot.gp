@@ -5,6 +5,7 @@ set out basename.".pdf"
 
 set macros
 trajname = basename."_d_traj.dat"
+ftrajname = basename."_traj.dat"
 command = "head -n 1 ".trajname.""
 print "command is ".command
 print system(command)
@@ -37,6 +38,12 @@ set palette rgbformulae -21, -22, -23
 set size square
 #plot  basename."_mmap.dat" using 1:2:(log10($3)-1) with image
 plot  basename."_mmap.dat" using 1:2:($3) with image, trajname u 3:4  lt 1 pointsize 0.1
+set xrange [] writeback
+set yrange [] writeback
+plot  basename."_z_mmap.dat" using 1:2:($3) with image
+set xrange restore
+set yrange restore
+rep ftrajname u 3:4  lt 1 pointsize 0.1
 #plot  basename."_mmap.dat" using 1:2:($3) with image, basename."_d_traj.dat" u 3:4  lt 0 pointsize 0.1
 #replot basename."_traj.dat" u 3:4 lt 3 w l
 

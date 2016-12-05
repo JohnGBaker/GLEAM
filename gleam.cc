@@ -68,6 +68,7 @@ int main(int argc, char*argv[]){
   ///meta-information regarding the channels, then these could become instances of a channel class.]
   Options opt(false);
   ML_photometry_data::addStaticOptions(opt);
+  lenses.addOptions(opt);
   //For the first-pass option check, we first make a copy of argc/argv
   int ac=argc;char* av[argc];
   char * filename=NULL;
@@ -206,6 +207,7 @@ int main(int argc, char*argv[]){
   cout<<"Npar="<<Npar<<endl;
   valarray<double>params;
   bool have_pars0=false;
+  cout<<"argc="<<argc<<" Nlead_args="<<Nlead_args<<endl;
   if(do_magmap){//different parameters in this case
     Npar=3;
     if(argc!=5) {
@@ -231,15 +233,25 @@ int main(int argc, char*argv[]){
       cout <<opt.print_usage()<<endl;
       return 1;
   }
+
+  //basic set up of sampler object
+  s0->setup(*like,*prior,output_precision);
+
   //Initial parameter state
   state instate(&space,Npar);
-  if(have_pars0){
-    instate=state(&space,params);
+  if(not have_pars0){
+    instate=s0->getState();
+    have_pars0=s0->haveParfile();
     cout<<"Input parameters:"<<instate.show()<<endl;
-  } else { //If no params give just draw something.  Perhaps only relevant for mock_data
-    cout<<"Drawing a state from the prior distribution."<<endl;
-    instate=prior->drawSample(*globalRNG);
-  }
+  } else {//Old behavior [deprecated]
+    if(have_pars0){
+      instate=state(&space,params);
+      cout<<"Input parameters:"<<instate.show()<<endl;
+    } else { //If no params give just draw something.  Perhaps only relevant for mock_data
+      cout<<"Drawing a state from the prior distribution."<<endl;
+      instate=prior->drawSample(*globalRNG);
+    }
+  } 
 
   //Mock data
   if(do_mock){
@@ -286,6 +298,16 @@ int main(int argc, char*argv[]){
     exit(0);
   }    
 
+  //assuming mcmc:
+  //Set the proposal distribution 
+  int Ninit;
+  //proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,prior.get(),&scales);
+  //cout<<"Proposal distribution is:\n"<<prop->show()<<endl;
+  mcmc.select_proposal();
+  //set up the mcmc sampler (assuming mcmc)
+  //mcmc.setup(Ninit,*like,*prior,*prop,output_precision);
+
+
   ///At this point we are ready for analysis in the case that we are asked to view a model
   ///Note that we still have needed the data file to create the OGLEdata object, and concretely
   ///to set the domain.  This could be changed...
@@ -310,16 +332,6 @@ int main(int argc, char*argv[]){
   }
   if(view)exit(0);
 	  
-  //assuming mcmc:
-  //Set the proposal distribution 
-  int Ninit;
-  //proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,prior,&halfwidths);
-  proposal_distribution *prop=ptmcmc_sampler::new_proposal_distribution(Npar,Ninit,opt,prior.get(),&scales);
-  cout<<"Proposal distribution is:\n"<<prop->show()<<endl;
-  //set up the mcmc sampler (assuming mcmc)
-  mcmc.setup(Ninit,*like,*prior,*prop,output_precision);
-
-
   //Prepare for chain output
   //ss<<"gle_"<<outname;
   ss<<outname;
@@ -363,6 +375,7 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
     ofstream out(ss.str());
     signal.dump_trajectory(out, s, times, tref);
   }
+
   //fine trajectory
     ss.str("");ss<<outname<<"_traj.dat";
   {
@@ -383,6 +396,10 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
   //data light curve
   ss.str("");ss<<outname<<"_d_lcrv.dat";
   dump_lightcurve(ss.str(),like,s,0,0);  
+
+  //magnification map zoom 1/3
+  ss.str("");ss<<outname<<"_z_mmap.dat";
+  dump_mag_map(ss.str(), data, signal, s, (2.0*tstart+tend)/3.0, (tstart+2.0*tend)/3.0, nsamples);
 
 };
 
