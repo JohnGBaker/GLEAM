@@ -213,11 +213,12 @@ public:
   };
   ///Set state parameters
   ///
-  void setState(const state &st){;
+  void setState(const state &st){
     //  logL separation (in log10 Einstein units)
     //  q mass ratio
     //  alignment angle phi0, (binary axis rel to trajectory direction) at closest approach point
-    checkWorkingStateSpace();
+    bayes_component::setState(st);
+    //checkWorkingStateSpace();
     double f_of_q=st.get_param(idx_q);//either log_q or remapped q
     double logL=st.get_param(idx_L);
     phi0=st.get_param(idx_phi0);
