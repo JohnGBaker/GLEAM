@@ -399,9 +399,10 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
   ss.str("");ss<<outname<<"_d_lcrv.dat";
   dump_lightcurve(ss.str(),like,s,0,0);  
 
-  //magnification map zoom 1/3
+  //magnification map zoom 1/5
   ss.str("");ss<<outname<<"_z_mmap.dat";
-  dump_mag_map(ss.str(), data, signal, s, (2.0*tstart+tend)/3.0, (tstart+2.0*tend)/3.0, nsamples);
+  //dump_mag_map(ss.str(), data, signal, s, (2.0*tstart+tend)/3.0, (tstart+2.0*tend)/3.0, nsamples);for 1/3
+  dump_mag_map(ss.str(), data, signal, s, (3.0*tstart+2.0*tend)/5.0, (2.0*tstart+3.0*tend)/5.0, nsamples);
 
 };
 
