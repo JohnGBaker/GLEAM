@@ -1,8 +1,11 @@
 //Gravitational lens equation for microlensing
 //Written by John G Baker NASA-GSFC (2014-2016)
 
-#include "glens.hh"
+//#include "glens.hh"
+#include "trajectory.hh"
 using namespace std;
+
+bool Trajectory::verbose=false;
 
 //
 // ******************************************************************
@@ -57,8 +60,9 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
     Ldot=35999.37244981/degrad,lonpdot=0.32327364/degrad;
   //inst. values
   double Tcen=t/36525.;
-  double a=a0+adot*Tcen,e=e0+edot*Tcen,I=I0+Idot*Tcen,
-    L=L0+Ldot*Tcen,lonp=lonp0+lonpdot*Tcen;
+  double a=a0+adot*Tcen,e=e0+edot*Tcen,I=I0+Idot*Tcen,L=L0+Ldot*Tcen,lonp=lonp0+lonpdot*Tcen;
+  if(e<-1.0)e=-1.0;
+  if(e>1.0)e=1.0;
   //argument of perihelion argp=lonp here
   //mean anomaly M (in range -pi<=M<PI, eccentric anom. E (solves M=E-e*sin(E),
   double M=(floor(((L-lonp)/M_PI+1)/2.0)-1.0)*M_PI*2,E=M+e*sin(M),Eold=0;
@@ -67,6 +71,12 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
   //perihl. cartesian coords
   double xper=a*(cos(E)-e),yper=a*sqrt(1-e*e)*sin(E);
   double cp=cos(lonp),sp=sin(lonp),cI=cos(I),sI=sin(I);
+  if(verbose)
+#pragma omp critical 
+    {
+      cout<<"ParallaxTrajectory::get_obs_pos_ssb: cp,xper,sp,yper,E,Eold:"<<cp<<", "<<xper<<", "<<sp<<", "<<yper<<", "<<E<<", "<<Eold<<endl;
+      cout<<"L,e,M,a:"<<L<<", "<<e<<", "<<M<<", "<<a<<endl;
+    }
   //ecliptic coords
   x=cp*xper-sp*yper;
   double rhoyz=(sp*xper+cp*yper);
@@ -115,6 +125,12 @@ Point ParallaxTrajectory::ssb_los_transform(double x, double y, double z)const{
   double xlens,ylens;
   xlens = xnew * cos_dphi - ynew * sin_dphi;
   ylens = xnew * sin_dphi + ynew * cos_dphi;
+  if(verbose)
+#pragma omp critical 
+    {
+      cout<<"ParallaxTrajectory::ssb_los_transform: xnew,ynew= "<<xnew<<","<<ynew<<endl;
+      cout<<"ParallaxTrajectory::ssb_los_transform: xlens,ylens= "<<xlens<<","<<ylens<<endl;
+    }
   
   return Point(xlens,ylens);
 };
