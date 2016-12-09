@@ -15,7 +15,7 @@ def get_step_pars(fname,stop_size=-1):
     if(stop_size>=0):#sample from some specifed point in the middle of the file, instead of the end
         fsize=stop_size
     #print "fsize=",fsize
-    npar  = 9
+    npar  = 11
     bufsize = 15*(npar+5)
     with open(fname,'rb') as f:
         #print "bufsize=",bufsize
