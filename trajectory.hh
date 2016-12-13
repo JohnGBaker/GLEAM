@@ -122,8 +122,8 @@ public:
   virtual int Nsamples()const {if(have_times)return times.size(); else return (int)((t_end()-t_start())/cad)+1;};
   ///Return frame time of ith obs. 
   virtual double get_obs_time(int ith)const {if(have_times)return times[ith]; else return ts-toff+cad*ith;};
-  virtual double get_phys_time(double frame_time){ return frame_time*tE+tpass+phys_time0;}
-  virtual double get_frame_time(double phys_time){return (phys_time-phys_time0-tpass)/tE;}
+  virtual double get_phys_time(double frame_time){ return frame_time*tE+tpass;}//referenced to phys_time0;
+  virtual double get_frame_time(double phys_time){return (phys_time-tpass)/tE;}
   ///Argument takes frame time below
   virtual Point get_obs_pos(double t)const {double x=p0.x+(t-toff)*v0.x,y=p0.y+(t-toff)*v0.y;return Point(x,y);};
   virtual Point get_obs_vel(double t)const {return v0;};
@@ -151,13 +151,15 @@ public:
   };
   ///This overload of setup is (defacto?) part of the StateSpaceInterface
   virtual void setup(){
+    //We internally us time referenced to the J2000 epoch start
+    const double J2000day0=2451545.0;
     if(have_phys_time_ref){
       if(phys_time_ref_frame->registered()){
-	phys_time0=phys_time_ref_frame->getRef()[0];
+	phys_time0=phys_time_ref_frame->getRef()[0]-J2000day0;
       }
       else{
 	vector<double> ref(1);
-	ref[0]=phys_time0;
+	ref[0]=phys_time0+J2000day0;
 	phys_time_ref_frame->setRegister(ref);
       }
     }

@@ -388,6 +388,7 @@ void GLens::setup(){
   if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
   else cout<<"false"<<endl;
   nativeSpace=stateSpace(0);
+  setPrior(new sampleable_probability_function(&nativeSpace));//dummy
 };
 
 

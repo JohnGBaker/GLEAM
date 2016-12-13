@@ -44,6 +44,7 @@ void dump_lightcurve(const string &outname,bayes_likelihood&like,state &s,double
 //main test program
 int main(int argc, char*argv[]){
 
+  bayes_frame JDtime("JDtime");
   //Create the sampler
   ptmcmc_sampler mcmc;
   bayes_sampler *s0=&mcmc;
@@ -52,7 +53,7 @@ int main(int argc, char*argv[]){
   GLensBinary binarylens;
   bayes_component_selector lenses(vector<bayes_component*>({&binarylens,&singlelens}));
   Trajectory linear_trajectory;
-  ParallaxTrajectory parallax_trajectory;
+  ParallaxTrajectory parallax_trajectory;parallax_trajectory.set_JD_frame(JDtime);
   bayes_component_selector trajs(vector<bayes_component*>({&linear_trajectory,&parallax_trajectory}));
   //Trajectory *traj=&linear_trajectory;
   Trajectory *traj;
@@ -99,7 +100,8 @@ int main(int argc, char*argv[]){
       do_mock=true;
     }
   }
-      
+  data->set_time_frame(JDtime);
+  
   //Eventually want to handle signal polymorphism similarly
   ML_photometry_signal signal(traj, lens);
   bayes_likelihood *like=nullptr;
@@ -138,10 +140,6 @@ int main(int argc, char*argv[]){
   }
     
   cout<<"flags=\n"<<opt.report()<<endl;
-
-  //Post parse setup
-  lens->setup();  
-  traj->setup();  
 
   //double nburn_frac,Tmax,Fn_max,tE_max,tcut,seed;
   double nburn_frac,Tmax,Fn_max,tcut,seed;
@@ -188,10 +186,13 @@ int main(int argc, char*argv[]){
   globalRNG.reset(ProbabilityDist::getPRNG());//just for safety to keep us from deleting main RNG in debugging.
   
   //Set up ML objects
-  signal.setup();
   //special handling for backward compatibility [deprecated]
-  if(filename&&!do_magmap)dynamic_cast< ML_OGLEdata* >(data)->setup(filename);
-  else data->setup();
+  //if(filename&&!do_magmap)dynamic_cast< ML_OGLEdata* >(data)->setup(filename);
+  //else
+  data->setup();
+  lens->setup();  
+  traj->setup();  
+  signal.setup();
   like->setup();
   cout<<"Ndata="<<data->size()<<endl;
 
