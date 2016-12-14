@@ -239,7 +239,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	  }
 	  Trajectory::verbose=true;
 	  beta=get_obs_pos(traj,tgrid);
-	  panic();	 
+	  alert();	 
+	  Trajectory::verbose=false;
 	}
       }
       if(debugint){

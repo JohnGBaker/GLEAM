@@ -379,10 +379,10 @@ protected:
     PTspace=space;
     nativeSpace.attach(space);
     //set nativePrior
-    double logpimin=-4.0;
+    double logpimin=-4.0;//set 3-sigma range
     double logpimax=1.0;
     valarray<double>    centers((initializer_list<double>){  (logpimax+logpimin)/2.0, M_PI                        });
-    valarray<double> halfwidths((initializer_list<double>){  (logpimax-logpimin)/2.0, M_PI                        });
+    valarray<double> halfwidths((initializer_list<double>){  (logpimax-logpimin)/6.0, M_PI                        });
     valarray<int>         types((initializer_list<int>){ mixed_dist_product::gaussian, mixed_dist_product::uniform });
     parallaxPrior=make_shared<mixed_dist_product>(&PTspace,types,centers,halfwidths);
     parentPrior=nativePrior;
