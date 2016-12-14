@@ -134,6 +134,7 @@ public:
     if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");
     else idx_r0=sp.requireIndex("r0");
     if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");
+
     else idx_tE=sp.requireIndex("tE");
     idx_tpass=sp.requireIndex("tpass");
     haveWorkingStateSpace();
@@ -382,7 +383,7 @@ protected:
     double logpimax=1.0;
     valarray<double>    centers((initializer_list<double>){  (logpimax+logpimin)/2.0, M_PI                        });
     valarray<double> halfwidths((initializer_list<double>){  (logpimax-logpimin)/2.0, M_PI                        });
-    valarray<int>         types((initializer_list<int>){ mixed_dist_product::uniform, mixed_dist_product::uniform });
+    valarray<int>         types((initializer_list<int>){ mixed_dist_product::gaussian, mixed_dist_product::uniform });
     parallaxPrior=make_shared<mixed_dist_product>(&PTspace,types,centers,halfwidths);
     parentPrior=nativePrior;
     setPrior(new independent_dist_product(&nativeSpace,parentPrior.get(),parallaxPrior.get()));//append to prior
