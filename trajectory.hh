@@ -57,7 +57,6 @@ class Trajectory : public bayes_component {
   //directly, but will call GLens::get_obs_pos which will apply any offset and (null by default)
   //rotation.  Overloaded versions of this can reorient the lens for binaries, this can be time
   //dependent for orbiting binaries.
-  
 protected:
   Point p0;
   Point v0;
@@ -71,12 +70,17 @@ protected:
   double r0,phi,r0_ref,tE_max;
   bool do_remap_r0, do_log_tE;
   int idx_r0, idx_tE, idx_tpass; 
+  stateSpace sp;
+  bayes_frame *phys_time_ref_frame;
+  double phys_time0;
+  bool have_phys_time_ref; 
 public:
+  static bool verbose;
   Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tpass(0){
-  typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
+    typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
-  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0){
-  typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
+  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0),have_phys_time_ref(false),phys_time0(0){
+    typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
   Trajectory():Trajectory(Point(0,0),Point(1,0)){
     r0_ref=0;
@@ -91,6 +95,16 @@ public:
     
   };
   //virtual void setup(const Point &pos0, const Point &vel0){p0=pos0;v0=vel0;};
+  ///If there is an externally defined reference time then use this function to specify it before calling setup()
+  ///The frame should provide an offset to yield physical time (in JD), from the nominal units
+  virtual void set_JD_frame(bayes_frame &frame){
+    if(have_phys_time_ref){
+      cout<<"Trajectory::set_JD_frame: Cannot reset reference time frame."<<endl;
+      exit(1);
+    }
+    phys_time_ref_frame=&frame;
+    have_phys_time_ref=true;
+  };
   ///Set the required eval times.  (Times are "phys" times, but "phys"=frame if tE=1,tpass=0)
   virtual void set_times(vector<double> times,double toff=0){
     vector<double>tEs=times;
@@ -108,7 +122,7 @@ public:
   virtual int Nsamples()const {if(have_times)return times.size(); else return (int)((t_end()-t_start())/cad)+1;};
   ///Return frame time of ith obs. 
   virtual double get_obs_time(int ith)const {if(have_times)return times[ith]; else return ts-toff+cad*ith;};
-  virtual double get_phys_time(double frame_time){return frame_time*tE+tpass;}
+  virtual double get_phys_time(double frame_time){ return frame_time*tE+tpass;}//referenced to phys_time0;
   virtual double get_frame_time(double phys_time){return (phys_time-tpass)/tE;}
   ///Argument takes frame time below
   virtual Point get_obs_pos(double t)const {double x=p0.x+(t-toff)*v0.x,y=p0.y+(t-toff)*v0.y;return Point(x,y);};
@@ -120,6 +134,7 @@ public:
     if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");
     else idx_r0=sp.requireIndex("r0");
     if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");
+
     else idx_tE=sp.requireIndex("tE");
     idx_tpass=sp.requireIndex("tpass");
     haveWorkingStateSpace();
@@ -136,7 +151,19 @@ public:
     v0=Point(1,0);
   };
   ///This overload of setup is (defacto?) part of the StateSpaceInterface
-  void setup(){
+  virtual void setup(){
+    //We internally us time referenced to the J2000 epoch start
+    const double J2000day0=2451545.0;
+    if(have_phys_time_ref){
+      if(phys_time_ref_frame->registered()){
+	phys_time0=phys_time_ref_frame->getRef()[0]-J2000day0;
+      }
+      else{
+	vector<double> ref(1);
+	ref[0]=phys_time0+J2000day0;
+	phys_time_ref_frame->setRegister(ref);
+      }
+    }
     if(optSet("remap_r0")){
       *optValue("remap_r0_ref_val")>>r0_ref;
       do_remap_r0=true;
@@ -151,6 +178,7 @@ public:
     if(do_log_tE)names[1]="log(tE)";
     space.set_names(names);  
     nativeSpace=space;
+    sp=space;
     //set nativePrior
     double twidth=300,t0=0;
     double r0s=6.0;
@@ -164,7 +192,7 @@ public:
       halfwidths[1]=log10(tE_max)/2;
       types[1]=gauss;
     }
-    setPrior(new mixed_dist_product(&nativeSpace,types,centers,halfwidths));
+    setPrior(new mixed_dist_product(&sp,types,centers,halfwidths));
   };    
   ///Explanation of options:
   ///
@@ -226,13 +254,16 @@ public:
 /// frame (e.g. of the ecliptic). That additional angle is a heliocentric version of the so-called
 /// parallax direction (See Gould2014[arxiv:1408.0797] for somewhat relevant discussion). To give
 /// this parameter a name, based on that literature, we call it \f$ \phi_\mu \f$ (ie phimu). We also
-/// need a parameter relating the scale of 1AU, the lenght unit for our ephemeris, to the Einstein
+/// need a parameter relating the scale of 1AU, the length unit for our ephemeris, to the Einstein
 /// units in the image plane.  By convention (see eg Gaudi2010[arxiv[1002:0332]) this parameter is
 /// called \f$ \pi_E \f$. A 1AU displacement in the observer plane corresponds to a piE displacement
 /// in \beta in Einstein units.  This is related to the mass and distances by:
 /// piE^2 = (1AU/Drel/thetaE)^2 = (1/4)(1AU/Drel)(1AU/M)
 /// where Drel = D_s*D_l/(D_s-D_l).
 class ParallaxTrajectory : public Trajectory {
+  shared_ptr<const sampleable_probability_function> parentPrior;//remember parent prior so we can replace nativePrior
+  shared_ptr<const sampleable_probability_function> parallaxPrior;
+  stateSpace PTspace;
 protected:
   int idx_logpiE;
   int idx_phimu;
@@ -246,7 +277,9 @@ protected:
   double dphi,cos_dphi,sin_dphi;
 public:
   virtual ~ParallaxTrajectory(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
-  ParallaxTrajectory(){};
+  ParallaxTrajectory(){
+    typestring="Trajectory";option_name="EarthTraj";option_info="Earth parallax relative trajectory.";
+  };
   /*
     ParallaxTrajectory(Point pos0, Point vel0, double t_end, double caden, double source_ra=0, double source_dec=0, double t2000off=0, double ts=0):Trajectory(pos0,vel0,t_end,caden,ts){
     typestring="Trajectory";option_name="EarthTraj";option_info="Earth parallax relative trajectory.";
@@ -260,8 +293,7 @@ public:
   virtual ParallaxTrajectory* clone(){
     return new ParallaxTrajectory(*this);
   };
-  //virtual void setup(double pieE,double phimu){};//2TRAJ: put something here
-  virtual void rotate(double pieE,double phimu){};//2TRAJ: put something here
+  //virtual void rotate(double pieE,double phimu){};
   Point get_obs_pos(double t)const {return Trajectory::get_obs_pos(t)+get_obs_pos_offset(t);};
   Point get_obs_vel(double t)const {return Trajectory::get_obs_vel(t)+get_obs_vel_offset(t);};
   ///The following functions are to help with computing the parallax
@@ -279,9 +311,17 @@ protected:
   virtual Point ssb_los_transform(double x, double y, double z)const;
   ///Compute observer position offset from ssb in source-lens line-of-sight frame.
   virtual Point get_obs_pos_offset(double t)const{
-    double x,y,z;
+    double x=0,y=0,z=0;
     get_obs_pos_ssb(t,x,y,z);
-    return ssb_los_transform(x,y,z)*piE;
+    Point result=ssb_los_transform(x,y,z)*piE;
+    if(verbose)
+#pragma omp critical 
+      {
+	cout<<"ParallaxTrajectory::get_obs_pos_offset: x,y,z= "<<x<<","<<y<<","<<z<<endl;
+	cout<<"ParallaxTrajectory::get_obs_pos_offset: t= "<<t<<endl;
+	cout<<"ParallaxTrajectory::get_obs_pos_offset: = ("<<result.x<<","<<result.y<<")  piE="<<piE<<endl;
+      }
+    return result;
   };
   ///Compute observer velocity offset from ssb in source-lens line-of-sight frame.
   virtual Point get_obs_vel_offset(double t)const{
@@ -291,10 +331,11 @@ protected:
   };
   ///approximately convert equatorial to ecliptic coordinates
   void equatorial2ecliptic(double source_ra, double source_dec, double source_lat, double source_lon){
-    const double eps=23.4372; //as of 2016.0, decreasing at 0.00013/yr
+    const double degrad=180.0/M_PI;
+    const double eps=23.4372/degrad; //as of 2016.0, decreasing at 0.00013/yr
     const double ceps=cos(eps),seps=sin(eps);
-    double sa=sin(source_ra),ca=cos(source_ra);
-    double sd=sin(source_dec),cd=cos(source_dec);
+    double sa=sin(source_ra/degrad),ca=cos(source_ra/degrad);
+    double sd=sin(source_dec/degrad),cd=cos(source_dec/degrad);
     source_lon=atan2(sa*ceps+sd/cd*seps,ca);
     source_lat=sd*ceps-cd*seps*sa;
   };
@@ -306,9 +347,14 @@ protected:
     Trajectory::defWorkingStateSpace(sp);//Also inherit params linear Trajectory params
   };
   virtual void setState(const state &s){
+    //cout<<"in ParallaxTrajectory::setState."<<endl;
     checkWorkingStateSpace();
     piE=pow(10.0,s.get_param(idx_logpiE));
     phimu=s.get_param(idx_phimu);
+    //Check this! Not sure whether this assignment is consistent with the description of phimu in the comment above.
+    dphi=phimu;
+    cos_dphi=cos(dphi);
+    sin_dphi=sin(dphi);
     Trajectory::setState(s);
   };
   ///This overload of setup is (defacto?) part of the StateSpaceInterface
@@ -330,16 +376,24 @@ protected:
     string names[]={"logpiE","phimu"};
     space.set_bound(1,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phimu.
     space.set_names(names);  
+    PTspace=space;
     nativeSpace.attach(space);
     //set nativePrior
-    double logpimin=-4.0;
+    double logpimin=-4.0;//set 3-sigma range
     double logpimax=1.0;
     valarray<double>    centers((initializer_list<double>){  (logpimax+logpimin)/2.0, M_PI                        });
-    valarray<double> halfwidths((initializer_list<double>){  (logpimax-logpimin)/2.0, M_PI                        });
-    valarray<int>         types((initializer_list<int>){ mixed_dist_product::uniform, mixed_dist_product::uniform });
-    sampleable_probability_function *prior_aug=new mixed_dist_product(&space,types,centers,halfwidths);
-    setPrior(new independent_dist_product(&nativeSpace,getObjectPrior().get(),prior_aug));//append to prior
+    valarray<double> halfwidths((initializer_list<double>){  (logpimax-logpimin)/6.0, M_PI                        });
+    valarray<int>         types((initializer_list<int>){ mixed_dist_product::gaussian, mixed_dist_product::uniform });
+    parallaxPrior=make_shared<mixed_dist_product>(&PTspace,types,centers,halfwidths);
+    parentPrior=nativePrior;
+    setPrior(new independent_dist_product(&nativeSpace,parentPrior.get(),parallaxPrior.get()));//append to prior
+
   };    
+  void addOptions(Options &opt,const string &prefix=""){
+    Trajectory::addOptions(opt,prefix);
+    addOption("source_ra","Source R.A. for parallax (in degrees).");
+    addOption("source_dec","Source Dec. for parallax (in degrees).");
+  };
 };
 
 #endif

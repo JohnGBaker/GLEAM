@@ -57,13 +57,31 @@ protected:
 public:
   virtual ~GLens(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
   GLens(){typestring="GLens";option_name="SingleLens";option_info="Single point-mass lens";have_integrate=false;do_verbose_write=false;};
-  virtual GLens* clone(){return new GLens();};
+  virtual GLens* clone(){return new GLens(*this);};
   ///Lens map: map returns a point in the observer plane from a point in the lens plane.
-  virtual Point map(const Point &p){cout<<"GLens::map: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};
+  virtual Point map(const Point &p){
+    long double x=p.x,y=p.y,rsq=x*x+y*y,c=(1.0L-1.0L/rsq);;
+    //cout<<"map: x,y,c"<<x<<", "<<y<<", "<<c<<endl;
+    return Point(x*c,y*c);
+  };
   ///Inverse sens map: invmap returns a set of points in the lens plane which map to some point in the observer plane.  Generally multivalued;
-  virtual vector<Point> invmap(const Point &p){cout<<"GLens::invmap: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};
+  virtual vector<Point> invmap(const Point &p){
+    long double x=p.x,y=p.y,rsq=x*x+y*y,c0=sqrt(1.0L+4.0L/rsq);
+    //cout<<"map: x,y,r2"<<x<<", "<<y<<", "<<rsq<<endl;
+    vector<Point> thetas(2);
+    double c=(1.0L+c0)/2.0L;
+    thetas[0]=Point(x*c,y*c);
+    //cout<<"c0="<<c<<endl;
+    c=(1.0L-c0)/2.0L;
+    //cout<<"c1="<<c<<endl;
+    thetas[1]=Point(x*c,y*c);
+    return thetas;
+  };
   ///Given a point in the lens plane, return the magnitude
-  virtual double mag(const Point &p){cout<<"GLens::mag: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};
+  virtual double mag(const Point &p){
+    long double x=p.x,y=p.y,rsq=x*x+y*y,r4=rsq*rsq;
+    return 1.0L/(1.0L-r4);
+  };
   ///Given a set of points in the lens plane, return the combined magnitude
   virtual double mag(const vector<Point> &plist){
     double m=0;
@@ -94,7 +112,8 @@ public:
   virtual void setup();
   virtual string print_info()const{ostringstream s;s<<"GLens()"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
   //For stateSpaceInterface
-  virtual void defWorkingStateSpace(const stateSpace &sp){haveWorkingStateSpace();};
+  virtual void defWorkingStateSpace(const stateSpace &sp){//cout<<"GLens::defWSS:[this="<<this<<"]"<<endl;
+    haveWorkingStateSpace();};
   virtual void setState(const state &s){checkWorkingStateSpace();};
 ;
   //getCenter provides *trajectory frame* coordinates for the center. Except for with -2, which give the lens frame CM. 
@@ -213,11 +232,12 @@ public:
   };
   ///Set state parameters
   ///
-  void setState(const state &st){;
+  void setState(const state &st){
     //  logL separation (in log10 Einstein units)
     //  q mass ratio
     //  alignment angle phi0, (binary axis rel to trajectory direction) at closest approach point
-    checkWorkingStateSpace();
+    bayes_component::setState(st);
+    //checkWorkingStateSpace();
     double f_of_q=st.get_param(idx_q);//either log_q or remapped q
     double logL=st.get_param(idx_L);
     phi0=st.get_param(idx_phi0);

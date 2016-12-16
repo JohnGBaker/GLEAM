@@ -1,8 +1,11 @@
 //Gravitational lens equation for microlensing
 //Written by John G Baker NASA-GSFC (2014-2016)
 
-#include "glens.hh"
+//#include "glens.hh"
+#include "trajectory.hh"
 using namespace std;
+
+bool Trajectory::verbose=false;
 
 //
 // ******************************************************************
@@ -37,6 +40,7 @@ Point operator*(const Point &a, const double &val){return Point(a.x*val,a.y*val)
 /// with ecliptic sky coordinates.
 ///
 void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double &z)const{
+  t=t+phys_time0;
   ///We take t to be terrestrial time, TT, time in days since the beginning of 
   ///the J2000 epoch, meaning seconds since J2000 (ts) divided by 86400. 
   /// I.e. t=ts/86400.  Note that the J2000 epoch reference corresponds to 
@@ -50,6 +54,7 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
   ///( semi-maj axis a, eccen. e, inclination I, mean long. L, long. at
   /// perihelion lonp and long. of ascending node (=0 for earth)) and their 
   /// per-century rates of change. These are:
+  const double emax=0.99;//anyway this would be an extremely non-physical time...
   const double degrad=180.0/M_PI;
   const double a0=1.00000261,e0=0.01671123,I0=-0.00001531/degrad,
     L0=100.46457166/degrad,lonp0=102.93768193/degrad;
@@ -57,8 +62,9 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
     Ldot=35999.37244981/degrad,lonpdot=0.32327364/degrad;
   //inst. values
   double Tcen=t/36525.;
-  double a=a0+adot*Tcen,e=e0+edot*Tcen,I=I0+Idot*Tcen,
-    L=L0+Ldot*Tcen,lonp=lonp0+lonpdot*Tcen;
+  double a=a0+adot*Tcen,e=e0+edot*Tcen,I=I0+Idot*Tcen,L=L0+Ldot*Tcen,lonp=lonp0+lonpdot*Tcen;
+  if(e<-emax)e=-emax;
+  if(e>emax)e=emax;
   //argument of perihelion argp=lonp here
   //mean anomaly M (in range -pi<=M<PI, eccentric anom. E (solves M=E-e*sin(E),
   double M=(floor(((L-lonp)/M_PI+1)/2.0)-1.0)*M_PI*2,E=M+e*sin(M),Eold=0;
@@ -67,6 +73,13 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
   //perihl. cartesian coords
   double xper=a*(cos(E)-e),yper=a*sqrt(1-e*e)*sin(E);
   double cp=cos(lonp),sp=sin(lonp),cI=cos(I),sI=sin(I);
+  if(verbose)
+#pragma omp critical 
+    {
+      cout<<"ParallaxTrajectory::get_obs_pos_ssb: cp,xper,sp,yper,E,Eold:"<<cp<<", "<<xper<<", "<<sp<<", "<<yper<<", "<<E<<", "<<Eold<<endl;
+      cout<<"L,e,M,a:"<<L<<", "<<e<<", "<<M<<", "<<a<<endl;
+      cout<<"phys_time0="<<phys_time0<<endl;
+    }
   //ecliptic coords
   x=cp*xper-sp*yper;
   double rhoyz=(sp*xper+cp*yper);
@@ -115,6 +128,12 @@ Point ParallaxTrajectory::ssb_los_transform(double x, double y, double z)const{
   double xlens,ylens;
   xlens = xnew * cos_dphi - ynew * sin_dphi;
   ylens = xnew * sin_dphi + ynew * cos_dphi;
+  if(verbose)
+#pragma omp critical 
+    {
+      cout<<"ParallaxTrajectory::ssb_los_transform: xnew,ynew= "<<xnew<<","<<ynew<<endl;
+      cout<<"ParallaxTrajectory::ssb_los_transform: xlens,ylens= "<<xlens<<","<<ylens<<endl;
+    }
   
   return Point(xlens,ylens);
 };

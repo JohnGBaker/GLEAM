@@ -3,7 +3,7 @@
 //Written by John G Baker NASA-GSFC (2014-15)
 #ifndef MLDATA_HH
 #define MLDATA_HH
-#include "glens.hh"
+//#include "glens.hh"
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -23,10 +23,13 @@ protected:
   double time0;
   int idx_Mn;
   bool have_time0;
+  bayes_frame *time_frame;
+  bool have_time_frame;
 public:
   ///We relabel the generic bayes_data names as times/mags/etc...
   ML_photometry_data():bayes_data(),times(labels),mags(values),dmags(dvalues),time0(label0){
     have_time0=false;
+    have_time_frame=false;
   };
   //int size()const{return times.size();};
   /*
@@ -110,6 +113,15 @@ public:
     time0=t0;
     have_time0=true;
   };
+  ///If there is an externally defined reference time then use this function to specify it before calling setup()
+  virtual void set_time_frame(bayes_frame &frame){
+    if(have_time_frame or have_time0){
+      cout<<"ML_photometry_data::set_time_frame: Cannot reset reference time frame."<<endl;
+      exit(1);
+    }
+    time_frame=&frame;
+    have_time_frame=true;
+  };
   virtual void setup(){
     ///Set up the output stateSpace for this object
     stateSpace space(1);
@@ -143,7 +155,19 @@ protected:
   ///Initial data processing common to ML_photometry_data
   void processData(){
     if(!have_time0){
-      time0=getFocusLabel();
+      if(have_time_frame){
+	if(time_frame->registered()){
+	  time0=time_frame->getRef()[0];
+	}
+	else{
+	  time0=getFocusLabel();
+	  vector<double> ref(1);
+	  ref[0]=time0;
+	  time_frame->setRegister(ref);
+	}
+      } else {
+	time0=getFocusLabel();
+      }
       have_time0=true;
     }
     cout<<"ML_photometry data offset by "<<setprecision(15)<<time0<<" -> 0"<<endl;

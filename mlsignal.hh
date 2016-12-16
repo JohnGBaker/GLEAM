@@ -73,6 +73,7 @@ public:
     idx_I0=sp.requireIndex("I0");
     idx_Fs=sp.requireIndex("Fs");
     haveWorkingStateSpace();
+    //cout<<"signal::defWSS: about to def lens"<<endl;
     lens->defWorkingStateSpace(sp);
     traj->defWorkingStateSpace(sp);
   };

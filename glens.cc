@@ -236,7 +236,11 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	  cout<<"!integrate: mg is infinite! at beta="<<beta.x<<","<<beta.y<<endl;
 	  for(int image=0;image<thetas.size();image++){
 	    cout<<thetas[image].x<<","<<thetas[image].y<<" -> "<<mag(thetas[image])<<endl;
-	  }	    
+	  }
+	  Trajectory::verbose=true;
+	  beta=get_obs_pos(traj,tgrid);
+	  alert();	 
+	  Trajectory::verbose=false;
 	}
       }
       if(debugint){
@@ -279,8 +283,9 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	mgplus=mag(thetas);
       }
 
+      if(abs(mgtest-mgres)/mgtest>test_result_tol)
 #pragma omp critical
-      if(abs(mgtest-mgres)/mgtest>test_result_tol){
+	{
 	cout<<"\ncompute_trajectory: test failed. test/res:\nindex="<<i<<","<<ires<<"\ntime="<<ttest<<","<<tres<<"\nmag="<<mgtest<<","<<mgres<<" -> "<<abs(mgtest-mgres)<<"["<<nimages<<" images]"<<endl;
 	cout<<"beta=("<<beta.x<<","<<beta.y<<")"<<endl;
 	if(ires>0&&ires<time_series.size()-1){
@@ -384,6 +389,7 @@ void GLens::setup(){
   if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
   else cout<<"false"<<endl;
   nativeSpace=stateSpace(0);
+  setPrior(new sampleable_probability_function(&nativeSpace));//dummy
 };
 
 
