@@ -6,6 +6,7 @@
 
 using namespace std;
 
+
 #include "mlsignal.hh"
 #include "mldata.hh"
 #include <valarray>
@@ -20,7 +21,7 @@ using namespace std;
 #include "bayesian.hh"
 
 class ML_photometry_likelihood: public bayes_likelihood{
-  sampleable_probability_function * prior;
+  const sampleable_probability_function * prior;
   int count;
   double total_eval_time;
   double best_post;
@@ -35,10 +36,11 @@ class ML_photometry_likelihood: public bayes_likelihood{
   stateSpaceTransformND noise_trans{2,{"I0","Fn"},{"I0","Mn"},[](vector<double>&v){return vector<double>({v[0],v[0]-2.5*log10(v[1])});}};
   int nevery;
 public:
-  ML_photometry_likelihood(stateSpace *sp, ML_photometry_data *data, ML_photometry_signal *signal, sampleable_probability_function *prior=nullptr):prior(prior),bayes_likelihood(sp,data,signal){
+  ML_photometry_likelihood(ML_photometry_data *data, ML_photometry_signal *signal):ML_photometry_likelihood(nullptr,data,signal,nullptr){};
+  ML_photometry_likelihood(stateSpace *sp, ML_photometry_data *data, ML_photometry_signal *signal, const sampleable_probability_function *prior=nullptr):prior(prior),bayes_likelihood(sp,data,signal){
     ///Note: here, as before, we assume that the state space is passed in.  Maybe we should be able to compute it from the signal and data though.
-    do_additive_noise=false;
-    best=state(sp,sp->size());
+    do_additive_noise=true;
+    if(sp)best=state(sp,sp->size());
     reset();
     //noise_trans = stateSpaceTransformND(2,{"I0","Mn"},{"I0","Fn"},[](vector<double>&v){return vector<double>({v[0],v[0]-2.5*log10(v[1])});});
     idx_Fn=idx_I0=-1;
@@ -65,7 +67,6 @@ public:
     valarray<double>params=s.get_params();
     //clock_t tstart=clock();
     double tstart=omp_get_wtime();
-
     double result=log_chi_squared(s);
     double post=result;
     if(prior)post+=prior->evaluate_log(s);
@@ -83,7 +84,7 @@ public:
         best_post=post;
         best=state(s);
       }
-      //cout<<"loglike="<<result<<"<="<<maxLike<<endl;   
+      //cout<<"loglike="<<result<<endl;   
       if(!isfinite(result)){
         cout<<"Whoa dude, loglike is NAN! What's up with that?"<<endl;
         cout<<"params="<<s.get_string()<<endl;
@@ -112,34 +113,31 @@ public:
     }
   };
 
-  ///Set up the output stateSpace for this object
-  ///
-  ///This is just an initial draft.  To be utilized in later round of development.
-  stateSpace getObjectStateSpace(){
-    checkSetup();//Call this assert whenever we need options to have been processed.
-    checkPointers();
-    stateSpace space(1);
-    space=signal->getObjectStateSpace();
-    cout<<"ML_photometry_likelihood::getObjectStateSpace(): This function is not yet implemented.  Need more development of stateSpace."<<endl;
-    exit(1);
-    /*
-    space.add(getObjectStateSpace(*data));
-    ///This is just a temporary hack for backward compatibility in testing.
-    if(!space.relocate("Fn",2))space.relocate("Mn",2);  
-    */
-    return space;
-  };
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);   
-    addOption("additive_noise","Interpret Fn->Mn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)");
+    addOption("additive_noise","Interpret Fn->Mn as magnitude of additive noise. Fn_max is magnitude of maximum noise level (i.e. minimum noise magnitude)(now deprecated, on by default)");
   };
   void setup(){    
     if(optSet("additive_noise"))useAdditiveNoise();
-    set_like0();
-    //cout<<"setup:options="<<reportOptions()<<endl;
-    //cout<<"setup:do_additive_noise="<<(do_additive_noise?"true":"false")<<endl;
+    set_like0_chi_squared();
     haveSetup();
-  };  
+    ///Set up the output stateSpace for this object
+    checkPointers();
+    nativeSpace=*data->getObjectStateSpace();
+    if(!do_additive_noise)
+      nativeSpace=noise_trans.transform(nativeSpace);
+    nativeSpace.attach(*signal->getObjectStateSpace());
+    //Set the prior...
+    setPrior(new independent_dist_product(&nativeSpace,data->getObjectPrior().get(),signal->getObjectPrior().get()));
+    //and set the internal (now redundant) prior and space to match.
+    prior=getObjectPrior().get();
+    space=&nativeSpace;
+    best=state(space,space->size());
+    //Unless otherwise externally specified, assume nativeSpace as the parameter space
+    defWorkingStateSpace(nativeSpace);
+    
+  };
+  
   state transformDataState(const state &s)const{
     //cout<<"ML_photometrylike:transfDataSt: this="<<this<<endl;
     if(!do_additive_noise){
@@ -166,6 +164,7 @@ public:
 private:
   
   ///Reparameterize Fn as the magnitude of strictly additive noise magnitude, rather than a fractional noise level.
+  ///Recently we always do this and may eliminate the option not to...
   void useAdditiveNoise(){
     do_additive_noise=true;
   };
@@ -183,22 +182,11 @@ private:
     if(nsamples<0){
       times=data->getLabels();
     } else {
-      cout<<"mllike:oldWriteFine: ns,ts,te="<<nsamples<<","<<tstart<<","<<tend<<endl;
+      //cout<<"mllike:oldWriteFine: ns,ts,te="<<nsamples<<","<<tstart<<","<<tend<<endl;
       double delta_t=(tend-tstart)/(nsamples-1.0);
       for(int i=0;i<nsamples;i++){
 	double t=tstart+i*delta_t;
 	times.push_back(t);
-	//vector<double> loctimes(nsamples);
-	//double dt=(tend-tstart)/(nsamples-1.0)/tE;
-	//double t0=(tstart-tmax)/tE;
-	//cout<<"dt,t0 = "<<dt<<", "<<t0<<endl;
-	//for(int i=0;i<nsamples;i++)loctimes[i]=t0+dt*i;
-	//traj.set_times(loctimes,0);
-	/// ts = ( t - tmax )/tE
-	///    = ( tstart + i*delta_t -tmax ) / tE
-	///    = ( t0*tE + i*dt*tE )/tE
-	///    = t0 + i*dt = loctimes[i]
-
       }
     }
     //double tpk=getPeakTime();
@@ -212,23 +200,6 @@ private:
     if(do_additive_noise)noise_mag=noise_lev;
     //endhack
     
-    /*
-    //Trajectory traj(get_trajectory(q,L,r0,phi,0*tEs[0]));
-    Trajectory traj(get_trajectory(q,L,r0,phi,tEs[0]));
-
-    if(nsamples<1){//by default use the data sample times.
-      traj.set_times(tEs,0);
-      //cout<<"tEs0,tPeak,tPeak(orig) = "<<tEs[0]<<", "<<getPeakTime()<<", "<<getPeakTime(true)<<endl;
-    } else {       //otherwise we use the specified times
-      vector<double> loctimes(nsamples);
-      double dt=(tend-tstart)/(nsamples-1.0)/tE;
-      double t0=(tstart-tmax)/tE;
-      //cout<<"dt,t0 = "<<dt<<", "<<t0<<endl;
-      for(int i=0;i<nsamples;i++)loctimes[i]=t0+dt*i;
-      traj.set_times(loctimes,0);
-    }
-    */
-
     I0=st.get_param(idx_I0);
     vector<double> model=signal->get_model_signal(transformSignalState(st),times);
     vector<double> dmags=data->getDeltaValues();

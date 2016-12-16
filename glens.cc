@@ -1,5 +1,5 @@
 //Gravitational lens equation for microlensing
-//Written by John G Baker NASA-GSFC (2014)
+//Written by John G Baker NASA-GSFC (2014-2016)
 
 #include "glens.hh"
 #include <gsl/gsl_poly.h>
@@ -19,6 +19,8 @@ const bool inv_test_mode=false;
 //const bool inv_test_mode=true;
 extern bool debugint;
 bool verbose=false;
+bool test_result=false;
+
 //
 // Interface to external Skowron&Gould fortran polynomial solver routine
 //
@@ -33,11 +35,10 @@ void cmplx_roots_5(complex<double> roots[5], bool &first_3_roots_order_changed, 
 };
 extern "C" void cmplx_roots_gen_(complex<double> roots[], complex<double> poly[], const int &degree, const int &polish_roots_after, const int &use_roots_as_starting_points);
 void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int &degree, bool const &polish_roots_after, const bool &use_roots_as_starting_points){cmplx_roots_gen_(roots,poly,degree,polish_roots_after,use_roots_as_starting_points);};
-//const double LEADTOL=3e-7; //->balance linear approx with FP -> error below ~1e-7
 typedef  long double ldouble;
 const double LEADTOL=1e-5;
 //const double LEADTOL=1e-4;
-const double epsTOL=1e-10;
+const double epsTOL=1e-14;
 //const double epsTOL=1e-11;
 
 #else
@@ -47,11 +48,6 @@ void cmplx_roots_5(complex<double> roots[5], bool &first_3_roots_order_changed, 
   int first3=first_3_roots_order_changed;
   complex<__float128>longroots[5],longpoly[6];
   for(int i=0;i<6;i++)longpoly[i]=poly[i];
-  //char c[128];
-  //for(int i=0;i<6;i++){
-  //quadmath_snprintf (c, sizeof c, "%-#*.35Qe", 46, longpoly[i]);  
-  //cout<<"poly["<<i<<"]="<<c<<endl;  
-  //}
   if(!polish_only)for(int i=0;i<5;i++)longroots[i]=roots[i];
   //cout<<sizeof(longpoly)<<endl;
   cmplx_roots_5_(longroots, first3, longpoly, polish_only);
@@ -75,10 +71,9 @@ void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int 
 };
 typedef __float128 ldouble;
 const double LEADTOL=3e-7;
-//const double LEADTOL=1e-6;
+//const double LEADTOL=1e-5;
 const double epsTOL=1e-14;
 #endif
-
 
 
 
@@ -103,12 +98,13 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   //  if use_integrate is set then the value it overrides integrate 
   //
   //control parameters:
-  const double caustic_mag_poly_level = 1.5; //use direct polynomial eval near caustics.
-  const double caustic_mag_step_level = 1.25; //take smaller steps near caustics. 
-  const double caustic_step_factor = 5.;  //take smaller steps near caustics.
-  const double intTOL = 1e-10;  //control integration error tolerance
+  double caustic_mag_poly_level = GL_int_mag_limit; //use direct polynomial eval near caustics.
+  const double intTOL = GL_int_tol;  //control integration error tolerance
+  const double test_result_tol = 1e-4;  //control integration error tolerance
   if(have_integrate)integrate=use_integrate;
   double prec=cout.precision();cout.precision(20);
+  const double rWide_int_fac=100.0;
+
   //cout<<"glens::compTraj: int="<<integrate<<"\nthisLens="<<print_info()<<"\n traj="<<traj.print_info()<<endl;
   //cout<<"this="<<this<<endl;
   cout.precision(prec);
@@ -121,123 +117,80 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 
   trajectory=&traj;//a convenience for passing to the integrator
   int NintSize=2*NimageMax;
+
+  //Set up for GSL integration routines
   const gsl_odeiv2_step_type * stepType = gsl_odeiv2_step_rkf45;
   gsl_odeiv2_step * step=nullptr;
   gsl_odeiv2_control * control=nullptr;
   gsl_odeiv2_evolve * evol=nullptr;
   gsl_odeiv2_system sys = {GLens::GSL_integration_func_vec, NULL, (size_t)NintSize, this};
   double h=1e-5;
-  //Set up for GSL integration routines
   if(integrate){
     step = gsl_odeiv2_step_alloc (stepType, NintSize);
     control = gsl_odeiv2_control_y_new (intTOL, 0.0);
+    //control = gsl_odeiv2_control_standard_new (intTOL, 0.0,1.0,10.0);//Also apply limits on the derivative
     evol = gsl_odeiv2_evolve_alloc (NintSize);
     gsl_odeiv2_control_init(control,intTOL,0.0,1,0);//Do I need this?
-    gsl_odeiv2_evolve_reset(evol);
+    gsl_odeiv2_evolve_reset(evol);//or this
   }
 
-  //loop over observation times specified in the Trajectory object
-  double tgrid=traj.t_start();
-  double tgrid_next=traj.get_obs_time(1);
-  Point beta=traj.get_obs_pos(tgrid);
-  vector<Point> thetas=invmap(beta);
-  double mg=mag(thetas);
+  //Main loop over observation times specified in the Trajectory object
+  //initialization
+  Point beta;
+  vector<Point> thetas;
   bool evolving=false;
-  //cout<<"Recording at t="<<traj.t_start()<<" beta=("<<beta.x<<","<<beta.y<<")"<<endl;
-  time_series.push_back(traj.t_start());
-  thetas_series.push_back(thetas);
-  mag_series.push_back(mg);
-  for(int i=0; tgrid<traj.t_end(); tgrid=tgrid_next,i++){
-    tgrid_next=traj.get_obs_time(i+1);          
-    index_series.push_back(time_series.size()-1);
-    //we will test on magnitude level
-    
-    //If close to caustic, require smaller steps
-    int isteps=1;    
-    if(mg>caustic_mag_step_level)isteps=caustic_step_factor;
-    if(debugint)cout<<"mg="<<mg<<",  isteps="<<isteps<<endl;
-    double tstep=tgrid,dtstep=(tgrid_next-tgrid)/isteps;;
-    double tstep_next=tstep+dtstep;
-    if(debugint)cout<<"steps for "<<tstep<<" < t < "<<tstep_next<<endl;
-    for(int istep=0;istep<isteps;istep++){//provide the taking of substeps near caustics
-      if(debugint)cout<<"step: "<<istep<<endl;
-      //if(istep=isteps-1)tstep_next=tgrid_next;
-      //else 
-      tstep_next=tstep+dtstep;
-      if(integrate&&mg<caustic_mag_poly_level){
-	evolving=true;
-	double t=tstep;
-	if(debugint){//debugging
-	  cout<<" t = "<<t<<endl; 
-	  Point dbgbeta=traj.get_obs_pos(t);
-	  vector<Point>thdbgbeta=invmap(dbgbeta);
-	  cout<<"*beta = ("<<dbgbeta.x<<","<<dbgbeta.y<<")"<<endl;
-	  double diff;
-	  int imap[5]={0,1,2,3,4};
-	  int iswap=1;
-	  for(int image=0;image<thetas.size();image++){
-	    diff=sqrt((thetas[image].x-thdbgbeta[imap[image]].x)*(thetas[image].x-thdbgbeta[imap[image]].x)+(thetas[image].y-thdbgbeta[imap[image]].y)*(thetas[image].y-thdbgbeta[imap[image]].y));
-	    if(diff>1e-5&&image<thetas.size()-iswap){
-	      cout<<"   swapping "<<image<<" + "<<iswap<<endl;
-	      int itemp=imap[image];
-	      imap[image]=imap[image+iswap];
-	      imap[image+iswap]=itemp;
-	      image--;
-	      iswap++;
-	      continue;
-	    } else iswap =1;
-	    cout<<"*  thetas["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<") versus ("<<thdbgbeta[imap[image]].x<<","<<thdbgbeta[imap[image]].y<<"), m = "<<mag(thetas[image])<<", diff="<<diff<<endl;}
+  double mg;
+
+  int Ngrid=traj.Nsamples();
+  double t_old;
+  for(int i=0; i<Ngrid;i++){
+    double tgrid=traj.get_obs_time(i);
+    //entering main loop
+
+    //We either compute the next step by evolution or by polynomial evaluation.
+    //We do evolution is the integration flag is set *and* the last evaluated point had a
+    //magnification under caustic_mag_poly_level.
+    //If we evolving then the step-size may be smaller as driven by the ODE integrator's step-size 
+    //control, we expect this to be small enough to avoide stumbling across the caustic, unaware.
+    //After each step we check whether the mg level condition is satisfied, to consider whether to evolve.
+    //We may also wish to implement a floor in the step-size near caustics for display purposes.
+
+    if(evolving){
+      double t=t_old;
+      //The next loop steps (probably more finely) toward the next grid time point.      
+      while(t<tgrid){
+	//integrate each image
+	if(debugint)cout<<"\n t="<<t<<" mg="<<mg<<endl;
+	Ntheta=thetas.size();
+	double theta[NintSize];
+	for(int image=0;image<thetas.size();image++){
+	  theta[2*image]=thetas[image].x;
+	  theta[2*image+1]=thetas[image].y;
 	}
-	//The next loop steps (probably more finely) toward the next obs time.      
-	while(t<tstep_next){
-	  //integrate each image
-	  if(debugint)cout<<"\n t="<<t<<endl;
-	  Ntheta=thetas.size();
-	  double theta[NintSize];
-	  for(int image=0;image<thetas.size();image++){
-	    theta[2*image]=thetas[image].x;
-	    theta[2*image+1]=thetas[image].y;
-	  }
-	  for(int k=2*thetas.size();k<NintSize;k++)theta[k]=0;
-	  if(debugint){
-	    cout<<"stepping all images: t = "<<t<<" dt = "<<h<<", 'til "<<tstep_next<<endl;
-	    for(int image=0;image<thetas.size();image++){
-	      cout<<"   theta["<<image<<"] = ("<<theta[image*2]<<","<<theta[image*2+1]<<") -> "<<mag(Point(theta[image*2],theta[image*2+1]))<<endl;
-	      //cout<<"   thetas["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<")"<<endl;
-	    }
-	  }
-	  int status = gsl_odeiv2_evolve_apply (evol, control, step, &sys, &t, tstep_next, &h, theta);
-	  //Need some step-size control checking for near caustics?
-	  if (status != GSL_SUCCESS) {	      
-	    cout<<"Something went wrong with GSL integration!\n t="<<t<<", err= "<<status<<": '"<<gsl_strerror(status)<<"' \nthetas="<<endl;
-	    Point b=traj.get_obs_pos(t);
-	    cout<<"beta="<<sqrt(b.x*b.x+b.y*b.y)<<" mg="<<mag(thetas)<<endl;
-	    for(int image=0;image<thetas.size();image++)
-	      cout<<"   theta["<<image<<"] = ("<<theta[image*2]<<","<<theta[image*2+1]<<")"<<endl;
-	    //cout<<"Will set theta to most recent value."<<endl; 
-	    //thetas=thetas_series.back();
-	    //for(int image=0;image<thetas.size();image++){
-	    // theta[2*image]=thetas[image].x;
-	    //theta[2*image+1]=thetas[image].y;
-	    //}
-	    tstep_next=t;
+	if(rWide_int_fac>0){
+	  //Point b=traj.get_obs_pos(t);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords
+	  Point b=get_obs_pos(traj,t);
+	  if(testWide(b,rWide_int_fac)){
+	    //cout<<"evol: testWide==true"<<endl;
+	    evolving=false;//switch to point-wise (WideBinary assuming rWide_int/rWide>=1)
 	    break;
 	  }
-	  //debugging
-	  //dbgbeta=traj.get_obs_pos(ti);
-	  //thdbgbeta=invmap(dbgbeta);
-	  //cout<<"t = "<<ti<<", h = "<<hi<<", beta = ("<<dbgbeta.x<<","<<dbgbeta.y<<")"<<endl;
-	  //diff=sqrt((theta[0]-thdbgbeta[image].x)*(theta[0]-thdbgbeta[image].x)+(theta[1]-thdbgbeta[image].y)*(theta[1]-thdbgbeta[image].y));
-	  //cout<<"  thetas["<<image<<"] = ("<<theta[0]<<","<<theta[1]<<") versus ("<<thdbgbeta[image].x<<","<<thdbgbeta[image].y<<"), diff="<<diff<<endl;
-	    //replace results for each image as we go
-	    //thetas[image]=Point(theta[0],theta[1]);
-	  //record results
-	  for(int image=0;image<thetas.size();image++){
-	    thetas[image]=Point(theta[2*image],theta[2*image+1]);	    
-	  }
-	  mg=mag(thetas);
+	}
+	for(int k=2*thetas.size();k<NintSize;k++)theta[k]=0;
+	int status = gsl_odeiv2_evolve_apply (evol, control, step, &sys, &t, tgrid, &h, theta);
+	//Need some step-size control checking for near caustics?
+	if (status != GSL_SUCCESS) { 
+	  evolving=false;//switch to polynomial
+	  break;
+	}
+	//record results
+	for(int image=0;image<thetas.size();image++){
+	  thetas[image]=Point(theta[2*image],theta[2*image+1]);	    
+	}
+	mg=mag(thetas);
+	if(mg>=caustic_mag_poly_level)evolving=false;//switch to polynomial and don't record result
+	else {
 	  if(debugint)cout<<"mg="<<mg<<endl;
-	  //cout<<"Recording at t="<<t<<endl;
 	  time_series.push_back(t);
 	  thetas_series.push_back(thetas);
 	  mag_series.push_back(mg);
@@ -247,105 +200,121 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	      cout<<theta[2*image]<<","<<theta[2*image+1]<<endl;
 	    }	    
 	  }
-	  
-	}//end of loop over integration steps
-	
-      } else { //!integrate  :  instead of integrating, solve polynomial
-	if(evolving)gsl_odeiv2_evolve_reset(evol);
-	beta=traj.get_obs_pos(tstep_next);
-	thetas.clear();
-	thetas=invmap(beta);
-	//record results;
-	mg=mag(thetas);
-	//cout<<"Recording at t="<<tstep_next<<endl;
-	//cout<<"beta=("<<beta.x<<","<<beta.y<<")"<<endl;
-	time_series.push_back(tstep_next);
-	thetas_series.push_back(thetas);
-	mag_series.push_back(mg);
-	//cout<<"t="<<tstep_next<<", beta=("<<beta.x<<","<<beta.y<<"):"<<endl;
-	if(!isfinite(mg)){
-	  GLensBinary* gb;
-	  bool squak=true;
-	  if(gb=dynamic_cast< GLensBinary* > (this)){
-	    if(gb->get_q()<1e-14)squak=false;//we are going to fail with NAN, but not give a bunch of output, deal with it...
-	    else cout<<"q,L="<<gb->get_q()<<","<<gb->get_L()<<endl;
-	  }
-	  if(squak){
-	    cout<<"!integrate: mg is infinite! at beta="<<beta.x<<","<<beta.y<<endl;
-	    for(int image=0;image<thetas.size();image++){
-	      cout<<thetas[image].x<<","<<thetas[image].y<<" -> "<<mag(thetas[image])<<endl;
-	    }	    
-	  }
-	}
-	if(false&&mg<=1&&fabs(tstep_next)<3){
-	  cout<<"\nmagnification is too small (mg="<<mg<<") at t="<<tstep_next<<", beta=("<<beta.x<<","<<beta.y<<"):"<<endl;
-	  debug=true;
-	  thetas=invmap(beta);
-	  mg=mag(thetas);
-	  debug=false;
-	  for(int image=0;image<thetas.size();image++)
-	    cout<<"   theta["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<")"<<endl;
-	}
-	if(debugint){
-	  cout<<"polynomial calc at t="<<tstep_next<<":"<<endl;
-	  for(int image=0;image<thetas.size();image++)
-	    cout<<"   theta["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<")"<<endl;
 	}
       }
-      tstep=tstep_next;
-      tstep_next+=dtstep;
-    }//end of ministep loop
+      if(!evolving){
+	i--;//go back and try this step again with solving polynomial
+	continue;
+      }
+    } else { //not evolving, solve polynomial
+      //beta=traj.get_obs_pos(tgrid);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords
+      beta=get_obs_pos(traj,tgrid);
+      thetas.clear();
+      thetas=invmap(beta);
+      //record results;
+      mg=mag(thetas);
+      time_series.push_back(tgrid);
+      thetas_series.push_back(thetas);
+      mag_series.push_back(mg);
+      //cout<<"mg="<<mg<<", caustic_mag_poly_level="<<caustic_mag_poly_level<<endl;
+      if(integrate&&mg<caustic_mag_poly_level){
+	double r2=beta.x*beta.x+beta.y*beta.y;
+	evolving=true;
+	if(testWide(beta,rWide_int_fac))evolving=false;//Don't switch if in "wide" domain.
+	//if(!evolving)cout<<"not evol: testWide==true"<<endl;
+	if(!(thetas.size()==3||thetas.size()==5))evolving=false;//Don't switch to integrate if the number of images doesn't make sense
+	if(evolving)gsl_odeiv2_evolve_reset(evol);
+      };
+      if(!isfinite(mg)){
+	GLensBinary* gb;
+	bool squak=true;
+	if(gb=dynamic_cast< GLensBinary* > (this)){
+	  if(gb->get_q()<1e-14)squak=false;//we are going to fail with NAN, but not give a bunch of output, deal with it...
+	  else cout<<"q,L="<<gb->get_q()<<","<<gb->get_L()<<endl;
+	}
+	if(squak){
+	  cout<<"!integrate: mg is infinite! at beta="<<beta.x<<","<<beta.y<<endl;
+	  for(int image=0;image<thetas.size();image++){
+	    cout<<thetas[image].x<<","<<thetas[image].y<<" -> "<<mag(thetas[image])<<endl;
+	  }	    
+	}
+      }
+      if(debugint){
+	cout<<"polynomial calc at t="<<tgrid<<":"<<endl;
+	for(int image=0;image<thetas.size();image++)
+	  cout<<"   theta["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<")"<<endl;
+      }
+    }//end of polynomial step
+    if(time_series.size()<1)cout<<"Time series empty i="<<i<<endl;
+    t_old=tgrid;
+    index_series.push_back(time_series.size()-1);
   }//end of main observation times loop
-  //cout<<"pushing: index_series("<<index_series.size()<<")="<<time_series.size()-1<<endl;
-  index_series.push_back(time_series.size()-1);
-
 
   if(integrate){
     gsl_odeiv2_evolve_free (evol);
     gsl_odeiv2_control_free (control);
     gsl_odeiv2_step_free (step);
   }
+
+  if(test_result){
+  //initialization
+    for(int i=0; i<Ngrid;i++){
+      double ttest=traj.get_obs_time(i);
+      int ires=index_series[i];
+      double tres=time_series[ires];
+      Point beta=get_obs_pos(traj,ttest);
+      vector<Point> thetas=invmap(beta);
+      int nimages=thetas.size();
+      double mgtest=mag(thetas);
+      double mgres=mag_series[ires];
+      double tminus,tplus,mgminus,mgplus;
+      if(ires>0&&ires<time_series.size()-1){
+	tminus=time_series[ires-1];
+	tplus=time_series[ires+1];
+	beta=get_obs_pos(traj,tminus);
+	thetas=invmap(beta);
+	mgminus=mag(thetas);
+	beta=get_obs_pos(traj,tplus);
+	thetas=invmap(beta);
+	mgplus=mag(thetas);
+      }
+
+#pragma omp critical
+      if(abs(mgtest-mgres)/mgtest>test_result_tol){
+	cout<<"\ncompute_trajectory: test failed. test/res:\nindex="<<i<<","<<ires<<"\ntime="<<ttest<<","<<tres<<"\nmag="<<mgtest<<","<<mgres<<" -> "<<abs(mgtest-mgres)<<"["<<nimages<<" images]"<<endl;
+	cout<<"beta=("<<beta.x<<","<<beta.y<<")"<<endl;
+	if(ires>0&&ires<time_series.size()-1){
+	  cout<<"nearby times  :"<<tminus<<" < t < "<<tplus<<endl;
+	  cout<<"   with mags  :"<<mgminus<<" < mg < "<<mgplus<<endl;
+	}
+	//if(i>0&&ires<index_series.size()-1)cout<<"nearby idx times:"<<time_series[index_series[i-1]]<<" < t < "<<time_series[index_series[i+1]]<<endl;
+      }
+    }
+  }
+
 }
 
+//This version seems no longer used 04.02.2016..
 int GLens::GSL_integration_func (double t, const double theta[], double thetadot[], void *instance){
+  //We make the following cast static, thinking that that should realize faster integration
+  //However, since we call functions which are virtual, this may/will give the wrong result if used
+  //with a derived class that has overloaded those functions {get_obs_pos, get_obs_vel, invjac, map}
   GLens *thisobj = static_cast<GLens *>(instance);
   const Trajectory *traj=thisobj->trajectory;
   Point p(theta[0],theta[1]);
-  //double j00,j10,j01,j11,invJ = thisobj->jac(p,j00,j01,j10,j11);
-  //double j00i=j11,j10i=-j10,j01i=-j01,j11i=j00;
   double j00i,j10i,j01i,j11i,invJ = thisobj->invjac(p,j00i,j01i,j10i,j11i);
-  Point beta0=traj->get_obs_pos(t);
+  Point beta0=thisobj->get_obs_pos(*traj,t);
   Point beta=thisobj->map(p);
   double dx=beta.x-beta0.x,dy=beta.y-beta0.y;
-  Point betadot=traj->get_obs_vel(t);
+  Point betadot=thisobj->get_obs_vel(*traj,t);
   double adjbetadot[2];
   //double rscale=thisobj->estimate_scale(Point(theta[0],theta[1]));
   //if our image is near one of the lenses, then we need to tread carefully
-  double rk=GLens::kappa;//*rscale*0;
+  double rk=thisobj->kappa;//*rscale*0;
   adjbetadot[0] = betadot.x-rk*dx;
   adjbetadot[1] = betadot.y-rk*dy;
   thetadot[0] = j00i*adjbetadot[0]+j01i*adjbetadot[1];
   thetadot[1] = j10i*adjbetadot[0]+j11i*adjbetadot[1];
-  //thetadot[0] *= invJ;
-  //thetadot[1] *= invJ;
-  //debug:
-  //double dt=1e-7;
-  //Point betap = Point(beta.x+betadot.x*dt,beta.y+betadot.y*dt);
-  //vector<Point> thetas=thisobj->invmap(beta), thetaps=thisobj->invmap(betap);
-  //double d2min = 1e100;
-  //int kmin=-1;
-  //for(int k = 0; k<thetas.size(); k++){
-  //  double dx= thetas[k].x-theta[0], dy= thetas[k].y-theta[1];
-  //  double d2=dx*dx+dy*dy;
-  //  if(d2min>d2){
-  //    d2min=d2;
-  //    kmin=k;
-  //  }
-  //}
-  //double  dthx=(thetaps[kmin].x-thetas[kmin].x)/dt,  dthy=(thetaps[kmin].y-thetas[kmin].y)/dt;
-  //double  ddthx=dthx-thetadot[0],ddthy=dthy-thetadot[1];
-  //cout <<" t = "<<t<<", dtheta/dt = ("<<thetadot[0]<<","<<thetadot[1]<<")"<<endl;
-  //cout <<" t =          dtheta/dt(num) = ("<<dthx<<","<<dthy<<"),  diff="<< sqrt(ddthx*ddthx+ddthy*ddthy)<< endl;
 
   if(!isfinite(invJ))cout<<"GLens::GSL_integration_func: invJ=inf, |beta|="<<sqrt(beta0.x*beta0.x+beta0.y*beta0.y)<<endl;
 
@@ -354,46 +323,33 @@ int GLens::GSL_integration_func (double t, const double theta[], double thetadot
 
 
 int GLens::GSL_integration_func_vec (double t, const double theta[], double thetadot[], void *instance){
+  //We make the following cast static, thinking that that should realize faster integration
+  //However, since we call functions which are virtual, this may/will give the wrong result if used
+  //with a derived class that has overloaded those functions {get_obs_pos, get_obs_vel, invjac, map}
   GLens *thisobj = static_cast<GLens *>(instance);
   const Trajectory *traj=thisobj->trajectory;
-  Point beta0=traj->get_obs_pos(t);
-  Point betadot=traj->get_obs_vel(t);
+  Point beta0=thisobj->get_obs_pos(*traj,t);
+  Point betadot=thisobj->get_obs_vel(*traj,t);
   bool fail=false;
   for(int k=0;k<2*thisobj->NimageMax;k++)thetadot[k]=0;
   //cout<<"beta0=("<<beta0.x<<","<<beta0.y<<")"<<endl;
   for(int image =0; image<thisobj->Ntheta;image++){
     Point p(theta[image*2+0],theta[image*2+1]);
-    //double j00,j10,j01,j11,invJ = thisobj->jac(p,j00,j01,j10,j11);
-    //double j00i=j11,j10i=-j10,j01i=-j01,j11i=j00;
     double j00i,j10i,j01i,j11i,invJ = thisobj->invjac(p,j00i,j01i,j10i,j11i);
     Point beta=thisobj->map(p);
     double dx=beta.x-beta0.x,dy=beta.y-beta0.y;
-    //cout<<" beta["<<image<<"]=("<<beta.x<<","<<beta.y<<")"<<endl;
     double adjbetadot[2];
     //double rscale=thisobj->estimate_scale(Point(theta[0],theta[1]));
     //if our image is near one of the lenses, then we need to tread carefully
-    double rk=GLens::kappa;//*rscale;
+    double rk=thisobj->kappa;//*rscale;
     adjbetadot[0] = betadot.x;
     adjbetadot[1] = betadot.y;
     if(isfinite(dx))adjbetadot[0] += -rk*dx;
     if(isfinite(dy))adjbetadot[1] += -rk*dy;
     if(isfinite(invJ)){
-      thetadot[2*image]   = (j00i*adjbetadot[0]+j01i*adjbetadot[1]);//*invJ;
-      thetadot[2*image+1] = (j10i*adjbetadot[0]+j11i*adjbetadot[1]);//*invJ;
+      thetadot[2*image]   = (j00i*adjbetadot[0]+j01i*adjbetadot[1]);
+      thetadot[2*image+1] = (j10i*adjbetadot[0]+j11i*adjbetadot[1]);
     }
-    /*
-    cout<<" steps:"<<endl;
-    cout<<"    betadot:"<<betadot.x<<" "<<betadot.y<<endl; 
-    cout<<"       beta:"<<beta.x<<" "<<beta.y<<endl; 
-    cout<<"      beta0:"<<beta0.x<<" "<<beta0.y<<endl; 
-    cout<<" adjbetadot:"<<adjbetadot[0]<<" "<<adjbetadot[1]<<endl; 
-    cout<<"   thetadot:"<<thetadot[2*image]<<" "<<thetadot[2*image+1]<<endl; 
-    cout<<"      "<<j00i<<" "<<j01i<<" "<<j10i<<" "<<j11i<<endl;
-    cout<<"      "<<j00i<<"*"<<adjbetadot[0]<<"+"<<j01i<<"*"<<adjbetadot[1]<<" = "<<endl;
-    cout<<"      "<<j00i*adjbetadot[0]<<"+"<<j01i*adjbetadot[1]<<" = "<<j00i*adjbetadot[0]+j01i*adjbetadot[1]<<endl;
-    cout<<"      "<<j10i<<"*"<<adjbetadot[0]<<"+"<<j11i<<"*"<<adjbetadot[1]<<" = "<<endl;
-    cout<<"      "<<j10i*adjbetadot[0]<<"+"<<j11i*adjbetadot[1]<<" = "<<j10i*adjbetadot[0]+j11i*adjbetadot[1]<<endl;
-    cout<<" isfinite="<<(isfinite(invJ)?"TRUE":"FALSE")<<endl; */   
     if(!isfinite(invJ)){    
       //cout<<"GLens::GSL_integration_func_vec: FAIL"<<endl;
       //fail=true;
@@ -405,29 +361,29 @@ int GLens::GSL_integration_func_vec (double t, const double theta[], double thet
   }
   for(int k=2*thisobj->Ntheta;k<2*thisobj->NimageMax;k++)thetadot[k]=0;
 
-  //debug:
-  /*double dt=1e-7;
-  Point betap = Point(beta0.x+betadot.x*dt,beta0.y+betadot.y*dt);
-  vector<Point> thetas=thisobj->invmap(beta0), thetaps=thisobj->invmap(betap);
-  cout<<"t="<<t<<endl;
-  for(int k = 0; k<thisobj->Ntheta; k++){
-    double  dthx=(thetaps[k].x-thetas[k].x)/dt,  dthy=(thetaps[k].y-thetas[k].y)/dt;
-    double  ddthx=dthx-thetadot[2*k+0],ddthy=dthy-thetadot[2*k+1];
-    cout <<" k = "<<k<<", dtheta/dt = ("<<thetadot[2*k+0]<<","<<thetadot[2*k+1]<<")"<<endl;
-    cout <<"              dtheta/dt(num) = ("<<dthx<<","<<dthy<<"),  diff="<< sqrt(ddthx*ddthx+ddthy*ddthy)<< endl;
-    }*/
-
   return !fail?GSL_SUCCESS:3210123;
 }
 
 void GLens::addOptions(Options &opt,const string &prefix){
   Optioned::addOptions(opt,prefix);
-  opt.add(Option("poly","Don't use integration method for lens magnification, use only the polynomial method."));
+  addTypeOptions(opt);
+  opt.add(Option("GL_poly","Don't use integration method for lens magnification, use only the polynomial method."));
+  opt.add(Option("poly","Same as GL_poly for backward compatibility.  (Deprecated)"));
+  opt.add(Option("GL_int_tol","Tolerance for GLens inversion integration. (1e-10)","1e-10"));
+  opt.add(Option("GL_int_mag_limit","Magnitude where GLens inversion integration reverts to poly. (1.5)","1.5"));
+  opt.add(Option("GL_int_kappa","Strength of driving term for GLens inversion. (0.1)","0.1"));
 };
 
 void GLens::setup(){
-  set_integrate(!optSet("poly"));
+  set_integrate(!optSet("GL_poly")&&!optSet("poly"));
+  *optValue("GL_int_tol")>>GL_int_tol;
+  *optValue("GL_int_mag_limit")>>GL_int_mag_limit;
+  *optValue("GL_int_kappa")>>kappa;
   haveSetup();
+  cout<<"GLens set up with:\n\tintegrate=";
+  if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
+  else cout<<"false"<<endl;
+  nativeSpace=stateSpace(0);
 };
 
 
@@ -437,11 +393,52 @@ void GLens::setup(){
 // ******************************************************************
 //
 
-GLensBinary::GLensBinary(double q,double L):q(q),L(L){
+GLensBinary::GLensBinary(double q,double L,double phi0):q(q),L(L),phi0(phi0),sin_phi0(sin(phi0)),cos_phi0(cos(phi0)){
+  typestring="GLens";
+  option_name="BinaryLens";
+  option_info="Fixed binary point-mass lens";
   NimageMax=5;
   nu=1/(1+q);
   rWide=5;
-  //coefficients
+  do_remap_q=false;
+  q_ref=0;
+  idx_q=idx_L=idx_phi0=-1;
+};
+
+void GLensBinary::setup(){
+  set_integrate(!optSet("GL_poly")&&!optSet("poly"));
+  *optValue("GL_int_tol")>>GL_int_tol;
+  *optValue("GL_int_mag_limit")>>GL_int_mag_limit;
+  *optValue("GL_int_kappa")>>kappa;
+  haveSetup();
+  cout<<"GLens set up with:\n\tintegrate=";
+  if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
+  else cout<<"false"<<endl;
+  if(optSet("remap_q")){
+    double q0_val;
+    *optValue("q0")>>q0_val;
+    remap_q(q0_val);
+  }
+  GLens::setup();
+  //set nativeSpace
+  stateSpace space(3);
+  string names[]={"logq","logL","phi0"};
+  if(do_remap_q)names[3]="s(1+q)";
+  space.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi0.
+  space.set_names(names);  
+  nativeSpace=space;
+  const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+  valarray<double>    centers((initializer_list<double>){0.0,   0.0,  M_PI});
+  valarray<double> halfwidths((initializer_list<double>){4.0,   1.0,  M_PI});
+  valarray<int>         types((initializer_list<int>){uni, gauss,   uni});
+  if(do_remap_q){
+    double qq=2.0/(q_ref+1.0);
+    double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
+    centers[0]=1.0-ds;
+    halfwidths[0]=ds;          //ie range=[s(q=1),s(q=inf)=1.0]
+    types[0]=uni;
+  }
+  setPrior(new mixed_dist_product(&nativeSpace,types,centers,halfwidths));
 };
 
 Point GLensBinary::map(const Point &p){
@@ -453,17 +450,17 @@ Point GLensBinary::map(const Point &p){
 vector<Point> GLensBinary::invmap(const Point &p){
   const double rTest=1.1*rWide;
   double r2=p.x*p.x+p.y*p.y;
-  double xcm  = (q/(1.0+q)-0.5)*L;//debug
-  //if(p.x-xcm>16&&p.x-xcm<17&&abs(p.y)<5)debug=true;
-  //else debug=false;
-  if(rWide>0&&(L>rWide||r2>rWide*rWide)){
+  if(testWide(p,1.0)){
     if(debug||inv_test_mode&&debugint){
       debug=true;
       cout<<"wide"<<endl;
     }
     vector<Point>thWB= invmapWideBinary(p);
     //if fails to converge (rare) revert to WittMao:
-    if(thWB.size()==0)return invmapWittMao(p);
+    if(thWB.size()==0){
+      //cout<<"WideBinary failed to converge"<<endl;
+      return invmapWittMao(p);
+    }
     if(inv_test_mode&&r2<rTest*rTest){
       if(debug||debugint)cout<<"wide-test"<<endl;
       vector<Point>thWM= invmapWittMao(p);
@@ -504,7 +501,7 @@ vector<Point> GLensBinary::invmap(const Point &p){
     //if(inv_test_mode&&debugint){
     if(inv_test_mode){
       debug=true;
-      cout<<"wide"<<endl;
+      cout<<"not wide"<<endl;
     }
     return invmapWittMao(p);
   }
@@ -566,10 +563,11 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   complex<double_type> zp,zm,zf,zeta,ep,em,ef;
   zeta=complex<double_type>(p.x+c/2.0L,p.y);
   ep=em=ef=complex<double_type>(0,0);
-  double err=1;
+  double err=1,relerr=1;
   int iter=0;
   bool fail=false;
-  while(err>epsTOL){
+  while(err>epsTOL&&relerr>epsTOL){
+    //cout<<"WideBinary: iter="<<iter<<"  err="<<err<<"  relerr="<<relerr<<endl;
     iter++;
     if(iter>maxIter){
       if(debug)cout<<"invmapWideBinary maxIter reached: Failing."<<endl;
@@ -593,47 +591,26 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
       cout<<"  zmfac="<<zmfac<<"  ym2="<<ym2<<" c="<<c<<endl;
       cout<<"  zffac="<<zffac<<"  yf2="<<yf2<<" -c="<<-c<<endl;
     }
-    /*
-    double ypmag=abs(zeta+ep);
-    double ymmag=abs(zeta+em);
-    double yfmag=abs(zeta-c+ef);
-    double zpmag=ypmag*(sqrt(1+4*nu_n/ypmag/ypmag)+1.0)/2.0;
-    double zmmag=-ymmag*(sqrt(1+4*nu_n/ymmag/ymmag)-1.0)/2.0;
-    double zfmag=-yfmag*(sqrt(1+4*nu_f/yfmag/yfmag)-1.0)/2.0;
-    zp=(zeta+ep)*zpmag/ypmag;
-    zm=(zeta+em)*zmmag/ymmag;
-    zf=(zeta-c+ef)*zfmag/yfmag;
-    */
     ep=nu_f/conj(zp-c);
     em=nu_f/conj(zm-c);
     ef=nu_n/conj(zf+c);
     err=abs(ep-epold)+abs(em-emold)+abs(ef-efold);
+    double zmean=abs(zp)+abs(zm)+abs(zf);
+    relerr=abs((ep-epold)*zp*zp/zmean/zmean)+abs((em-emold)*zm*zm/zmean/zmean)+abs((ef-efold)*zf*zf/zmean/zmean);
     if(debug){
       cout<<"  zp="<<zp<<"  ep="<<ep<<" D="<<ep-epold<<endl;
       cout<<"  zm="<<zm<<"  em="<<em<<" D="<<em-emold<<endl;
       cout<<"  zf="<<zf<<"  ef="<<ef<<" D="<<ef-efold<<endl;
-      cout<<" err="<<err<<" vs "<<epsTOL<<endl;
+      cout<<" err,relerr="<<err<<","<<relerr<<" vs "<<epsTOL<<endl;
+      cout<<"  mp="<<mag(Point(real(zp)-c/2.0L,imag(zp)))
+	  <<"  mm="<<mag(Point(real(zm)-c/2.0L,imag(zm)))
+	  <<"  mf="<<mag(Point(real(zf)-c/2.0L,imag(zf)))<<endl;
     }
   }
   //Should we order the roots for consistency with WittMao results??? 
   result.push_back(Point(real(zp)-c/2.0L,imag(zp)));
   result.push_back(Point(real(zm)-c/2.0L,imag(zm)));
   result.push_back(Point(real(zf)+c/2.0L,imag(zf)));
-  /*
-  double_type rx,ry,rx1,rx2,rr1sq,rr2sq,rc1,rc2;
-  rx=real(zp)-c/2.0L;ry=imag(zp);
-  rx1=rx-(double_type)L/2.0L;rx2=rx+(double_type)L/2.0L;rr1sq=rx1*rx1+ry*ry;rr2sq=rx2*rx2+ry*ry;
-  rc1=(1.0L-nu_neg)/rr1sq;rc2=nu_neg/rr2sq;
-  cout<<"dx="<<rx-rx1*rc1-rx2*rc2-xL<<" dy="<<ry-ry*(rc1+rc2)-yL<<endl;
-  rx=real(zm)-c/2.0L;ry=imag(zm);
-  rx1=rx-(double_type)L/2.0L;rx2=rx+(double_type)L/2.0L;rr1sq=rx1*rx1+ry*ry;rr2sq=rx2*rx2+ry*ry;
-  rc1=(1.0L-nu_neg)/rr1sq;rc2=nu_neg/rr2sq;
-  cout<<"dx="<<rx-rx1*rc1-rx2*rc2-xL<<" dy="<<ry-ry*(rc1+rc2)-yL<<endl;
-  rx=real(zf)+c/2.0L;ry=imag(zf);
-  rx1=rx-(double_type)L/2.0L;rx2=rx+(double_type)L/2.0L;rr1sq=rx1*rx1+ry*ry;rr2sq=rx2*rx2+ry*ry;
-  rc1=(1.0L-nu_neg)/rr1sq;rc2=nu_neg/rr2sq;
-  cout<<"dx="<<rx-rx1*rc1-rx2*rc2-xL<<" dy="<<ry-ry*(rc1+rc2)-yL<<endl;
-  */
   return result;
 };
 
@@ -736,9 +713,6 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
       complex<double> double_dP4;double_dP4=dP4;
       complex<double> delta=-c[5]/double_dP4;
       if(debug)cout<<"dP4="<<double_dP4<<" delta="<<delta<<endl;
-      /*if(abs(delta)<0.2) //some approximation of <<1  (might not be true for approx double roots)
-      roots[i]*=(1.0+delta);
-      */
       ///We can derive this following expression by setting P5(x+eps)-P4(x)=0, then solve liniarly for eps
       ///For abs(delta)<<0.2 and abs(delta)>>0.2 the result approximates that in the comment above, but all values other than
       ///delta=-0.2 are allowed.  In this case, the 0.2 arises because n=5, not arbitrarily.
@@ -762,8 +736,6 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
   }
   
   vector<Point> result;
-  //const double TOL=LEADTOL*LEADTOL*(100000000+p.x*p.x+p.y*p.y+M);
-  //const double TOL=LEADTOL*LEADTOL*(p.x*p.x+p.y*p.y+1.0/z12);
   const double TOL=LEADTOL*LEADTOL;
   for(int i=0;i<nroots;i++){
     Point newp=Point(0,0);
@@ -778,94 +750,14 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
     double x=newp.x,y=newp.y,x1=x-L/2,x2=x+L/2,r1sq=x1*x1+y*y,r2sq=x2*x2+y*y;
     double c1=(1-nu)/r1sq,c2=nu/r2sq;
     if(debug){
-      //cout.precision(15);
-      //cout<<"testing: "<<roots[i]<<" -> ("<<btheta.x<<"-"<<p.x<<","<<btheta.y<<"-"<<p.y<<")^2 "<<(dx*dx+dy*dy<TOL*(1+dbx*dbx+dby*dby)?" < ":"!< ")<<TOL*(1+dbx*dbx+dby*dby)<<endl;
       cout<<"testing: "<<roots[i]<<" -> |("<<btheta.x<<"-"<<p.x<<","<<btheta.y<<"-"<<p.y<<")|="<<sqrt(dx*dx+dy*dy)<<" "<<(dx*dx+dy*dy<TOL*(1+c1+c2)?" < ":"!< ")<<LEADTOL*sqrt(1+c1+c2)<<"="<<LEADTOL<<"*√(1+"<<c1<<"+"<<c2<<")"<<endl;
     }
-    //if(dx*dx+dy*dy<TOL)result.push_back(newp);      
-    //if(dx*dx+dy*dy<TOL*(1+dbx*dbx+dby*dby))result.push_back(newp);      
     if(dx*dx+dy*dy<TOL*(1+c1+c2))result.push_back(newp);      //RHS is squared estimate in propagating error of LEADTOL in root through map()
     //For now we just adopt the ordering from the SG code.  Might change to something else if needed...
   };
   if(debug)cout<<"Found "<<result.size()<<" images."<<endl;
 
   return result;
-};
-
-vector<Point> GLensBinary::invmapAsaka(const Point &p){
-  //This isn't working...
-  double a=p.x;
-  double b=p.y;
-  double L2=L*L,aL=a*L;
-  double a2=a*a,b2=b*b,R2=a2+b2;
-  vector<pair<double,int> >ym;
-  vector<Point> roots;
-  //get y;
-  double e[6],z[10];
-  e[5]=-4*R2*(R2-2*aL+L2);
-  e[4]=4*b*(R2*(R2-1-2*aL+L2)+nu*(2*aL-L2));
-  e[3]=R2*(8*b2-1)-2*aL*(a2+5*b2-aL)+L2*(6*b2+R2*(-R2+2*aL-L2))+nu*(2*aL*(1+2*R2)+2*L2*(-3*a2-b2+aL)-L2*nu);
-  e[2]=b*(a2+5*b2+R2*(2*aL+L2*(R2-2*(1+aL)+L2))+nu*(-2*aL*(1+2*R2)+L2*(4+6*a2+2*b2-2*aL-3*nu)));
-  e[1]=b2*(1+2*aL+L2*(-2+R2-2*aL+L2)+nu*(-4*aL+L2*(5+2*aL-L2-3*nu)));
-  e[0]=-b*b2*L2*nu*(1-nu);
-  //Next use GSL to solve the polynomial with coeffs e_i for the y's 
-  gsl_poly_complex_workspace * w = gsl_poly_complex_workspace_alloc (6);
-  gsl_poly_complex_solve (e, 6, w, z);
-  gsl_poly_complex_workspace_free (w);
-  for(int i=0;i<5;i++){
-    double yr=z[2*i],yi=z[2*i+1];
-    //cout<<"root: "<<yr<<","<<yi<<endl;
-    //test for real roots
-    if(abs(yi)>dThTol)continue;
-    //test for multiplicity
-    for(int j=0;j<ym.size();j++){
-      if(abs(yr-ym[j].first)<dThTol){//multiple root
-	ym[j].second+=1;
-	//For multiplicity>1 then another approach is needed (see Asada), which we have not yet implemented.
-	//For now we just issue a notice
-	//cout<<"Multiplicity="<<ym[j].second<<" for root at y="<<yr<<endl;
-	continue;
-      }
-    }
-    ym.push_back(make_pair(yr,0));
-  }
-  //order the roots by y
-  sort(ym.begin(),ym.end());
-  
-  //Next, for debugging, test the results;
-  /*
-  for( int i=0;i<ym.size();i++){
-    double result=0;
-    double y=ym[i].first;
-    for(int k=0;k<5;k++){
-      result+=e[k];
-      if(k>0)result/=y;
-    }
-    result+=e[5];
-    cout<<i<<": "<<result<<endl;
-    }*/
-    
-  //then loop over the solutions for y and get x for each:
-  for(int i=0;i<ym.size();i++){
-    double x,y=ym[i].first;
-    double y2=y*y;
-    //get x;
-    double E,D;
-    D=b*b2*L2*(1+2*nu*(-1+nu))
-      + y*b2*( -2+4*(-aL+L2)) + L2*R2 + nu*(8*aL + L2*(-10 - 2*aL + L2 + 6*nu) )
-      + y2*(b*( -4*b2 + R2*(-2-4*aL+3*L2) + nu*( 4*a*L*(1+2*R2)+L2*(-8-12*a2-4*b2+6*aL-L2+6*nu)))
-	    + y*( (2+4*(-b2+aL-L2))*R2 + aL*nu*(-4-8*a2+12*aL-4*L2) + 2*L2*nu*nu)
-	    + y2*b*( 4*R2 + nu*(-8*aL+4*L2)));
-    E=b*b2*L2*L*(-1+nu*(2-nu))
-      + y*b2*L*( 1+3*(aL-L2) - L2*R2 + nu*(-4*aL + L2*(6 + R2 - 3*nu) ) )
-      + y2*(b*L*( R2*(1+3*aL-2*L2) + nu*( 4*b2 - 2*a*L*(1+2*R2)+L2*(4+4*a2+2*b2-aL-3*nu)))
-	    + y*( 4*(a-L)*b2+L*(-1+3*(-aL+L2))*R2 + L*nu*(+4*b2*(1+R2) +aL*(2+4*(a2-b2)-5*aL) + L2*(b2+aL-nu) )
-		  + y*b*( 4*R2*(a-L) + nu*L*(-8*a2+12*aL-4*L2))
-		  + y2*(+4*(-a+L)*R2+4*nu*L*(a2-b2-aL)) ) );
-    x=-E/D;
-    roots.push_back(Point(x,y));
-  }
-  return roots;
 };
 
 double GLensBinary::mag(const Point &p){
@@ -902,13 +794,10 @@ double GLensBinary::invjac(const Point &p,double &ij00,double &ij01,double &ij10
   double mu=r8/invmuR8;
   double E1wr8=2*E1r4*r2sq,E2wr8=2*E2r4*r1sq;
   double fr8=(E1wr8+E2wr8)*y2 - Er4*r4;
-  //double mu2=jac(p,ij00,ij01,ij10,ij11);
-  //double mu2=mag(p);
   ij10 = ij01 = -(E1wr8*x1+E2wr8*x2)*y/invmuR8;
   ij00       = (r8+fr8)/invmuR8;
   ij11       = (r8-fr8)/invmuR8;
-  //double mu2=ij00*ij11-ij01*ij10;
-  //cout<<"Delta J="<<mu2-mu<<" = "<<mu2<<" - "<<mu<<endl;
   return mu;
 };
+
 

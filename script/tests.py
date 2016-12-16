@@ -5,10 +5,12 @@ import numpy as np
 import math
 import subprocess
 import shlex
+import argparse 
+import time
 
 #functions:
 #read test info from file and do runs
-def make_runs(fname,commandbase,tag):
+def make_runs(fname,commandbase,tag,postprocess_only):
     filenames=[];
     lines=[];
     with open(fname) as f:
@@ -24,11 +26,12 @@ def make_runs(fname,commandbase,tag):
                 qval=float(cols[2])
                 Lval=float(cols[3])
                 outname=tag+"_"+str(center)+"_"+str(width)+"_"+str(qval)+"_"+str(Lval)
-                command=commandbase+" -mm_center="+str(center)+" "+str(outname)+" "+str(qval)+" "+str(Lval)+" "+str(width)
-                print "\n**********************************************"
-                print command
-                sys.stdout.flush()
-                subprocess.call(command.split())
+                if(not postprocess_only):
+                    command=commandbase+" -mm_center="+str(center)+" "+str(outname)+" "+str(qval)+" "+str(Lval)+" "+str(width)
+                    print "\n**********************************************"
+                    print command
+                    sys.stdout.flush()
+                    subprocess.call(command.split())
                 filenames.append(outname)
     return filenames,lines
 # make_runs
@@ -41,7 +44,7 @@ def compare_runs(filesA,filesB,precA,precR,lines):
     #ngood=2
     for i in range(len(filesA)):
         result=""
-        command="numdiff --strict -q -a "+str(precA)+" -r "+str(precR)+" "+filesA[i]+suf+" "+filesB[i]+suf
+        command="numdiff -H --strict -q -a "+str(precA)+" -r "+str(precR)+" "+filesA[i]+suf+" "+filesB[i]+suf
         print
         print command
         #result=subprocess.check_output(command.split())
@@ -64,26 +67,49 @@ def compare_runs(filesA,filesB,precA,precR,lines):
 ##########
 # setup stuff
 # determine basename from first argument.
-if(len(sys.argv)<3 or len(sys.argv)>4):
-    print "Usage:\n"+sys.argv[0]+" testlistfile prec_digits [execname]"
-    exit()
-testfname = sys.argv[1]
-outdir =testfname+"-tests/"
+scriptpath=os.path.dirname(os.path.realpath(__file__))
+parser = argparse.ArgumentParser(description='Run tests on gleam lens inversion.')
+parser.add_argument('testlist',
+                   help='filename for the test list')
+parser.add_argument('prec', type=float,
+                   help='log precision level of test')
+parser.add_argument('--tag', default="",
+                   help='an extra tag for the output')
+parser.add_argument('--post', action='store_true',
+                   help='run only post-processing')
+parser.add_argument('--exec', default=scriptpath+"/../gleam",dest='executable',
+                    help='path to the executable (default to expected location relative script)')
+parser.add_argument('--exec-arg', default="",dest='exarg',
+                    help='additional arguments for the gleam executable')
+parser.add_argument('--no-quad', action='store_false',dest='do_quad',
+                    help='don\'t do quad tests')
 
+args = parser.parse_args()
+
+#if(len(sys.argv)<3 or len(sys.argv)>4):
+#    print "Usage:\n"+sys.argv[0]+" testlistfile prec_digits [execname]"
+#    exit()
+#testfname = sys.argv[1]
+testfname=args.testlist
+outdir =testfname+args.tag+"-tests/"
 print "testfname=",testfname
 print "outdir=",outdir
 
-prec=10**-float(sys.argv[2])
+#prec=10**-float(sys.argv[2])
+prec=10**-float(args.prec)
+
+postprocess_only=args.post
 
 #get execname
-if(len(sys.argv)>3):
-    execname=sys.argv[3]
-else:
-    execname="../src/gleam"
+#if(len(sys.argv)>3):
+#    execname=sys.argv[3]
+#else:
+#    execname="../src/gleam"
+execname=args.executable
 print "execname="+execname
 
 #create/empty output directory
-if(execname.count("echo")<1):
+if(execname.count("echo")<1 and not postprocess_only):
     command= "mkdir "+outdir
     print command
     subprocess.call(command.split())
@@ -93,26 +119,37 @@ if(execname.count("echo")<1):
 
 
 #process different types of runs
-
-command= execname+" -magmap -poly=true -precision=16 -mm_lens_rWB=5 "
+command= execname+" "+args.exarg+" -magmap -poly=true -precision=16 -mm_lens_rWB=5 "
 tag="poly_r5.0"
-poly5files,lines=make_runs(testfname,command,outdir+tag)
+start = time.time()
+poly5files,lines=make_runs(testfname,command,outdir+tag,postprocess_only)
+end=time.time()
+timeP5=end-start;
 
-command= execname+" -magmap -poly=true -precision=16 -mm_lens_rWB=4.5 "
+command= execname+" "+args.exarg+" -magmap -poly=true -precision=16 -mm_lens_rWB=4.5 "
 tag="poly_r4.5"
-poly4files,lines=make_runs(testfname,command,outdir+tag)
+start = time.time()
+poly4files,lines=make_runs(testfname,command,outdir+tag,postprocess_only)
+timeP4=time.time()-start;
 
-command= execname+"_quad -magmap -poly=true -precision=16 -mm_lens_rWB=5 "
-tag="qpoly_r5.0"
-qpoly5files,lines=make_runs(testfname,command,outdir+tag)
+if(args.do_quad):
+    command= execname+"_quad "+args.exarg+" -magmap -poly=true -precision=16 -mm_lens_rWB=5 "
+    tag="qpoly_r5.0"
+    start = time.time()
+    qpoly5files,lines=make_runs(testfname,command,outdir+tag,postprocess_only)
+    timeQP5=time.time()-start;
 
-command= execname+"_quad -magmap -poly=true -precision=16 -mm_lens_rWB=4.5 "
-tag="qpoly_r4.5"
-qpoly4files,lines=make_runs(testfname,command,outdir+tag)
+#command= execname+"_quad "+args.exarg+" -magmap -poly=true -precision=16 -mm_lens_rWB=4.5 "
+#tag="qpoly_r4.5"
+#start = time.time()
+#qpoly4files,lines=make_runs(testfname,command,outdir+tag,postprocess_only)
+#timeQP4=time.time()-start;
 
-command= execname+" -magmap -precision=16 -mm_lens_rWB=5 "
+command= execname+" "+args.exarg+" -magmap -precision=16 -mm_lens_rWB=5 "
 tag="int_r5.0"
-int5files,lines=make_runs(testfname,command,outdir+tag)
+start = time.time()
+int5files,lines=make_runs(testfname,command,outdir+tag,postprocess_only)
+timeI5=time.time()-start;
 
 #compare
 good=goodr=True
@@ -126,21 +163,22 @@ resultWBWMr,failsWBWMr=compare_runs(poly5files,poly4files,1,prec,lines)
 print "  "+("OK" if resultWBWMr else "FAIL")
 goodr=goodr and resultWBWMr
 
-print" Comparing quad versus double precision."
-resultQD,failsQD=compare_runs(poly5files,qpoly5files,prec,1,lines)
-print "  "+("OK" if resultQD else "FAIL")
-good=good and resultQD
-resultQDr,failsQDr=compare_runs(poly5files,qpoly5files,1,prec,lines)
-print "  "+("OK" if resultQDr else "FAIL")
-goodr=goodr and resultQDr
+if(args.do_quad):
+    print" Comparing quad versus double precision."
+    resultQD,failsQD=compare_runs(poly5files,qpoly5files,prec,1,lines)
+    print "  "+("OK" if resultQD else "FAIL")
+    good=good and resultQD
+    resultQDr,failsQDr=compare_runs(poly5files,qpoly5files,1,prec,lines)
+    print "  "+("OK" if resultQDr else "FAIL")
+    goodr=goodr and resultQDr
 
-print" Comparing WideBinary versus WittMao at quad precision."
-resultWBWMQ,failsWBWMQ=compare_runs(qpoly5files,qpoly4files,prec,1,lines)
-print "  "+("OK" if resultWBWMQ else "FAIL")
-good=good and resultWBWMQ
-resultWBWMQr,failsWBWMQr=compare_runs(qpoly5files,qpoly4files,1,prec,lines)
-print "  "+("OK" if resultWBWMQr else "FAIL")
-goodr=goodr and resultWBWMQr
+#print" Comparing WideBinary versus WittMao at quad precision."
+#resultWBWMQ,failsWBWMQ=compare_runs(qpoly5files,qpoly4files,prec,1,lines)
+#print "  "+("OK" if resultWBWMQ else "FAIL")
+#good=good and resultWBWMQ
+#resultWBWMQr,failsWBWMQr=compare_runs(qpoly5files,qpoly4files,1,prec,lines)
+#print "  "+("OK" if resultWBWMQr else "FAIL")
+#goodr=goodr and resultWBWMQr
 
 print" Comparing Polynomial versus Integration"
 resultPI,failsPI=compare_runs(poly5files,int5files,prec,1,lines)
@@ -150,19 +188,43 @@ resultPIr,failsPIr=compare_runs(poly5files,int5files,1,prec,lines)
 print "  "+("OK" if resultPIr else "FAIL")
 goodr=goodr and resultPIr
 
+if(args.do_quad):
+    print" Comparing Quad-precision Polynomial versus Integration"
+    resultQPI,failsQPI=compare_runs(qpoly5files,int5files,prec,1,lines)
+    print "  "+("OK" if resultPI else "FAIL")
+    good=good and resultQPI
+    resultQPIr,failsQPIr=compare_runs(qpoly5files,int5files,1,prec,lines)
+    print "  "+("OK" if resultPIr else "FAIL")
+    goodr=goodr and resultQPIr
+
+if( not postprocess_only):
+    print "\nTiming summary:"
+    print "         Poly 5.0 - ",timeP5
+    print "         Poly 4.5 - ",timeP4
+    if(args.do_quad):
+        print "    Quad Poly 5.0 - ",timeQP5
+#    print "    Quad Poly 4.5 - ",timeQP4
+    print "          Int 5.0 - ",timeI5
+
+
 print "\nTest summary at absolute prec="+str(prec)+":"
 print "         WB vs WM: "+("OK" if resultWBWM else "FAIL")
 for s in failsWBWM:
     sys.stdout.write("           "+s)
-print "   quad vs double: "+("OK" if resultQD else "FAIL")
-for s in failsQD:
-    sys.stdout.write("           "+s)
-print "  WB vs WM (quad): "+("OK" if resultWBWMQ else "FAIL")
-for s in failsWBWMQ:
-    sys.stdout.write("           "+s)
+if(args.do_quad):
+    print "   quad vs double: "+("OK" if resultQD else "FAIL")
+    for s in failsQD:
+        sys.stdout.write("           "+s)
+#print "  WB vs WM (quad): "+("OK" if resultWBWMQ else "FAIL")
+#for s in failsWBWMQ:
+#    sys.stdout.write("           "+s)
 print "      poly vs int: "+("OK" if resultPI else "FAIL")
 for s in failsPI:
     sys.stdout.write("           "+s)
+if(args.do_quad):
+    print " quad poly vs int: "+("OK" if resultQPI else "FAIL")
+    for s in failsQPI:
+        sys.stdout.write("           "+s)
 print "Overall absolute prec test: "+("PASSED" if good else "FAILED")
 
 
@@ -170,15 +232,20 @@ print "\nTest summary at relative prec="+str(prec)+":"
 print "         WB vs WM: "+("OK" if resultWBWMr else "FAIL")
 for s in failsWBWMr:
     sys.stdout.write("           "+s)
-print "   quad vs double: "+("OK" if resultQDr else "FAIL")
-for s in failsQDr:
-    sys.stdout.write("           "+s)
-print "  WB vs WM (quad): "+("OK" if resultWBWMQr else "FAIL")
-for s in failsWBWMQr:
-    sys.stdout.write("           "+s)
+if(args.do_quad):
+    print "   quad vs double: "+("OK" if resultQDr else "FAIL")
+    for s in failsQDr:
+        sys.stdout.write("           "+s)
+#print "  WB vs WM (quad): "+("OK" if resultWBWMQr else "FAIL")
+#for s in failsWBWMQr:
+#    sys.stdout.write("           "+s)
 print "      poly vs int: "+("OK" if resultPIr else "FAIL")
 for s in failsPIr:
     sys.stdout.write("           "+s)
+if(args.do_quad):
+    print " quad poly vs int: "+("OK" if resultQPIr else "FAIL")
+    for s in failsQPIr:
+        sys.stdout.write("           "+s)
 print "Overall relative prec test: "+("PASSED" if goodr else "FAILED")
 
 

@@ -30,6 +30,7 @@ def get_step_pars(fname,stop_size=-1):
         print "line is:",line 
         step= int(line.split()[0])
         pars= np.array(line.split()[5:])
+        #pars=pars[:-1]#last column is temp
     #print "step="+step
     return step,pars
 # get_step_pars
@@ -85,9 +86,9 @@ def get_flags(fname):
 parser = argparse.ArgumentParser(description='Provide snapshot of chain state.')
 parser.add_argument('fname', metavar='chain_file', type=str, 
                    help='chain file path')
-parser.add_argument('datafile', metavar='data_file', type=str,
+parser.add_argument('datafile', metavar='data_file', type=str, nargs='?', default='',
                    help='lightcurve data file path')
-parser.add_argument('ichain', metavar='chain_index', type=int, nargs='?',default=-1,
+parser.add_argument('-i','--ichain', metavar='chain_index', type=int, nargs=1, default=-1,
                    help='index of chain to view')
 parser.add_argument('-e','--execname', metavar='executable_file', type=str, nargs=1, default="../../src/gleam/gleam",
                    help='executable file path')
@@ -99,13 +100,16 @@ print(args)
 
 #fname = sys.argv[1]
 fname=args.fname
-if(fname.endswith(".out")):
+if(fname.endswith("_t0.out")):
     #we assume ".out does not otherwise appear in the name... that
     #could check... if(fname.count(".out")>1):...
-    basename=fname.replace(".out","")
+    basename=fname.replace("_t0.out","")
+    #make a guess of the chainfile name
+    fname=fname.replace("_t0.out",".dat")
 elif(fname.endswith(".dat")):
-    basename=fname.replace("gle_","")
-    basename=basename.replace(".dat","")
+    #basename=fname.replace("gle_","")
+    basename=fname
+    basename=basename.replace("_t0.dat","")
 print "basename="+basename
 
 #get execname
@@ -113,8 +117,8 @@ print "basename="+basename
 #    execname=sys.argv[2]
 #else:
 #    execname="../../src/gleam"
-execname=args.execname
-print "execname="+execname
+execname=args.execname[0]
+print "execname=",execname
 
 #get datafile
 #if(len(sys.argv)>3):
@@ -123,14 +127,14 @@ print "execname="+execname
 #    print "Need a method for automatically identifying the datafile, or provide it as third argument."
 #    sys.exit()
 datafile=args.datafile
-print "datafile="+datafile
+print "datafile=",datafile
 
 #get optional specification of which chain to take
 #if(len(sys.argv)>4):
 #    ichain=int(sys.argv[4])
 #else:
 #    ichain=-1
-ichain=args.ichain
+ichain=args.ichain[0]
 print "ichain="+str(ichain)
 
 npoints=args.points
@@ -145,23 +149,27 @@ eargs=""
 for key in d.keys():
     eargs+=" -"+key+"="+d[key]
 print "eargs=",eargs
+
 #get pars and other info from .dat file
-cc,cends=count_chains("gle_"+basename+".dat")
+cc,cends=count_chains(fname)
 print "cends=",cends," cc=",cc
 iend=-1
 if(ichain>=0 and cc>ichain):
     iend=cends[ichain]
     cc=ichain
 print "iend=",iend," cc=",cc
-step,pars = get_step_pars("gle_"+basename+".dat",iend)
+
+step,pars = get_step_pars(fname,iend)
+resultname=basename+"_c"+str(cc)+"_"+str(int(math.floor(step/1000)))+"k"
 parstr=""
 for val in pars:
     parstr+=" "+str(val)
+parfile=resultname+".pars"
+with open(parfile,"w") as f:f.write(parstr+"\n")
 
-resultname=basename+"_c"+str(cc)+"_"+str(int(math.floor(step/1000)))+"k"
 print "step 0"
 
-command= execname+" -view -mm_samples="+str(npoints)+" "+eargs+" "+datafile+" "+resultname+parstr
+command= execname+" -view -mm_samples="+str(npoints)+" -stateFile="+parfile+" "+eargs+" "+datafile+" "+resultname
 print command
 print command.split()
 sys.stdout.flush()
