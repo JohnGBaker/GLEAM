@@ -405,6 +405,14 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
   //dump_mag_map(ss.str(), data, signal, s, (2.0*tstart+tend)/3.0, (tstart+2.0*tend)/3.0, nsamples);for 1/3
   dump_mag_map(ss.str(), data, signal, s, (3.0*tstart+2.0*tend)/5.0, (2.0*tstart+3.0*tend)/5.0, nsamples);
 
+  //magnification map zoom 1/25
+  ss.str("");ss<<outname<<"_zz_mmap.dat";
+  dump_mag_map(ss.str(), data, signal, s, (13.0*tstart+12.0*tend)/25.0, (12.0*tstart+13.0*tend)/25.0, nsamples);
+
+  //magnification map zoom 1/125
+  ss.str("");ss<<outname<<"_zzz_mmap.dat";
+  dump_mag_map(ss.str(), data, signal, s, (113.0*tstart+112.0*tend)/125.0, (112.0*tstart+113.0*tend)/125.0, nsamples);
+
 };
 
 void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples){//,int cent,bool output_nlens){
