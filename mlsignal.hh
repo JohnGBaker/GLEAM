@@ -15,6 +15,18 @@ using namespace std;
 extern bool debug_signal;
 
 
+double approxerfinv(double x){
+   double tt1, tt2, lnx, sgn;
+   sgn = (x < 0) ? -1.0f : 1.0f;
+
+   x = (1 - x)*(1 + x); 
+   lnx = logf(x);
+
+   tt1 = 2/(M_PI*0.147) + 0.5f * lnx;
+   tt2 = 1/(0.147) * lnx;
+
+   return(sgn*sqrt(-tt1 + sqrt(tt1*tt1 - tt2)));
+}
 ///Base class for ml_photometry_signal
 ///
 ///This object contains information about a photometric microlensing signal model
@@ -27,14 +39,20 @@ class ML_photometry_signal : public bayes_signal{
   int idx_I0, idx_Fs;
   stateSpace localSpace;
   shared_ptr<const sampleable_probability_function> localPrior;
+  vector<double>variances;
+  bool have_variances;
+  bool smearing;
+  int nsmear;
+  double dtsmear;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
+    have_variances=false;
     idx_I0=idx_Fs=-1;
     localPrior=nullptr;
   };
   ~ML_photometry_signal(){};
   //Produce the signal model
-  vector<double> get_model_signal(const state &st, const vector<double> &times)const{
+  vector<double> get_model_signal(const state &st, const vector<double> &times)override{
     checkWorkingStateSpace();
     double result=0;
     double I0,Fs;
@@ -46,12 +64,62 @@ public:
     //We need to clone lens/traj before working with them so that each omp thread is working with different copies of the objects.
     GLens *worklens=lens->clone();
     worklens->setState(st);
-
     Trajectory *worktraj=traj->clone();
     worktraj->setState(st);
-    worktraj->set_times(times);
-    worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
 
+    //If specified, implement smearing across a small time band
+    if(smearing){
+      int nt=times.size();
+      //double dtsmear=st.get_param(idx_dtsmear);
+      vector<double>deltas(nsmear);
+      //Define the grid of smearing points
+      cout<<"deltas:";
+      for(int j=0;j<nsmear;j++){
+	//In this case we weight points near the center, with normal density
+	//ds/dx = norm(x) -> s = (erf(x)+1)/2 -> x = erfinv(2s-1)
+	double s = (j+0.5)/nsmear;  
+	deltas[j]=dtsmear*worktraj->tEinstein()*approxerfinv(2*s-1);
+	cout<<deltas[j]<<" ";	  
+      }
+      cout<<endl;
+      typedef pair< pair<int,int>,double > entry;
+      vector< entry > table;
+      for(int i=0;i<nt;i++)
+	for(int j=0;j<nsmear;j++)
+	  table.push_back(make_pair(make_pair(i,j),times[i]+deltas[j]));
+      cout<<"before: ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<table[i].second<<" ";cout<<endl;
+      cout<<"      : ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<"("<<table[i].first.first<<","<<table[i].first.second<<") ";cout<<endl;
+      sort(table.begin(),table.end(),
+	   [](entry left,entry right){return left.second<right.second;});
+      cout<<"after: ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<table[i].second<<" ";cout<<endl;
+      cout<<"      : ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<"("<<table[i].first.first<<","<<table[i].first.second<<") ";cout<<endl;
+      xtimes.resize(nt*nsmear);
+      for(int i=0;i<nt*nsmear;i++)xtimes[i]=table[i].second;
+      worktraj->set_times(xtimes);
+      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
+      vector<double>sum(nt);
+      vector<double>sum2(nt);
+      for(int i=0;i<nt*nsmear;i++){
+	double val=modelmags[i];
+	sum[table[i].first.first]+=val;
+	sum2[table[i].first.first]+=val*val;
+      }
+      modelmags.resize(nt);
+      variances.resize(nt);
+      cout<<"modelmags,var:"<<endl;
+      for(int i=0;i<nt;i++){
+	double avg = sum[i]/nsmear;
+	modelmags[i]=avg;
+	double var = ( sum2[i] - nsmear*avg*avg)/(nsmear-1);
+	variances[i]=var;
+	if(i<10)cout<<"  "<<avg<<", "<<var<<endl;
+      }
+      have_variances=true;
+    } else {
+      worktraj->set_times(times);
+      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
+    }
+      
     bool burped=false;
     for(int i=0;i<indices.size();i++ ){
       double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
@@ -65,10 +133,22 @@ public:
     delete worklens;
     return model;
   };
-
+  
+  ///Get modeled variance in the signals from modeled stochastic signal features.
+  virtual vector<double> getVariances(const state &st,const vector<double> times)override{
+    if(smearing){
+      if(have_variances){
+	return variances;
+      } else {
+	get_model_signal(st, times);
+	return variances;
+      }
+    } else return bayes_signal::getVariances(st,times);
+  };
+  
   ///From StateSpaceInterface (via bayes_signal)
   ///
-  void defWorkingStateSpace(const stateSpace &sp){
+  void defWorkingStateSpace(const stateSpace &sp)override{
     checkSetup();//Call this assert whenever we need options to have been processed.
     idx_I0=sp.requireIndex("I0");
     idx_Fs=sp.requireIndex("Fs");
@@ -80,9 +160,14 @@ public:
   
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);
+    addOption("MLPsig_nsmear","Number of points to smear the magnification model (default: no smearing).","0");
+    addOption("MLPsig_dtsmear","Width over which to smear the magnification model.","0.002");
   };
   void setup(){
     haveSetup();
+    *optValue("MLPsig_nsmear")>>nsmear;
+    *optValue("MLPsig_dtsmear")>>dtsmear;
+    smearing=(nsmear>1);
     ///Set up the full output stateSpace for this object
     stateSpace space(2);
     string names[]={"I0","Fs"};//2TRAJ:clean-up
@@ -132,7 +217,10 @@ public:
       pstart=tr->get_obs_pos(tleft);
       pend=tr->get_obs_pos(tright);
       cout<<"making mag-map window between that fits points: ("<<pstart.x<<","<<pstart.y<<") and ("<<pend.x<<","<<pend.y<<")"<<endl;
-      margin=1;
+      //margin=1;
+      double dx=pstart.x-pend.x;
+      double dy=pstart.y-pend.y;
+      margin=sqrt(dx*dx+dy*dy)*0.1;
       delete tr;
     }
     delete worklens;

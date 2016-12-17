@@ -119,6 +119,7 @@ public:
   virtual double t_start()const {return ts;};
   ///Return end time. (Times are "frame" times, but "phys"=frame if tE=1,tpass=0)
   virtual double t_end()const {return tf;};
+  virtual double tEinstein()const {return tE;};
   virtual int Nsamples()const {if(have_times)return times.size(); else return (int)((t_end()-t_start())/cad)+1;};
   ///Return frame time of ith obs. 
   virtual double get_obs_time(int ith)const {if(have_times)return times[ith]; else return ts-toff+cad*ith;};
