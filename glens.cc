@@ -20,7 +20,7 @@ const bool inv_test_mode=false;
 extern bool debugint;
 bool verbose=false;
 bool test_result=false;
-
+bool save_roots=false;
 //
 // Interface to external Skowron&Gould fortran polynomial solver routine
 //
@@ -105,6 +105,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   double prec=cout.precision();cout.precision(20);
   const double rWide_int_fac=100.0;
 
+  
   //cout<<"glens::compTraj: int="<<integrate<<"\nthisLens="<<print_info()<<"\n traj="<<traj.print_info()<<endl;
   //cout<<"this="<<this<<endl;
   cout.precision(prec);
@@ -140,6 +141,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   vector<Point> thetas;
   bool evolving=false;
   double mg;
+  have_saved_soln=false;
 
   int Ngrid=traj.Nsamples();
   double t_old;
@@ -371,7 +373,7 @@ int GLens::GSL_integration_func_vec (double t, const double theta[], double thet
 
 void GLens::addOptions(Options &opt,const string &prefix){
   Optioned::addOptions(opt,prefix);
-  addTypeOptions(opt);
+  //addTypeOptions(opt);
   opt.add(Option("GL_poly","Don't use integration method for lens magnification, use only the polynomial method."));
   opt.add(Option("poly","Same as GL_poly for backward compatibility.  (Deprecated)"));
   opt.add(Option("GL_int_tol","Tolerance for GLens inversion integration. (1e-10)","1e-10"));
@@ -428,15 +430,16 @@ void GLensBinary::setup(){
   GLens::setup();
   //set nativeSpace
   stateSpace space(3);
-  string names[]={"logq","logL","phi0"};
+  string names[] =                                      {"logq","logL","phi0"};
+  const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+  valarray<double>    centers((initializer_list<double>){   0.0,   0.0,  M_PI});
+  valarray<double> halfwidths((initializer_list<double>){   4.0,   1.0,  M_PI});
+  valarray<int>         types((initializer_list<int>)   {   uni, gauss,   uni});
   if(do_remap_q)names[3]="s(1+q)";
   space.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi0.
   space.set_names(names);  
   nativeSpace=space;
-  const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
-  valarray<double>    centers((initializer_list<double>){0.0,   0.0,  M_PI});
-  valarray<double> halfwidths((initializer_list<double>){4.0,   1.0,  M_PI});
-  valarray<int>         types((initializer_list<int>){uni, gauss,   uni});
+  if(optSet("GLB_gauss_q"))types[0]=gauss;
   if(do_remap_q){
     double qq=2.0/(q_ref+1.0);
     double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
@@ -702,9 +705,20 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
   }
 
   bool roots_changed =true;//(this isn't used but compiler may be concerned about an uninitialized value) 
-  if(nroots==5)cmplx_roots_5(roots, roots_changed, c, false);
+  bool polish_only = false;
+  if(nroots==5 and save_roots and have_saved_soln){
+    for(int i=0;i<5;i++)roots[i]=saved_roots[i];
+    polish_only=true;
+  }
+  if(nroots==5)cmplx_roots_5(roots, roots_changed, c, polish_only);
   else cmplx_roots_gen(roots, c, nroots,true,false);
-
+  if(save_roots and nroots==5){
+    for(int i=0;i<5;i++)saved_roots[i]=roots[i];//should probably get rid of saved roots and just make roots itself be the member variable 
+    have_saved_soln=true;
+  } else {
+    have_saved_soln=false;
+  }
+  
   if(nroots==4&&fix_nr4_roots){//try to make linear correction to root values
     for( int i=0;i<nroots;i++){
       complex<__float128> dP4=0.0;
