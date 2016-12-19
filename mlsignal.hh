@@ -36,7 +36,7 @@ double approxerfinv(double x){
 class ML_photometry_signal : public bayes_signal{
   Trajectory *traj;
   GLens *lens;
-  int idx_I0, idx_Fs;
+  int idx_I0, idx_Fs, idx_dtsm;
   stateSpace localSpace;
   shared_ptr<const sampleable_probability_function> localPrior;
   vector<double>variances;
@@ -44,11 +44,14 @@ class ML_photometry_signal : public bayes_signal{
   bool smearing;
   int nsmear;
   double dtsmear;
+  double smear_unk;
+  bool vary_dtsm;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
     have_variances=false;
     idx_I0=idx_Fs=-1;
     localPrior=nullptr;
+    vary_dtsm=false;
   };
   ~ML_photometry_signal(){};
   //Produce the signal model
@@ -57,6 +60,7 @@ public:
     double result=0;
     double I0,Fs;
     get_model_params(st,I0,Fs);
+    if(vary_dtsm) dtsmear=pow(10.0,st.get_param(idx_dtsm));
     vector<double> xtimes,model,modelmags;
     vector<vector<Point> > thetas;
     vector<int> indices;
@@ -69,66 +73,91 @@ public:
 
     //If specified, implement smearing across a small time band
     if(smearing){
+      
+      //prepare the xtimes array and mapping table
       int nt=times.size();
-      //double dtsmear=st.get_param(idx_dtsmear);
       vector<double>deltas(nsmear);
       //Define the grid of smearing points
-      cout<<"deltas:";
+      //cout<<"deltas:";
       for(int j=0;j<nsmear;j++){
 	//In this case we weight points near the center, with normal density
 	//ds/dx = norm(x) -> s = (erf(x)+1)/2 -> x = erfinv(2s-1)
 	double s = (j+0.5)/nsmear;  
 	deltas[j]=dtsmear*worktraj->tEinstein()*approxerfinv(2*s-1);
-	cout<<deltas[j]<<" ";	  
+	//cout<<deltas[j]<<" ";	  
       }
-      cout<<endl;
+      //cout<<endl;
       typedef pair< pair<int,int>,double > entry;
       vector< entry > table;
       for(int i=0;i<nt;i++)
 	for(int j=0;j<nsmear;j++)
 	  table.push_back(make_pair(make_pair(i,j),times[i]+deltas[j]));
-      cout<<"before: ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<table[i].second<<" ";cout<<endl;
-      cout<<"      : ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<"("<<table[i].first.first<<","<<table[i].first.second<<") ";cout<<endl;
+      //cout<<"before: ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<table[i].second<<" ";cout<<endl;
+      //cout<<"      : ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<"("<<table[i].first.first<<","<<table[i].first.second<<") ";cout<<endl;
       sort(table.begin(),table.end(),
 	   [](entry left,entry right){return left.second<right.second;});
-      cout<<"after: ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<table[i].second<<" ";cout<<endl;
-      cout<<"      : ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<"("<<table[i].first.first<<","<<table[i].first.second<<") ";cout<<endl;
+      //cout<<"after: ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<table[i].second<<" ";cout<<endl;
+      //cout<<"      : ";for(int i=0;i<20 and i<nsmear*nt;i++)cout<<"("<<table[i].first.first<<","<<table[i].first.second<<") ";cout<<endl;
       xtimes.resize(nt*nsmear);
       for(int i=0;i<nt*nsmear;i++)xtimes[i]=table[i].second;
+
+      //compute the magnifications
       worktraj->set_times(xtimes);
       worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
       vector<double>sum(nt);
       vector<double>sum2(nt);
+      //vector< vector<double> >magsarray(nt,vector<double>(nsmear));//this is just for debugging.
+
+      //conduct averaging to get results for original time grid
       for(int i=0;i<nt*nsmear;i++){
-	double val=modelmags[i];
+	double val=modelmags[indices[i]];
 	sum[table[i].first.first]+=val;
 	sum2[table[i].first.first]+=val*val;
+	//magsarray[table[i].first.first][table[i].first.second]=val;
       }
       modelmags.resize(nt);
       variances.resize(nt);
-      cout<<"modelmags,var:"<<endl;
+      //cout<<"vals/t,avg,var:"<<endl;
       for(int i=0;i<nt;i++){
 	double avg = sum[i]/nsmear;
 	modelmags[i]=avg;
-	double var = ( sum2[i] - nsmear*avg*avg)/(nsmear-1);
+	double var = ( sum2[i] - nsmear*avg*avg)/(nsmear-1.0);
 	variances[i]=var;
-	if(i<10)cout<<"  "<<avg<<", "<<var<<endl;
+	//for(int j=0;j<nsmear;j++)cout<<magsarray[i][j]<<" ";
+	//cout<<"\n  "<<times[i]<<", "<<avg<<", "<<var<<endl;
       }
       have_variances=true;
-    } else {
+      bool burped=false;
+      
+      //Prepare the magnitude results
+      //cout<<"t,Ival,var:"<<endl;
+      for(int i=0;i<times.size();i++ ){
+	double mu=modelmags[indices[i]];
+	double Ival = I0 - 2.5*log10(Fs*mu+1-Fs);
+	model.push_back(Ival);
+	double fac=2.5/(mu-1+1/Fs)*smear_unk;
+	variances[i]*=fac*fac;
+	//cout<<times[i]<<", "<<Ival<<", "<<variances[i]<<endl;
+	if(!isfinite(Ival)&&!burped){
+	  cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
+	  burped=true;
+	}
+      }
+    } else {//no smearing
       worktraj->set_times(times);
       worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
-    }
-      
-    bool burped=false;
-    for(int i=0;i<indices.size();i++ ){
-      double Ival = I0 - 2.5*log10(Fs*modelmags[indices[i]]+1-Fs);
-      model.push_back(Ival);
-      if(!isfinite(Ival)&&!burped){
-	cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
-	burped=true;
+      bool burped=false;
+      for(int i=0;i<times.size();i++ ){
+	double mu=modelmags[indices[i]];
+	double Ival = I0 - 2.5*log10(Fs*mu+1-Fs);
+	model.push_back(Ival);
+	if(!isfinite(Ival)&&!burped){
+	  cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
+	  burped=true;
+	}
       }
     }
+      
     delete worktraj;
     delete worklens;
     return model;
@@ -152,6 +181,7 @@ public:
     checkSetup();//Call this assert whenever we need options to have been processed.
     idx_I0=sp.requireIndex("I0");
     idx_Fs=sp.requireIndex("Fs");
+    if(vary_dtsm)idx_dtsm=sp.requireIndex("log-dtsm");
     haveWorkingStateSpace();
     //cout<<"signal::defWSS: about to def lens"<<endl;
     lens->defWorkingStateSpace(sp);
@@ -160,27 +190,39 @@ public:
   
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);
-    addOption("MLPsig_nsmear","Number of points to smear the magnification model (default: no smearing).","0");
-    addOption("MLPsig_dtsmear","Width over which to smear the magnification model.","0.002");
+    addOption("MLPsig_nsmear","Number of points in time smear the magnification model. (default: no smearing).","0");
+    addOption("MLPsig_dtsmear","Time-width (tE units) over which to smear the magnification model or prior center if free parameter. (Default=0.001)","0.001");
+    addOption("MLPsig_dtsm_range","Time-width log10-Gaussian prior width. (Default=-1,fixed)","-1");
+    addOption("MLPsig_smear_unk","Uncertainty factor for time smearing.","0.1");
   };
   void setup(){
     haveSetup();
+    double dtsmear_range;
     *optValue("MLPsig_nsmear")>>nsmear;
     *optValue("MLPsig_dtsmear")>>dtsmear;
+    *optValue("MLPsig_dtsm_range")>>dtsmear_range;
+    *optValue("MLPsig_smear_unk")>>smear_unk;
+    nsmear=abs(nsmear);
     smearing=(nsmear>1);
+    vary_dtsm = ( dtsmear_range>0 and smearing );
+    if(vary_dtsm)cout<<"MLPhotometry_signal:Varying dtsmear"<<endl; 
     ///Set up the full output stateSpace for this object
+    const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+    string                names[]=                        { "I0",   "Fs",     "log-dtsm"};
+    valarray<double>    centers((initializer_list<double>){ 18.0,    0.5, log10(dtsmear)});
+    valarray<double> halfwidths((initializer_list<double>){  5.0,    0.5,  dtsmear_range});
+    valarray<int>         types((initializer_list<int>){   gauss,    uni,          gauss});
+    //set the space
     stateSpace space(2);
-    string names[]={"I0","Fs"};//2TRAJ:clean-up
+    if(smearing and vary_dtsm){
+      space=stateSpace(3);
+    }
     space.set_names(names);  
     localSpace=space;
     nativeSpace=localSpace;
     nativeSpace.attach(*lens->getObjectStateSpace());
     nativeSpace.attach(*traj->getObjectStateSpace());
     //set the prior
-    const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
-    valarray<double>    centers((initializer_list<double>){ 18.0,    0.5});
-    valarray<double> halfwidths((initializer_list<double>){  5.0,    0.5});
-    valarray<int>         types((initializer_list<int>){   gauss,    uni});
     localPrior.reset(new mixed_dist_product(&localSpace,types,centers,halfwidths));
     setPrior(new independent_dist_product(&nativeSpace,localPrior.get(),lens->getObjectPrior().get(),traj->getObjectPrior().get()));
   };    
