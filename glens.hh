@@ -175,7 +175,8 @@ class GLensBinary : public GLens{
   double nu;
   vector<Point> invmapAsaka(const Point &p);
   vector<Point> invmapWittMao(const Point &p);
-  complex<double> saved_roots[6];
+  //complex<double> saved_roots[6];
+  vector<Point> theta_save;
   double rWide;
   //parameter handling
   double q_ref;
