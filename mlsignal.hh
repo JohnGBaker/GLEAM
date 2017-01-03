@@ -34,7 +34,7 @@ public:
   };
   ~ML_photometry_signal(){};
   //Produce the signal model
-  vector<double> get_model_signal(const state &st, const vector<double> &times)const{
+  vector<double> get_model_signal(const state &st, const vector<double> &times){
     checkWorkingStateSpace();
     double result=0;
     double I0,Fs;
