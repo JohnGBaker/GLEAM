@@ -37,13 +37,32 @@ set cbrange [*:10] noreverse nowriteback
 set palette rgbformulae -21, -22, -23
 set size square
 #plot  basename."_mmap.dat" using 1:2:(log10($3)-1) with image
-plot  basename."_mmap.dat" using 1:2:($3) with image, trajname u 3:4  lt 1 pointsize 0.1
+plot  basename."_mmap.dat" using 1:2:($3) with image, trajname u 3:4  lt 1 pointsize 0.1 lc rgb "black"
+
+set out basename."_z.pdf"
 set xrange [] writeback
 set yrange [] writeback
 plot  basename."_z_mmap.dat" using 1:2:($3) with image
+set out basename."_z.pdf"
 set xrange restore
 set yrange restore
-rep ftrajname u 3:4  lt 1 pointsize 0.1
-#plot  basename."_mmap.dat" using 1:2:($3) with image, basename."_d_traj.dat" u 3:4  lt 0 pointsize 0.1
-#replot basename."_traj.dat" u 3:4 lt 3 w l
+rep ftrajname u 3:4  w l lc rgb "black" lw 0.1,trajname u 3:4 pointsize 0.02 lt 1 lc rgb "red"
+
+set out basename."_zz.pdf"
+set xrange [*:*] writeback
+set yrange [*:*] writeback
+plot  basename."_zz_mmap.dat" using 1:2:($3) with image
+set out basename."_zz.pdf"
+set xrange restore
+set yrange restore
+rep ftrajname u 3:4  w l lc rgb "black" lw 0.1,trajname u 3:4 pointsize 0.02 lt 1 lc rgb "red"
+
+set out basename."_zzz.pdf"
+set xrange [*:*] writeback
+set yrange [*:*] writeback
+plot  basename."_zzz_mmap.dat" using 1:2:($3) with image
+set out basename."_zzz.pdf"
+set xrange restore
+set yrange restore
+rep ftrajname u 3:4  w l lc rgb "black" lw 0.1,trajname u 3:4 pointsize 0.02 lt 1 lc rgb "red"
 

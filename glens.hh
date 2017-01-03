@@ -10,6 +10,7 @@
 #include <iomanip>
 #include "bayesian.hh"
 #include "trajectory.hh"
+#include <complex>
 
 using namespace std;
 extern bool debug;
@@ -54,9 +55,11 @@ protected:
   bool use_integrate,have_integrate,do_verbose_write;
   double GL_int_tol,GL_int_mag_limit;
   virtual bool testWide(const Point & p,double scale)const{return false;};//test conditions to revert to perturbative inversion
+  //Utility for allowing incremental update of nearby solutions.
+  bool have_saved_soln;
 public:
   virtual ~GLens(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
-  GLens(){typestring="GLens";option_name="SingleLens";option_info="Single point-mass lens";have_integrate=false;do_verbose_write=false;};
+  GLens(){typestring="GLens";option_name="SingleLens";option_info="Single point-mass lens";have_integrate=false;do_verbose_write=false;have_saved_soln=false;};
   virtual GLens* clone(){return new GLens(*this);};
   ///Lens map: map returns a point in the observer plane from a point in the lens plane.
   virtual Point map(const Point &p){
@@ -101,6 +104,7 @@ public:
   void set_integrate(bool integrate_or_not){use_integrate=integrate_or_not;have_integrate=true;}
   //For the Optioned interface:
   virtual void addOptions(Options &opt,const string &prefix="");
+  /*
   void static addStaticOptions(Options &opt){
     GLens l;
     l.addTypeOptions(opt);
@@ -108,7 +112,7 @@ public:
   void addTypeOptions(Options &opt){
     Optioned::addOptions(opt,"");
     addOption("binary_lens","Apply a binary lens model.");
-  };  
+    };*/  
   virtual void setup();
   virtual string print_info()const{ostringstream s;s<<"GLens()"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
   //For stateSpaceInterface
@@ -171,6 +175,8 @@ class GLensBinary : public GLens{
   double nu;
   vector<Point> invmapAsaka(const Point &p);
   vector<Point> invmapWittMao(const Point &p);
+  //complex<double> saved_roots[6];
+  vector<Point> theta_save;
   double rWide;
   //parameter handling
   double q_ref;
@@ -229,6 +235,7 @@ public:
     GLens::addOptions(opt,prefix);
     addOption("remap_q","Use remapped mass-ratio coordinate.");
     addOption("q0","Prior max in q (with q>1) with remapped q0. Default=1e5/","1e5");
+    addOption("GLB_gauss_q","Set to assume Gaussian (not flat) prior for log-q"); 
   };
   ///Set state parameters
   ///

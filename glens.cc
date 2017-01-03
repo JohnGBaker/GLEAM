@@ -20,7 +20,8 @@ const bool inv_test_mode=false;
 extern bool debugint;
 bool verbose=false;
 bool test_result=false;
-
+bool save_thetas_poly=false;
+bool save_thetas_wide=false;
 //
 // Interface to external Skowron&Gould fortran polynomial solver routine
 //
@@ -105,6 +106,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   double prec=cout.precision();cout.precision(20);
   const double rWide_int_fac=100.0;
 
+  
   //cout<<"glens::compTraj: int="<<integrate<<"\nthisLens="<<print_info()<<"\n traj="<<traj.print_info()<<endl;
   //cout<<"this="<<this<<endl;
   cout.precision(prec);
@@ -140,6 +142,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   vector<Point> thetas;
   bool evolving=false;
   double mg;
+  have_saved_soln=false;
 
   int Ngrid=traj.Nsamples();
   double t_old;
@@ -371,7 +374,7 @@ int GLens::GSL_integration_func_vec (double t, const double theta[], double thet
 
 void GLens::addOptions(Options &opt,const string &prefix){
   Optioned::addOptions(opt,prefix);
-  addTypeOptions(opt);
+  //addTypeOptions(opt);
   opt.add(Option("GL_poly","Don't use integration method for lens magnification, use only the polynomial method."));
   opt.add(Option("poly","Same as GL_poly for backward compatibility.  (Deprecated)"));
   opt.add(Option("GL_int_tol","Tolerance for GLens inversion integration. (1e-10)","1e-10"));
@@ -428,15 +431,16 @@ void GLensBinary::setup(){
   GLens::setup();
   //set nativeSpace
   stateSpace space(3);
-  string names[]={"logq","logL","phi0"};
+  string names[] =                                      {"logq","logL","phi0"};
+  const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+  valarray<double>    centers((initializer_list<double>){   0.0,   0.0,  M_PI});
+  valarray<double> halfwidths((initializer_list<double>){   4.0,   1.0,  M_PI});
+  valarray<int>         types((initializer_list<int>)   {   uni, gauss,   uni});
   if(do_remap_q)names[3]="s(1+q)";
   space.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi0.
   space.set_names(names);  
   nativeSpace=space;
-  const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
-  valarray<double>    centers((initializer_list<double>){0.0,   0.0,  M_PI});
-  valarray<double> halfwidths((initializer_list<double>){4.0,   1.0,  M_PI});
-  valarray<int>         types((initializer_list<int>){uni, gauss,   uni});
+  if(optSet("GLB_gauss_q"))types[0]=gauss;
   if(do_remap_q){
     double qq=2.0/(q_ref+1.0);
     double ds=0.5/(1.0+qq*qq); //ds=(1-s(q=1))/2
@@ -514,6 +518,7 @@ vector<Point> GLensBinary::invmap(const Point &p){
 };
 
 ///Inverse lense map in the wide-binary limit.
+///
 ///When L>>1 (ie than Einstein angular radius) then we can pursue and interative solution in
 ///which the beta distance to (all-but) one of the lens objects can be considered far.  Which
 ///lens may be close is specified by (the sign of) iwhich.  Then the calculation proceeds by a Newton's method
@@ -571,6 +576,54 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   ep=em=ef=complex<double_type>(0,0);
   double err=1,relerr=1;
   int iter=0;
+  //For initialization we consider two options.  Initialize with the single lens solution, the nominal approach described above,
+  //or, when we already have a good solution, (A) initialize with the last-found solution.
+  //  th[0]=Point(real(zp)-c/2.0L,imag(zp))   -->   zp = th[0].x + c/2 + I th[0].y
+  //  th[1]=Point(real(zm)-c/2.0L,imag(zm))   -->   zp = th[1].x + c/2 + I th[1].y
+  //  th[2](Point(real(zf)+c/2.0L,imag(zf))   -->   zp = th[2].x - c/2 + I th[2].y
+  //  then,
+  //  ep=ep(zp)
+  //  em=em(zm)
+  //  ef=ef(zf)
+  //
+  //  Or, alternatively, (B) ep=em=ef=0;
+  // We run with the result with the smaller residual.  This also should avoid problems when there are changes in the root order,...
+  //First the zero case, which is just one iteration of the main loop with ep=em=ef=0.
+  if(save_thetas_wide){//This should be equivalent to the nominal result, but there are at least numerical differences.  Needs investigation...
+    double p2=p.x*p.x+p.y*p.y;
+    double pc=c*p.x;//note ym2=yp2=p2+pc,yf2=p2-pc;
+    double_type root=sqrt(1.0L+4.0L*nu_n/(p2+pc));
+    double_type rootf=sqrt(1.0L+4.0L*nu_f/(p2-pc));
+    zp=zeta*(double_type)((1.0L+root)/2.0L);
+    zm=zeta*(double_type)((1.0L-root)/2.0L);
+    zf=(zeta-c)*(double_type)((1.0L-rootf)/2.0L);
+    ep=nu_f/conj(zp-c);
+    em=nu_f/conj(zm-c);
+    ef=nu_n/conj(zf+c);
+    err=abs(ep)+abs(em)+abs(ef);
+    iter=1;
+  }
+  if(save_thetas_wide and have_saved_soln and theta_save.size()==3){
+    zp=complex<double_type>(theta_save[0].x+c/2.0L,theta_save[0].y);  //Need to change from saved_roots to theta_save...
+    zm=complex<double_type>(theta_save[1].x+c/2.0L,theta_save[1].y);
+    zf=complex<double_type>(theta_save[2].x-c/2.0L,theta_save[2].y);
+    //we borrow the "old" variables for this.
+    complex<double_type>epsave=nu_f/conj(zp-c);
+    complex<double_type>emsave=nu_f/conj(zm-c);
+    complex<double_type>efsave=nu_n/conj(zf+c);
+    double_type errsave=abs(zp-zeta-nu_n/conj(zp)-epsave);
+    errsave+=abs(zm-zeta-nu_n/conj(zm)-emsave);
+    errsave+=abs(zf+c-zeta-nu_f/conj(zf)-efsave);
+    //And this is the test:
+    if(errsave<err){
+      ep=epsave;
+      em=emsave;
+      ef=efsave;
+      err=errsave;
+    }
+    iter=1;
+  }//now we have our preferred choice of ep/em/ef and we are ready for the main loop.
+
   bool fail=false;
   while(err>epsTOL&&relerr>epsTOL){
     //cout<<"WideBinary: iter="<<iter<<"  err="<<err<<"  relerr="<<relerr<<endl;
@@ -617,6 +670,13 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   result.push_back(Point(real(zp)-c/2.0L,imag(zp)));
   result.push_back(Point(real(zm)-c/2.0L,imag(zm)));
   result.push_back(Point(real(zf)+c/2.0L,imag(zf)));
+  //perhaps save the result.
+  if(save_thetas_wide ){
+    theta_save=result;
+    have_saved_soln=true;
+  } else {
+    have_saved_soln=false;
+  }
   return result;
 };
 
@@ -702,9 +762,23 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
   }
 
   bool roots_changed =true;//(this isn't used but compiler may be concerned about an uninitialized value) 
-  if(nroots==5)cmplx_roots_5(roots, roots_changed, c, false);
+  bool polish_only = false;
+  if(nroots==5 and save_thetas_poly and have_saved_soln and theta_save.size()==5){
+    //for(int i=0;i<5;i++)roots[i]=saved_roots[i];
+    for(int i=0;i<5;i++)roots[i]=complex<double>(theta_save[i].x,theta_save[i].y);
+    polish_only=true;
+  }
+  if(nroots==5)cmplx_roots_5(roots, roots_changed, c, polish_only);
   else cmplx_roots_gen(roots, c, nroots,true,false);
-
+  if(save_thetas_poly and nroots==5){
+    theta_save.resize(5);
+    //for(int i=0;i<5;i++)saved_roots[i]=roots[i];//should probably get rid of saved roots and just make roots itself be the member variable 
+    for(int i=0;i<5;i++)theta_save[i]=Point(real(roots[i]),imag(roots[i]));
+    have_saved_soln=true;
+  } else {
+    have_saved_soln=false;
+  }
+  
   if(nroots==4&&fix_nr4_roots){//try to make linear correction to root values
     for( int i=0;i<nroots;i++){
       complex<__float128> dP4=0.0;

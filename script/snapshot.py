@@ -6,6 +6,8 @@ import math
 import subprocess
 import argparse
 
+nparmax=12
+
 #functions:
 
 #read step params from 
@@ -15,8 +17,7 @@ def get_step_pars(fname,stop_size=-1):
     if(stop_size>=0):#sample from some specifed point in the middle of the file, instead of the end
         fsize=stop_size
     #print "fsize=",fsize
-    npar  = 11
-    bufsize = 15*(npar+5)
+    bufsize = 15*(nparmax+5)
     with open(fname,'rb') as f:
         #print "bufsize=",bufsize
         if bufsize > fsize:
@@ -90,7 +91,7 @@ parser.add_argument('datafile', metavar='data_file', type=str, nargs='?', defaul
                    help='lightcurve data file path')
 parser.add_argument('-i','--ichain', metavar='chain_index', type=int, nargs=1, default=-1,
                    help='index of chain to view')
-parser.add_argument('-e','--execname', metavar='executable_file', type=str, nargs=1, default="../../src/gleam/gleam",
+parser.add_argument('-e','--execname', metavar='executable_file', type=str, nargs=1, default="",
                    help='executable file path')
 parser.add_argument('-p','--points', metavar='n', type=int, default=300,
                    help='specify number of sample points')
@@ -117,7 +118,9 @@ print "basename="+basename
 #    execname=sys.argv[2]
 #else:
 #    execname="../../src/gleam"
-execname=args.execname[0]
+execname=""
+if(len(args.execname)>0):execname=args.execname[0]
+if(execname==""):execname=os.path.dirname(os.path.realpath(__file__))+"/../gleam"
 print "execname=",execname
 
 #get datafile

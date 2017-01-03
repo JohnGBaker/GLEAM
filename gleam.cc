@@ -405,11 +405,20 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
   //dump_mag_map(ss.str(), data, signal, s, (2.0*tstart+tend)/3.0, (tstart+2.0*tend)/3.0, nsamples);for 1/3
   dump_mag_map(ss.str(), data, signal, s, (3.0*tstart+2.0*tend)/5.0, (2.0*tstart+3.0*tend)/5.0, nsamples);
 
+  //magnification map zoom 1/25
+  ss.str("");ss<<outname<<"_zz_mmap.dat";
+  dump_mag_map(ss.str(), data, signal, s, (13.0*tstart+12.0*tend)/25.0, (12.0*tstart+13.0*tend)/25.0, nsamples);
+
+  //magnification map zoom 1/125
+  ss.str("");ss<<outname<<"_zzz_mmap.dat";
+  dump_mag_map(ss.str(), data, signal, s, (113.0*tstart+112.0*tend)/125.0, (112.0*tstart+113.0*tend)/125.0, nsamples);
+
 };
 
 void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &signal, state &s,double tstart,double tend,int nsamples){//,int cent,bool output_nlens){
   //Points in the routine are in *lens frame* //consider shifting to Trajectory frame.
   ofstream out(outname);
+  out.precision(output_precision);    
   if(tend<=tstart)data.getDomainLimits(tstart,tend);
   Point LLp(0,0), URp(0,0);
   //signal.getWindow(s, LLp, URp, tstart, tend, cent);  
@@ -417,7 +426,6 @@ void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &
   cout<<"dump mag map: LL=("<<LLp.x<<","<<LLp.y<<") UR=("<<URp.x<<","<<URp.y<<")"<<endl;
   GLens *lens=signal.clone_lens();
   lens->setState(s);
-  out.precision(13);
   cout<<"lens="<<lens->print_info();
   //if(output_nlens)lens->verboseWrite();
   lens->writeMagMap(out, LLp, URp, nsamples);
@@ -427,6 +435,7 @@ void dump_mag_map(const string &outname, bayes_data &data,ML_photometry_signal &
 ///Dump the lightcurve
 void dump_lightcurve(const string &outname,bayes_likelihood &like,state &s,double tstart,double tend,int nsamples){
   ofstream out(outname);
+  out.precision(output_precision);    
   if(tend-tstart>0){
     like.writeFine(out,s,nsamples,tstart,tend);
   } else {
