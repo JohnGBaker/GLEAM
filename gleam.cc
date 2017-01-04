@@ -70,6 +70,7 @@ int main(int argc, char*argv[]){
   ML_photometry_data::addStaticOptions(opt);
   lenses.addOptions(opt);
   trajs.addOptions(opt);
+  opt.add(Option("magmap","Don't run any chains, instead just make a magnitude map."));
   //For the first-pass option check, we first make a copy of argc/argv
   int ac=argc;char* av[argc];
   char * filename=NULL;
@@ -88,6 +89,8 @@ int main(int argc, char*argv[]){
   else if(opt.set("mock_data")){
     data=new ML_mock_data();
     do_mock=true;
+  } else if(opt.set("magmap")){
+      data=new ML_mock_data();
   } else {
     //for backward compatibility [deprecated] default is to assume OGLE data and try to read the data from a file named in the (extra) first argument
     if(argc>=1){
@@ -117,16 +120,17 @@ int main(int argc, char*argv[]){
   opt.add(Option("nchains","Number of consequtive chain runs. Default 1","1"));
   opt.add(Option("seed","Pseudo random number grenerator seed in [0,1). (Default=-1, use clock to seed.)","-1"));
   opt.add(Option("view","Don't run any chains, instead take a set of parameters and produce a set of reports about that lens model."));
-
-  //other options
-  opt.add(Option("magmap","Don't run any chains, instead just make a magnitude map.  In this case the parameters should be just q,L,width."));
+  opt.add(Option("precision","Set output precision digits. (Default 13).","13"));
+  //magmap options
   opt.add(Option("mm_center","On which lens to center magmap. (-1,0,1), with default zero for CoM.","0"));
   opt.add(Option("mm_d0x","Explicit x coord offset for magmap center, with default zero.","0"));
   opt.add(Option("mm_d0y","Explicit y coord offset for magmap center, with default zero.","0"));
   opt.add(Option("mm_samples","Number of samples in magmap (default 300)","300"));
   opt.add(Option("mm_nimage","Include number of images magmap"));
-  opt.add(Option("precision","Set output precision digits. (Default 13).","13"));
-  opt.add(Option("mm_lens_rWB","In magmap mode, radial scale outside which we use the WideBinary lens inversion (neg for none). Use for quality control. (Default 5).","5"));
+  opt.add(Option("mm_log_q","Log mass ratio for magmap"));
+  opt.add(Option("mm_log_L","Log separation for magmap"));
+  opt.add(Option("mm_width","Magmap width"));
+  //opt.add(Option("mm_lens_rWB","In magmap mode, radial scale outside which we use the WideBinary lens inversion (neg for none). Use for quality control. (Default 5).","5"));
 
   int Nlead_args=1;
   if(filename)Nlead_args++;
@@ -134,7 +138,7 @@ int main(int argc, char*argv[]){
   bool parseBAD=opt.parse(argc,argv);
   if(parseBAD) {
     cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ params ]" << endl;
-    cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
+    //cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
     cout <<opt.print_usage()<<endl;
     return 1;
   }
@@ -143,9 +147,7 @@ int main(int argc, char*argv[]){
 
   //double nburn_frac,Tmax,Fn_max,tE_max,tcut,seed;
   double nburn_frac,Tmax,Fn_max,tcut,seed;
-  int Nchain;
-  int mm_center,mm_samples,save_every;
-  double mm_d0x,mm_d0y;
+  int Nchain,save_every;
   bool do_magmap,view;
   int Nsigma=1;
   int Nbest=10;
@@ -156,12 +158,9 @@ int main(int argc, char*argv[]){
   if(seed<0)seed=fmod(time(NULL)/3.0e7,1);
   istringstream(opt.value("tcut"))>>tcut;
   do_magmap=opt.set("magmap");
-  istringstream(opt.value("mm_center"))>>mm_center;
-  istringstream(opt.value("mm_d0x"))>>mm_d0x;
-  istringstream(opt.value("mm_d0y"))>>mm_d0y;
-  istringstream(opt.value("mm_samples"))>>mm_samples;
   istringstream(opt.value("precision"))>>output_precision;
-  istringstream(opt.value("mm_lens_rWB"))>>mm_lens_rWB;
+  int mm_samples;
+  istringstream(opt.value("mm_samples"))>>mm_samples;
 
   //read non-parameter args
   string outname;
@@ -169,7 +168,7 @@ int main(int argc, char*argv[]){
   if(argc<Nlead_args+1) {
     cout << "You gave " << argc-1 << " arguments. Expecting "<<Nlead_args<< endl;
     cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ params ]" << endl;
-    cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
+    //cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
     cout <<opt.print_usage()<<endl;
     return 1;
   }
@@ -211,6 +210,7 @@ int main(int argc, char*argv[]){
   valarray<double>params;
   bool have_pars0=false;
   cout<<"argc="<<argc<<" Nlead_args="<<Nlead_args<<endl;
+  /*
   if(do_magmap){//different parameters in this case
     Npar=3;
     if(argc!=5) {
@@ -223,7 +223,8 @@ int main(int argc, char*argv[]){
     params.resize(3);
     for(int i=0;i<3;i++)stringstream(argv[i+2])>>params[i];  
     have_pars0=true;
-  } else if(argc==Nlead_args+Npar+1){//Read params as defined via the flags
+    } else */
+    if(argc==Nlead_args+Npar+1){//Read params as defined via the flags
     params.resize(Npar);
     if(argc>Nlead_args+1){
       for(int i=0;i<Npar;i++)stringstream(argv[i+1+Nlead_args])>>params[i];
@@ -232,7 +233,7 @@ int main(int argc, char*argv[]){
   } else if(!argc==Nlead_args+1){
     cout << "You gave " << argc-1 << " arguments. Expecting "<<Nlead_args<<"."<< endl;
       cout << "Usage:\n gleam [-options=vals] data_file_name output_name [ params ]" << endl;
-      cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
+      //cout << "Or:\n gleam -magmap [-options=vals] output_name logq logL width" << endl;
       cout <<opt.print_usage()<<endl;
       return 1;
   }
@@ -241,13 +242,13 @@ int main(int argc, char*argv[]){
   s0->setup(*like,*prior,output_precision);
 
   //Initial parameter state
-  state instate(&space,Npar);
+  state instate;
   if(not have_pars0){
     instate=s0->getState();
     have_pars0=s0->haveParfile();
     cout<<"Input parameters:"<<instate.show()<<endl;
   } else {//Old behavior [deprecated]
-    if(have_pars0){
+    if(have_pars0&&not do_magmap){
       instate=state(&space,params);
       cout<<"Input parameters:"<<instate.show()<<endl;
     } else { //If no params give just draw something.  Perhaps only relevant for mock_data
@@ -273,14 +274,20 @@ int main(int argc, char*argv[]){
   //Handle separate magmap (only) option.
   if(do_magmap){//translate parameters
     //Points referenced in this block refer to *lens frame* consider shifting
+    int mm_center;
+    double mm_d0x,mm_d0y;
     double q,L,width;
-    q=pow(10.0,params[0]);
-    L=pow(10.0,params[1]);
-    width=params[2];
+    istringstream(opt.value("mm_center"))>>mm_center;
+    istringstream(opt.value("mm_d0x"))>>mm_d0x;
+    istringstream(opt.value("mm_d0y"))>>mm_d0y;
+    istringstream(opt.value("mm_log_q"))>>q;//q=pow(10.0,q);
+    istringstream(opt.value("mm_log_L"))>>L;//L=pow(10.0,L);
+    istringstream(opt.value("mm_width"))>>width;
     stateSpace lensSpace=*lens->getObjectStateSpace();
     lens->defWorkingStateSpace(lensSpace);
     state lens_state(&lensSpace,valarray<double>({q,L,0}));
     lens->setState(lens_state);
+    cout<<"lens_state="<<lens_state.show()<<endl;
     Point x0=lens->getCenter(mm_center);
     cout<<"cent="<<mm_center<<" = ("<<x0.x+mm_d0x<<","<<x0.y+mm_d0y<<" xcm="<<lens->getCenter().x<<endl;
     Point pstart(x0.x+mm_d0x-width/2,x0.y+mm_d0y-width/2);

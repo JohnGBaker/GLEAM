@@ -419,6 +419,7 @@ void GLensBinary::setup(){
   *optValue("GL_int_tol")>>GL_int_tol;
   *optValue("GL_int_mag_limit")>>GL_int_mag_limit;
   *optValue("GL_int_kappa")>>kappa;
+  *optValue("GLB_rWide")>>rWide;
   haveSetup();
   cout<<"GLens set up with:\n\tintegrate=";
   if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;

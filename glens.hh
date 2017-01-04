@@ -236,6 +236,7 @@ public:
     addOption("remap_q","Use remapped mass-ratio coordinate.");
     addOption("q0","Prior max in q (with q>1) with remapped q0. Default=1e5/","1e5");
     addOption("GLB_gauss_q","Set to assume Gaussian (not flat) prior for log-q"); 
+    addOption("GLB_rWide","Binary width/distance cuttoff for applying perturbed signle lens treatment (Einstein units). Default=5","5"); 
   };
   ///Set state parameters
   ///
