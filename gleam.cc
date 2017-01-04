@@ -289,7 +289,7 @@ int main(int argc, char*argv[]){
     lens->setState(lens_state);
     cout<<"lens_state="<<lens_state.show()<<endl;
     Point x0=lens->getCenter(mm_center);
-    cout<<"cent="<<mm_center<<" = ("<<x0.x+mm_d0x<<","<<x0.y+mm_d0y<<" xcm="<<lens->getCenter().x<<endl;
+    cout<<"cent="<<mm_center<<" = ("<<x0.x+mm_d0x<<","<<x0.y+mm_d0y<<") xcm="<<lens->getCenter().x<<endl;
     Point pstart(x0.x+mm_d0x-width/2,x0.y+mm_d0y-width/2);
     Point pend(x0.x+mm_d0x+width/2,x0.y+mm_d0y+width/2);
     {

@@ -36,44 +36,8 @@ def make_runs(fname,commandbase,tag,postprocess_only):
     return filenames,lines
 # make_runs
 
-#compare runs a multiple relative precision levels.
-def compare_runs_rel(filesA,filesB,precRmax,lines):
-    triesA=filesA
-    triesB=filesB
-    triesL=lines
-    passlevels={line:0 for line in lines}
-    while prec<1:
-        result,fails,failsA,failsB=compare_runs(triesA,triesB,1,prec,triesL)
-        print "  prec="+prec+("OK" if result else "FAIL")
-        for line in triesL:
-            if(not line in fails):
-                passlevel[line]=prec;
-        prec=prec*10.0;
-        triesL=fails
-        triesA=failsA
-        triesB=failsB
-    return passlevels   
-
-#compare runs a multiple absolute precision levels.
-def compare_runs_rel(filesA,filesB,precAmax,lines):
-    triesA=filesA
-    triesB=filesB
-    triesL=lines
-    passlevels={line:0 for line in lines}
-    while prec<1:
-        result,fails,failsA,failsB=compare_runs(triesA,triesB,prec,1,triesL)
-        print "  prec="+prec+("OK" if result else "FAIL")
-        for line in triesL:
-            if(not line in fails):
-                passlevel[line]=prec;
-        prec=prec*10.0;
-        triesL=fails
-        triesA=failsA
-        triesB=failsB
-    return passlevels
-
 #run ndiff on the relevant runs and collect results
-def compare_runs_ndiff(filesA,filesB,lines):
+def compare_runs(filesA,filesB,lines):
     suf="_mmap.dat"
     good=True
     absrel=[]
@@ -91,38 +55,6 @@ def compare_runs_ndiff(filesA,filesB,lines):
 # compare_runs
 
 
-#run numdiff on the relevant runs and collect results
-def compare_runs(filesA,filesB,precA,precR,lines):
-    suf="_mmap.dat"
-    good=True
-    failing_cases=[]
-    failing_filesA=[]
-    failing_filesB=[]
-    #ngood=2
-    for i in range(len(filesA)):
-        result=""
-        command="numdiff -H --strict -q -a "+str(precA)+" -r "+str(precR)+" "+filesA[i]+suf+" "+filesB[i]+suf
-        print
-        print command
-        #result=subprocess.check_output(command.split())
-        #nlines=result.count("\n")
-        #print nlines
-        #print result
-        #bad=nlines>good
-        bad=not 0==subprocess.call(command.split())
-        #bad=False
-        if (bad):
-            print "FAILED"
-            good=False
-            failing_cases.append(lines[i])
-            failing_filesA.append(filesA[i])
-            failing_filesB.append(filesB[i])
-        else :
-            print "PASSED"
-        sys.stdout.flush()
-    return good, failing_cases, failing_filesA, failing_filesB
-# compare_runs
-
 ##########
 # setup stuff
 # determine basename from first argument.
@@ -138,6 +70,8 @@ parser.add_argument('--post', action='store_true',
                    help='run only post-processing')
 parser.add_argument('--exec', default=scriptpath+"/../gleam",dest='executable',
                     help='path to the executable (default to expected location relative script)')
+parser.add_argument('--altex', default="",dest='altex',
+                    help='path to an alternate executable relative to standard executable dir (default=none)')
 parser.add_argument('--exec-arg', default="",dest='exarg',
                     help='additional arguments for the gleam executable')
 parser.add_argument('--no-quad', action='store_false',dest='do_quad',
@@ -199,6 +133,13 @@ if(args.do_quad):
     qpoly5files,lines=make_runs(testfname,command,outdir+tag,postprocess_only)
     timeQP5=time.time()-start;
 
+if(not args.altex==""):
+    command= scriptpath+"/../"+args.altex+" "+args.exarg+" -magmap -poly=true -precision=16 -GLB_rWide=5 "
+    tag="altex_r5.0"
+    start = time.time()
+    altex5files,lines=make_runs(testfname,command,outdir+tag,postprocess_only)
+    timeAX=time.time()-start;
+
 #command= execname+"_quad "+args.exarg+" -magmap -poly=true -precision=16 -GLB_rWide=4.5 "
 #tag="qpoly_r4.5"
 #start = time.time()
@@ -217,27 +158,34 @@ good=goodr=True
 with open(reportfile,'w') as report:
     print" Comparing WideBinary versus WittMao."
     report.write("\n# Comparing WideBinary versus WittMao.\n")
-    resultWBWM=compare_runs_ndiff(poly5files,poly4files,lines)
+    resultWBWM=compare_runs(poly5files,poly4files,lines)
     for l,r in zip(lines,resultWBWM):
         ls=l.split()
         report.write(ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[0])+" "+str(r[1])+"\n")
     print"\n Comparing Polynomial versus Integration"
     report.write("\n# Comparing Polynomial versus Integration")
-    resultPI=compare_runs_ndiff(poly5files,int5files,lines)
+    resultPI=compare_runs(poly5files,int5files,lines)
     for l,r in zip(lines,resultPI):
         ls=l.split()
         report.write(ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[0])+" "+str(r[1])+"\n")
     if(args.do_quad):
-        print" Comparing quad versus double precision."
+        print"\n Comparing quad versus double precision."
         report.write("\n# Comparing quad versus double precision.")
-        resultQD=compare_runs_ndiff(poly5files,qpoly5files,lines)
+        resultQD=compare_runs(poly5files,qpoly5files,lines)
         for l,r in zip(lines,resultQD):
             ls=l.split()
             report.write(ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[0])+" "+str(r[1])+"\n")
-        print" Comparing Quad-precision Polynomial versus Integration"
+        print"\n Comparing Quad-precision Polynomial versus Integration"
         report.write("\n# Comparing Quad-precision Polynomial versus Integration")
-        resultQPI = compare_runs_ndiff(qpoly5files,int5files,lines)
+        resultQPI = compare_runs(qpoly5files,int5files,lines)
         for l,r in zip(lines,resultQPI):
+            ls=l.split()
+            report.write(ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[0])+" "+str(r[1])+"\n")
+    if(not args.altex==""):
+        print"\n Comparing versus alternate executable "+args.altex+"."
+        report.write("\n# Comparing versus alternate executable "+args.altex+".")
+        resultAX=compare_runs(poly5files,altex5files,lines)
+        for l,r in zip(lines,resultAX):
             ls=l.split()
             report.write(ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[0])+" "+str(r[1])+"\n")
 
@@ -249,6 +197,9 @@ if( not postprocess_only):
         print "    Quad Poly 5.0 - ",timeQP5
 #    print "    Quad Poly 4.5 - ",timeQP4
     print "          Int 5.0 - ",timeI5
+    if(not args.altex==""):
+        print "    AltEx Poly 5.0 - ",timeAX
+        
 
 
 print "\nTest summary at relative prec="+str(prec)+":"
@@ -270,6 +221,12 @@ if(args.do_quad):
             print ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[1])
     print " quad poly vs int: "+("OK "+str(max(np.array(resultQPI)[:,1])) if  max(np.array(resultQPI)[:,1])<=prec else "FAIL")
     for l,r in zip(lines,resultQPI):
+        ls=l.split()
+        if(r[1]>prec):
+            print ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[1])
+if(not args.altex==""):
+    print "   gleam vs "+args.altex+": "+("OK "+str(max(np.array(resultAX)[:,1])) if max(np.array(resultAX)[:,1])<=prec else "FAIL")
+    for l,r in zip(lines,resultAX):
         ls=l.split()
         if(r[1]>prec):
             print ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[1])
@@ -297,6 +254,13 @@ if(args.do_quad):
         ls=l.split()
         if(r[0]>prec):
             print ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[0])
+if(not args.altex==""):
+    print "   gleam vs "+args.altex+": "+("OK "+str(max(np.array(resultAX)[:,0])) if max(np.array(resultAX)[:,0])<=prec else "FAIL")
+    for l,r in zip(lines,resultAX):
+        ls=l.split()
+        if(r[0]>prec):
+            print ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[0])
+
 
 
 

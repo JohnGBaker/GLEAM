@@ -45,7 +45,7 @@ else
   #Note the lens code seems faster (compiled with x86_64-apple-darwin13-gfortran-mp-4.8) with -O2 than -O3
   CFLAGS = -march=corei7 -g -lquadmath -Wuninitialized -O2  -fopenmp
   #CXXFLAGS = $(CFLAGS) -std=c++11 -g
-  CXXFLAGS = $(CFLAGS) -std=c++11 -O2
+  CXXFLAGS = $(CFLAGS) -std=c++11 -O3
   GSLROOT=/opt/local
 
 endif

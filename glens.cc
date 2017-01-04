@@ -470,6 +470,7 @@ vector<Point> GLensBinary::invmap(const Point &p){
     //if fails to converge (rare) revert to WittMao:
     if(thWB.size()==0){
       //cout<<"WideBinary failed to converge"<<endl;
+      have_saved_soln=false;//Can't rely on save soln when jumping from WideBinary
       return invmapWittMao(p);
     }
     if(inv_test_mode&&r2<rTest*rTest){
@@ -603,6 +604,7 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
     ef=nu_n/conj(zf+c);
     err=abs(ep)+abs(em)+abs(ef);
     iter=1;
+    if(verbose) cout<<"save_thetas_wide p=*"<<p.x<<","<<p.y<<"):ep,em,ef"<<ep<<","<<em<<","<<ef<<endl;
   }
   if(save_thetas_wide and have_saved_soln and theta_save.size()==3){
     zp=complex<double_type>(theta_save[0].x+c/2.0L,theta_save[0].y);  //Need to change from saved_roots to theta_save...
@@ -622,6 +624,7 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
       ef=efsave;
       err=errsave;
     }
+    if(verbose) cout<<"save_thetas_wide (chose):ep,em,ef"<<ep<<","<<em<<","<<ef<<endl;
     iter=1;
   }//now we have our preferred choice of ep/em/ef and we are ready for the main loop.
 
@@ -768,12 +771,16 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
     //for(int i=0;i<5;i++)roots[i]=saved_roots[i];
     for(int i=0;i<5;i++)roots[i]=complex<double>(theta_save[i].x,theta_save[i].y);
     polish_only=true;
-  }
+    if(verbose){
+      cout<<"using saved roots: p=("<<p.x<<","<<p.y<<")"<<endl;
+      for(int i=0;i<5;i++)cout<<"  "<<i<<": "<<roots[i]<<endl;
+    }
+  } else if(save_thetas_poly and verbose) cout<<"   no saved roots: p=("<<p.x<<","<<p.y<<")"<<endl;
+
   if(nroots==5)cmplx_roots_5(roots, roots_changed, c, polish_only);
   else cmplx_roots_gen(roots, c, nroots,true,false);
   if(save_thetas_poly and nroots==5){
     theta_save.resize(5);
-    //for(int i=0;i<5;i++)saved_roots[i]=roots[i];//should probably get rid of saved roots and just make roots itself be the member variable 
     for(int i=0;i<5;i++)theta_save[i]=Point(real(roots[i]),imag(roots[i]));
     have_saved_soln=true;
   } else {
