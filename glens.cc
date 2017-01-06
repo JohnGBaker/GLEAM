@@ -20,6 +20,8 @@ const bool inv_test_mode=false;
 extern bool debugint;
 bool verbose=false;
 bool test_result=false;
+//bool save_thetas_poly=true;
+//bool save_thetas_wide=true;
 bool save_thetas_poly=false;
 bool save_thetas_wide=false;
 //
@@ -39,6 +41,7 @@ void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int 
 typedef  long double ldouble;
 const double LEADTOL=1e-5;
 //const double LEADTOL=1e-4;
+//const double epsTOL=3e-15;
 const double epsTOL=1e-14;
 //const double epsTOL=1e-11;
 
@@ -73,7 +76,8 @@ void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int 
 typedef __float128 ldouble;
 const double LEADTOL=3e-7;
 //const double LEADTOL=1e-5;
-const double epsTOL=1e-14;
+const double epsTOL=1e-16;
+//const double epsTOL=1e-14;
 #endif
 
 
@@ -210,8 +214,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	continue;
       }
     } else { //not evolving, solve polynomial
-      //beta=traj.get_obs_pos(tgrid);//TRAJ:Allow non-trivial transformation from observer-plane coords frame to lens frame coords
       beta=get_obs_pos(traj,tgrid);
+      //cout<<"Not evolving: beta=("<<beta.x<<","<<beta.y<<")"<<endl;
       thetas.clear();
       thetas=invmap(beta);
       //record results;
@@ -556,8 +560,11 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   //double a,b,c1=(1-nu)/r1sq,c2=nu/r2sq;
   //return Point(x-x1*c1-x2*c2,y-y*(c1+c2));
   //pick dominant lens:
-  //typedef long double double_type;
+#ifdef USE_KIND_16
+  typedef long double double_type;
+#else
   typedef double double_type;
+#endif
   double_type xL=p.x,yL=p.y,x1=xL-(double_type)L/2.0L,x2=xL+(double_type)L/2.0L,r1sq=x1*x1+yL*yL,r2sq=x2*x2+yL*yL;
   double_type nu_neg=(double_type)nu,nu_pos=1.0L-nu_neg,cpos=nu_pos*nu_pos/r1sq,cneg=nu_neg*nu_neg/r2sq;
   double_type nu_n,nu_f,c;
@@ -592,10 +599,10 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   // We run with the result with the smaller residual.  This also should avoid problems when there are changes in the root order,...
   //First the zero case, which is just one iteration of the main loop with ep=em=ef=0.
   if(save_thetas_wide){//This should be equivalent to the nominal result, but there are at least numerical differences.  Needs investigation...
-    double p2=p.x*p.x+p.y*p.y;
+    double p2c2=p.x*p.x+p.y*p.y+c*c;
     double pc=c*p.x;//note ym2=yp2=p2+pc,yf2=p2-pc;
-    double_type root=sqrt(1.0L+4.0L*nu_n/(p2+pc));
-    double_type rootf=sqrt(1.0L+4.0L*nu_f/(p2-pc));
+    double_type root=sqrt(1.0L+4.0L*nu_n/(p2c2+pc));
+    double_type rootf=sqrt(1.0L+4.0L*nu_f/(p2c2-pc));
     zp=zeta*(double_type)((1.0L+root)/2.0L);
     zm=zeta*(double_type)((1.0L-root)/2.0L);
     zf=(zeta-c)*(double_type)((1.0L-rootf)/2.0L);
@@ -604,7 +611,7 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
     ef=nu_n/conj(zf+c);
     err=abs(ep)+abs(em)+abs(ef);
     iter=1;
-    if(verbose) cout<<"save_thetas_wide p=*"<<p.x<<","<<p.y<<"):ep,em,ef"<<ep<<","<<em<<","<<ef<<endl;
+    //if(verbose) cout<<"save_thetas_wide p=*"<<p.x<<","<<p.y<<"):ep,em,ef"<<ep<<","<<em<<","<<ef<<endl;
   }
   if(save_thetas_wide and have_saved_soln and theta_save.size()==3){
     zp=complex<double_type>(theta_save[0].x+c/2.0L,theta_save[0].y);  //Need to change from saved_roots to theta_save...
@@ -624,7 +631,7 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
       ef=efsave;
       err=errsave;
     }
-    if(verbose) cout<<"save_thetas_wide (chose):ep,em,ef"<<ep<<","<<em<<","<<ef<<endl;
+    //if(verbose) cout<<"save_thetas_wide (chose):ep,em,ef"<<ep<<","<<em<<","<<ef<<endl;
     iter=1;
   }//now we have our preferred choice of ep/em/ef and we are ready for the main loop.
 
@@ -649,16 +656,16 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
     zp=yp*zpfac;
     zm=ym*zmfac;
     zf=yf*zffac;
-    if(debug){
-      cout<<"  zpfac="<<zpfac<<"  yp2="<<yp2<<" c="<<c<<endl;
-      cout<<"  zmfac="<<zmfac<<"  ym2="<<ym2<<" c="<<c<<endl;
-      cout<<"  zffac="<<zffac<<"  yf2="<<yf2<<" -c="<<-c<<endl;
-    }
+    //if(debug){
+    // cout<<"  zpfac="<<zpfac<<"  yp2="<<yp2<<" c="<<c<<endl;
+    // cout<<"  zmfac="<<zmfac<<"  ym2="<<ym2<<" c="<<c<<endl;
+    // cout<<"  zffac="<<zffac<<"  yf2="<<yf2<<" -c="<<-c<<endl;
+    //}
     ep=nu_f/conj(zp-c);
     em=nu_f/conj(zm-c);
     ef=nu_n/conj(zf+c);
     err=abs(ep-epold)+abs(em-emold)+abs(ef-efold);
-    double zmean=abs(zp)+abs(zm)+abs(zf);
+    double_type zmean=abs(zp)+abs(zm)+abs(zf);
     relerr=abs((ep-epold)*zp*zp/zmean/zmean)+abs((em-emold)*zm*zm/zmean/zmean)+abs((ef-efold)*zf*zf/zmean/zmean);
     if(debug){
       cout<<"  zp="<<zp<<"  ep="<<ep<<" D="<<ep-epold<<endl;
