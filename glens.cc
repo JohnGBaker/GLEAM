@@ -20,10 +20,10 @@ const bool inv_test_mode=false;
 extern bool debugint;
 bool verbose=false;
 bool test_result=false;
-//bool save_thetas_poly=true;
-//bool save_thetas_wide=true;
-bool save_thetas_poly=false;
-bool save_thetas_wide=false;
+bool save_thetas_poly=true;
+//bool save_thetas_poly=false;
+//bool save_thetas_wide=true;  Strangely, this seems to provide no advantage.  Maybe a bug, but didn't see it. 
+bool save_thetas_wide=false; 
 //
 // Interface to external Skowron&Gould fortran polynomial solver routine
 //
@@ -41,7 +41,7 @@ void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int 
 typedef  long double ldouble;
 const double LEADTOL=1e-5;
 //const double LEADTOL=1e-4;
-//const double epsTOL=3e-15;
+//const double epsTOL=1e-15;
 const double epsTOL=1e-14;
 //const double epsTOL=1e-11;
 
@@ -76,7 +76,7 @@ void cmplx_roots_gen(complex<double> roots[], complex<double> poly[], const int 
 typedef __float128 ldouble;
 const double LEADTOL=3e-7;
 //const double LEADTOL=1e-5;
-const double epsTOL=1e-16;
+const double epsTOL=1e-18;
 //const double epsTOL=1e-14;
 #endif
 
@@ -555,6 +555,7 @@ vector<Point> GLensBinary::invmap(const Point &p){
 ///
 vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   const int maxIter=1000;
+  //const int maxIter=20;
   //Lens equation:
   //double x=p.x,y=p.y,x1=x-L/2,x2=x+L/2,r1sq=x1*x1+y*y,r2sq=x2*x2+y*y;
   //double a,b,c1=(1-nu)/r1sq,c2=nu/r2sq;
@@ -598,6 +599,7 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   //  Or, alternatively, (B) ep=em=ef=0;
   // We run with the result with the smaller residual.  This also should avoid problems when there are changes in the root order,...
   //First the zero case, which is just one iteration of the main loop with ep=em=ef=0.
+  //cout<<" Wide Binary x y = "<<xL<<" "<<yL<<"  c="<<c<<" nu="<<nu_n<<endl;
   if(save_thetas_wide){//This should be equivalent to the nominal result, but there are at least numerical differences.  Needs investigation...
     double p2c2=p.x*p.x+p.y*p.y+c*c;
     double pc=c*p.x;//note ym2=yp2=p2+pc,yf2=p2-pc;
@@ -609,7 +611,10 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
     ep=nu_f/conj(zp-c);
     em=nu_f/conj(zm-c);
     ef=nu_n/conj(zf+c);
-    err=abs(ep)+abs(em)+abs(ef);
+    //err=abs(ep)+abs(em)+abs(ef);
+    err=abs(zp-zeta-nu_n/conj(zp)-ep);//comput residual of lens eq.
+    err+=abs(zm-zeta-nu_n/conj(zm)-em);
+    err+=abs(zf+c-zeta-nu_f/conj(zf)-ef);
     iter=1;
     //if(verbose) cout<<"save_thetas_wide p=*"<<p.x<<","<<p.y<<"):ep,em,ef"<<ep<<","<<em<<","<<ef<<endl;
   }
@@ -621,23 +626,30 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
     complex<double_type>epsave=nu_f/conj(zp-c);
     complex<double_type>emsave=nu_f/conj(zm-c);
     complex<double_type>efsave=nu_n/conj(zf+c);
+    cout<<"          ep0="<<zp-zeta-nu_n/conj(zp)<<endl;
+    cout<<"          em0="<<zm-zeta-nu_n/conj(zm)<<endl;
+    cout<<"          ef0="<<zm+c-zeta-nu_f/conj(zf)<<endl;
+    cout<<"  zp="<<zp<<"  ep="<<epsave<<endl;
+    cout<<"  zm="<<zm<<"  em="<<emsave<<endl;
+    cout<<"  zf="<<zf<<"  ef="<<efsave<<endl;
     double_type errsave=abs(zp-zeta-nu_n/conj(zp)-epsave);
     errsave+=abs(zm-zeta-nu_n/conj(zm)-emsave);
     errsave+=abs(zf+c-zeta-nu_f/conj(zf)-efsave);
     //And this is the test:
+    cout<<" naive err="<<err<<"  save err="<<errsave<<endl;
     if(errsave<err){
       ep=epsave;
       em=emsave;
       ef=efsave;
       err=errsave;
     }
-    //if(verbose) cout<<"save_thetas_wide (chose):ep,em,ef"<<ep<<","<<em<<","<<ef<<endl;
+    cout<<"save_thetas_wide (chose):ep,em,ef"<<ep<<","<<em<<","<<ef<<endl;
     iter=1;
   }//now we have our preferred choice of ep/em/ef and we are ready for the main loop.
 
   bool fail=false;
   while(err>epsTOL&&relerr>epsTOL){
-    //cout<<"WideBinary: iter="<<iter<<"  err="<<err<<"  relerr="<<relerr<<endl;
+    //cout<<"WideBinary: iter="<<iter<<"\n          err="<<err<<"  relerr="<<relerr<<endl;
     iter++;
     if(iter>maxIter){
       if(debug)cout<<"invmapWideBinary maxIter reached: Failing."<<endl;

@@ -45,7 +45,7 @@ def compare_runs(filesA,filesB,lines):
         result=""
         dataA=np.loadtxt(filesA[i]+suf).flatten();
         dataB=np.loadtxt(filesB[i]+suf).flatten();
-        deltas=np.array([[abs(a-b),abs(a-b)/(abs(a)+abs(b))] for a,b in zip(dataA,dataB)])
+        deltas=np.array([[abs(a-b),2.0*abs(a-b)/(abs(a)+abs(b))] for a,b in zip(dataA,dataB)])
         #print deltas[:,0]
         #print deltas[:,1]
         absreli=[max(deltas[:,0]),max(deltas[:,1])]
