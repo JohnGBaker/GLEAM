@@ -104,28 +104,68 @@ public:
       //compute the magnifications
       worktraj->set_times(xtimes);
       worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
+
+      //Variables for the averaging
       vector<double>sum(nt);
       vector<double>sum2(nt);
-      //vector< vector<double> >magsarray(nt,vector<double>(nsmear));//this is just for debugging.
-
+      vector< vector<double> >magsarray(nt,vector<double>(nsmear));
+      double smear_trim_level=5;
+      double trim_level2=smear_trim_level*smear_trim_level;
+      
       //conduct averaging to get results for original time grid
       for(int i=0;i<nt*nsmear;i++){
 	double val=modelmags[indices[i]];
-	sum[table[i].first.first]+=val;
-	sum2[table[i].first.first]+=val*val;
-	//magsarray[table[i].first.first][table[i].first.second]=val;
+	int idata=table[i].first.first;
+	int ismear=table[i].first.second;
+	sum[idata]+=val;
+	sum2[idata]+=val*val;
+	//sum[idata]+=val*weight[ismear];
+	//sum2[idata]+=val*val*weight[ismear];
+	magsarray[idata][ismear]=val;
       }
       modelmags.resize(nt);
       variances.resize(nt);
       //cout<<"vals/t,avg,var:"<<endl;
       for(int i=0;i<nt;i++){
 	double avg = sum[i]/nsmear;
-	modelmags[i]=avg;
 	double var = ( sum2[i] - nsmear*avg*avg)/(nsmear-1.0);
+	if(smear_trim_level>0){
+	  //We will recompute the average and variance after trimming back any values especially far from the smeared average.
+	  //The trim level is expressed as some maximum number of sigma away from the mean.
+	  double newavg=avg,newvar=var;
+	  int jmax=nsmear;
+	  bool done=false;
+	  while(not done){
+	    done=true;
+	    int jstop=jmax;
+	    for(int j=0;j<jstop;j++){
+	      double val=magsarray[i][j];
+	      double dev=(val-newavg)*nsmear/(nsmear-1.0);
+	      double dev2=dev*dev;
+	      double othersvar=(newvar-dev2/nsmear)*(nsmear-1.0)/(nsmear-2.0);
+	      if(dev2>trim_level2*othersvar*(1.0+1.0/nsmear)){//outlier detected  (the final factor makes a little buffer)
+		double newdev=dev*sqrt(trim_level2*othersvar/dev2);
+		double newval=val+newdev-dev;
+		//cout<<"Trimming outlier ["<<i<<","<<j<<"] dev: "<<dev<<" -> "<<newdev<<"    othersvar="<<othersvar<<endl;
+		magsarray[i][j]=newval;
+		//cout<<"           val: "<<val<<" -> "<<newval<<endl;
+		newavg=newavg+(newdev-dev)/nsmear;         //This is how the avg changes when we scale down dev
+		newvar=newvar+(newdev*newdev-dev2)/nsmear; //This is how the var changes when we scale down dev
+		//cout<<"            avg,var: "<<avg<<","<<var<<" -> "<<newavg<<","<<newvar<<endl;
+		done=false;//need to go back to the start to look for an outliers relative to the new avg/var.
+		jmax=j;
+	      }
+	    }
+	  }
+	  avg=newavg;
+	  var=newvar;
+	}
+	modelmags[i]=avg;
 	variances[i]=var;
 	//for(int j=0;j<nsmear;j++)cout<<magsarray[i][j]<<" ";
 	//cout<<"\n  "<<times[i]<<", "<<avg<<", "<<var<<endl;
       }
+
       have_variances=true;
       bool burped=false;
       
