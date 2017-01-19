@@ -142,16 +142,21 @@ public:
 	      double val=magsarray[i][j];
 	      double dev=(val-newavg)*nsmear/(nsmear-1.0);
 	      double dev2=dev*dev;
-	      double othersvar=(newvar-dev2/nsmear)*(nsmear-1.0)/(nsmear-2.0);
+	      double min_var_scale=1e-8;
+	      double othersvar=(newvar-dev2/nsmear)*(nsmear-1.0)/(nsmear-2.0)+min_var_scale;
 	      if(dev2>trim_level2*othersvar*(1.0+1.0/nsmear)){//outlier detected  (the final factor makes a little buffer)
 		double newdev=dev*sqrt(trim_level2*othersvar/dev2);
 		double newval=val+newdev-dev;
-		//cout<<"Trimming outlier ["<<i<<","<<j<<"] dev: "<<dev<<" -> "<<newdev<<"    othersvar="<<othersvar<<endl;
 		magsarray[i][j]=newval;
-		//cout<<"           val: "<<val<<" -> "<<newval<<endl;
 		newavg=newavg+(newdev-dev)/nsmear;         //This is how the avg changes when we scale down dev
 		newvar=newvar+(newdev*newdev-dev2)/nsmear; //This is how the var changes when we scale down dev
-		//cout<<"            avg,var: "<<avg<<","<<var<<" -> "<<newavg<<","<<newvar<<endl;
+		#pragma omp_critical
+		if(0)
+		{
+		  cout<<"Trimming outlier ["<<i<<","<<j<<"] dev: "<<dev<<" -> "<<newdev<<"    othersvar="<<othersvar<<endl;
+		  cout<<"           val: "<<val<<" -> "<<newval<<endl;
+		  cout<<"            avg,var: "<<avg<<","<<var<<" -> "<<newavg<<","<<newvar<<endl;
+		}
 		done=false;//need to go back to the start to look for an outliers relative to the new avg/var.
 		jmax=j;
 	      }
