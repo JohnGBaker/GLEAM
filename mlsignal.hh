@@ -39,28 +39,31 @@ class ML_photometry_signal : public bayes_signal{
   int idx_I0, idx_Fs, idx_dtsm;
   stateSpace localSpace;
   shared_ptr<const sampleable_probability_function> localPrior;
-  vector<double>variances;
-  bool have_variances;
+  //vector<double>variances;
+  //bool have_variances;
   bool smearing;
   int nsmear;
-  double dtsmear;
+  double dtsmear_save;
   double smear_unk;
   bool vary_dtsm;
 public:
   ML_photometry_signal(Trajectory *traj_,GLens *lens_):lens(lens_),traj(traj_){
-    have_variances=false;
+    //have_variances=false;
     idx_I0=idx_Fs=-1;
     localPrior=nullptr;
     vary_dtsm=false;
   };
   ~ML_photometry_signal(){};
   //Produce the signal model
-  vector<double> get_model_signal(const state &st, const vector<double> &times)override{
+  vector<double> get_model_signal(const state &st, const vector<double> &times, vector<double> &variances)const override{
+    //Caution!  Global/Member variables should not change or there will be problems with openmp
     checkWorkingStateSpace();
     double result=0;
     double I0,Fs;
     get_model_params(st,I0,Fs);
+    double dtsmear;
     if(vary_dtsm) dtsmear=pow(10.0,st.get_param(idx_dtsm));
+    else dtsmear=dtsmear_save;
     vector<double> xtimes,model,modelmags;
     vector<vector<Point> > thetas;
     vector<int> indices;
@@ -125,6 +128,7 @@ public:
       }
       modelmags.resize(nt);
       variances.resize(nt);
+
       //cout<<"vals/t,avg,var:"<<endl;
       for(int i=0;i<nt;i++){
 	double avg = sum[i]/nsmear;
@@ -171,7 +175,7 @@ public:
 	//cout<<"\n  "<<times[i]<<", "<<avg<<", "<<var<<endl;
       }
 
-      have_variances=true;
+      //have_variances=true;
       bool burped=false;
       
       //Prepare the magnitude results
@@ -191,6 +195,7 @@ public:
     } else {//no smearing
       worktraj->set_times(times);
       worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
+      variances.resize(times.size());
       bool burped=false;
       for(int i=0;i<times.size();i++ ){
 	double mu=modelmags[indices[i]];
@@ -209,6 +214,7 @@ public:
   };
   
   ///Get modeled variance in the signals from modeled stochastic signal features.
+  /*
   virtual vector<double> getVariances(const state &st,const vector<double> times)override{
     if(smearing){
       if(have_variances){
@@ -218,7 +224,7 @@ public:
 	return variances;
       }
     } else return bayes_signal::getVariances(st,times);
-  };
+    };*/
   
   ///From StateSpaceInterface (via bayes_signal)
   ///
@@ -244,7 +250,7 @@ public:
     haveSetup();
     double dtsmear_range;
     *optValue("MLPsig_nsmear")>>nsmear;
-    *optValue("MLPsig_dtsmear")>>dtsmear;
+    *optValue("MLPsig_dtsmear")>>dtsmear_save;
     *optValue("MLPsig_dtsm_range")>>dtsmear_range;
     *optValue("MLPsig_smear_unk")>>smear_unk;
     nsmear=abs(nsmear);
@@ -254,7 +260,7 @@ public:
     ///Set up the full output stateSpace for this object
     const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
     string                names[]=                        { "I0",   "Fs",     "log-dtsm"};
-    valarray<double>    centers((initializer_list<double>){ 18.0,    0.5, log10(dtsmear)});
+    valarray<double>    centers((initializer_list<double>){ 18.0,    0.5, log10(dtsmear_save)});
     valarray<double> halfwidths((initializer_list<double>){  5.0,    0.5,  dtsmear_range});
     valarray<int>         types((initializer_list<int>){   gauss,    uni,          gauss});
     //set the space

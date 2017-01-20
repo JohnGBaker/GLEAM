@@ -201,9 +201,10 @@ private:
     //endhack
     
     I0=st.get_param(idx_I0);
-    vector<double> model=signal->get_model_signal(transformSignalState(st),times);
+    vector<double> dvar;
+    vector<double> model=signal->get_model_signal(transformSignalState(st),times,dvar);
     vector<double> dmags=data->getDeltaValues();
-    vector<double> dvar=getVariances(st);
+    dvar=getVariances(st,dvar);
 
     if(nsamples<0){
       for(int i=0;i<times.size();i++){
