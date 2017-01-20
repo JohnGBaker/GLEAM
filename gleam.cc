@@ -267,6 +267,7 @@ int main(int argc, char*argv[]){
     outmock<<"#mock data\n#"<<instate.get_string()<<endl;
     like->write(outmock,instate);
     outmock<<endl;
+    cout<<"post "<<like->evaluate_log(instate)<<endl;
     if(!view)exit(0);
   }
     

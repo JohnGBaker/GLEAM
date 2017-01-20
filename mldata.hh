@@ -182,7 +182,6 @@ protected:
 ///class for mock data
 ///It does little other than define a grid of points, and allow them to be populated...
 ///There is also a hook to fill the data, which mllike knows how to do.  In this case
-///The "extra noise" parameter becomes the actual noise parameter.
 class ML_mock_data : public ML_photometry_data {
 public:
   ML_mock_data(){
@@ -192,25 +191,27 @@ public:
   ///...not yet complete...
   ///Note that cadence is the most probable size of timestep, with fractional variance scale set by log_dtvar
   void setup(){
-    double tstart,tend,cadence,jitter;
+    double tstart,tend,cadence,jitter,noise;
     *optValue("mock_tstart")>>tstart;
     *optValue("mock_tend")>>tend;
     *optValue("mock_cadence")>>cadence;
     *optValue("mock_jitter")>>jitter;
+    *optValue("mock_noise")>>noise;
     cout<<"Preparing mock data."<<endl;
-    setup(tstart,tend,cadence,jitter);
+    setup(tstart,tend,cadence,noise,jitter);
     ML_photometry_data::setup();
   };
-  void setup(double tmin, double tmax, double cadence, double log_dt_var=0){
+  void setup(double tmin, double tmax, double cadence, double noise_lev, double log_dt_var=0){
     GaussianDist gauss(0.0,log_dt_var);
     double dt=cadence*exp(gauss.draw());
     double time=tmin+dt/2.0;
+    cout<<"setting up mock mldata with noise_lev="<<noise_lev<<endl;
     while(time<tmax){
       times.push_back(time);
       dt=cadence*exp(gauss.draw());
       time+=dt;
       mags.push_back(0);
-      dmags.push_back(0);
+      dmags.push_back(noise_lev);
     }
     haveData();
     if(!have_time0)set_reference_time(0);
@@ -223,6 +224,7 @@ public:
     addOption("mock_tend","End time for mock data sample grid (days). Default=150","150");
     addOption("mock_cadence","Typical sample period for mock data sample grid(days). Default=1","1");
     addOption("mock_jitter","Size of standard deviation in log(time-step-size). Default=0","0");
+    addOption("mock_noise","Size of noise in the mock_data (magnitudes). Default=0.02","0.02");
   };
 };
 
