@@ -69,7 +69,7 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
   //mean anomaly M (in range -pi<=M<PI, eccentric anom. E (solves M=E-e*sin(E),
   double M=(floor(((L-lonp)/M_PI+1)/2.0)-1.0)*M_PI*2,E=M+e*sin(M),Eold=0;
   //solve for E
-  while(abs(E-Eold)>1e-15){Eold=E;E=Eold+(M-Eold+e*sin(Eold))/(1-e*cos(Eold));}
+  while(abs(E-Eold)>1e-13*abs(Eold)){Eold=E;E=Eold+(M-Eold+e*sin(Eold))/(1-e*cos(Eold));}
   //perihl. cartesian coords
   double xper=a*(cos(E)-e),yper=a*sqrt(1-e*e)*sin(E);
   double cp=cos(lonp),sp=sin(lonp),cI=cos(I),sI=sin(I);
