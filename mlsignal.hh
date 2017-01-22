@@ -76,7 +76,11 @@ public:
 
     //If specified, implement smearing across a small time band
     if(smearing){
-      
+      //various tuning controls
+      const int trimcountmax=3;      
+      const double min_var_scale=1e-8;
+      const double smear_trim_level=5, trim_level2=smear_trim_level*smear_trim_level;
+
       //prepare the xtimes array and mapping table
       int nt=times.size();
       vector<double>deltas(nsmear);
@@ -112,8 +116,6 @@ public:
       vector<double>sum(nt);
       vector<double>sum2(nt);
       vector< vector<double> >magsarray(nt,vector<double>(nsmear));
-      double smear_trim_level=5;
-      double trim_level2=smear_trim_level*smear_trim_level;
       
       //conduct averaging to get results for original time grid
       for(int i=0;i<nt*nsmear;i++){
@@ -139,14 +141,16 @@ public:
 	  double newavg=avg,newvar=var;
 	  int jmax=nsmear;
 	  bool done=false;
+	  int trimcount=0;
 	  while(not done){
 	    done=true;
 	    int jstop=jmax;
+	    trimcount++;
+	    if(trimcount>trimcountmax)jstop=0;//quit looping after trimcountmax cycles
 	    for(int j=0;j<jstop;j++){
 	      double val=magsarray[i][j];
 	      double dev=(val-newavg)*nsmear/(nsmear-1.0);
 	      double dev2=dev*dev;
-	      double min_var_scale=1e-8;
 	      double othersvar=(newvar-dev2/nsmear)*(nsmear-1.0)/(nsmear-2.0)+min_var_scale;
 	      if(dev2>trim_level2*othersvar*(1.0+1.0/nsmear)){//outlier detected  (the final factor makes a little buffer)
 		double newdev=dev*sqrt(trim_level2*othersvar/dev2);
