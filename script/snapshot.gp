@@ -12,7 +12,7 @@ print system(command)
 titlevar = system(command)
 print "title is ", titlevar
 set title titlevar font ",9"
-plot basename."_d_lcrv.dat" u 2:(-$3) ti "data" ,basename."_lcrv.dat" u 2:(-$3) ti "typical fit" lw 2 w l,"" u 2:($4-$3) ti "" lw 2 w l,"" u 2:(-$4-$3) ti "model 1-sigma" lt 3 lw 2 w l
+plot basename."_d_lcrv.dat" u 2:(-$3) ti "data" ,basename."_lcrv.dat" u 2:($4-$3) ti "" lw 2 w l,"" u 2:(-$4-$3) ti "model 1-sigma" lt 3 lw 2 w l, "" u 2:(-$3) ti "typical fit" lw 2 w l
 #plot [-1500:300] "2014-0001_b_c1_164k_d_lcrv.dat" u 2:(-$3)ps 0.7 ,"2014-0001_b_c1_164k_lcrv.dat" u 2:(-$3) lw 2 w l,"" u 2:($4-$3) lw 2 w l,"" u 2:(-$4-$3) lt 3 lw 2 w l
 
 set xr [-100:100];rep;set xr [*:*]

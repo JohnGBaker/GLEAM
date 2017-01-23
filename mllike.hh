@@ -201,10 +201,10 @@ private:
     //endhack
     
     I0=st.get_param(idx_I0);
-    vector<double> dvar;
-    vector<double> model=signal->get_model_signal(transformSignalState(st),times,dvar);
+    vector<double> dvarm;
+    vector<double> model=signal->get_model_signal(transformSignalState(st),times,dvarm);
     vector<double> dmags=data->getDeltaValues();
-    dvar=getVariances(st,dvar);
+    vector<double> dvar=getVariances(st,dvarm);
 
     if(nsamples<0){
       for(int i=0;i<times.size();i++){
@@ -223,7 +223,8 @@ private:
     } else {
       for(int i=0;i<times.size();i++){
 	//if(i<10)cout<<"i="<<i<<"  S="<<S<<endl;
-	double rtS=pow(10.0,0.4*(-noise_mag+model[i]));
+	//double rtS=pow(10.0,0.4*(-noise_mag+model[i]));
+	double rtS=dvarm[i];
 	double t=times[i];
 	if(i==0)
 	  out<<"#t"<<" "<<"t_vs_pk" 
