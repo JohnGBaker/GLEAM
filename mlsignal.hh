@@ -352,6 +352,9 @@ public:
     cout<<"times range from "<<tr->t_start()<<" to "<<tr->t_end()<<endl;
     cout<<tr->print_info()<<endl;
     out<<"#"<<s.get_string()<<endl;
+    out<<"#";
+    for(int i=0;i<s.size();i++)out<<s.getSpace()->get_name(i)<<" ";
+    out<<"\n";
     out<<"#1.t   2. t_rel  3.x   4.y "<<endl;
     for(auto tph:times){
       double t=tr->get_frame_time(tph);

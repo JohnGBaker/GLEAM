@@ -5,6 +5,10 @@ import numpy as np
 import math
 import subprocess
 import argparse
+import matplotlib.pyplot as plt
+import matplotlib
+import matplotlib.colors as colors
+from matplotlib.backends.backend_pdf import PdfPages
 
 nparmax=12
 
@@ -31,24 +35,26 @@ def get_step_pars(fname,stop_size=-1):
         print "line is:",line 
         step= int(line.split()[0])
         pars= np.array(line.split()[5:])
+        post= float(line.split()[1])
         #pars=pars[:-1]#last column is temp
     #print "step="+step
-    return step,pars
+    return step,pars,post
 # get_step_pars
 
 #count the number of completed chains in the output file, based on number blank lines
 def count_chains(fname):
     nblank=0
-    chain_ends=[0,0,0]
+    chain_ends=[]
     pos=0
     with open(fname,'rb') as f:
         for line in f:
             if(line.startswith("\n")):
                 #print "line:",line
-                chain_ends[int(nblank/2)]=pos
+                chain_ends.append(pos)
                 #print "set: chain_ends["+str(int(nblank/2))+"]=",pos
                 nblank+=1
             pos+=len(line)-1 #the "-1" is a hack because seek/tell/counting bytes all don't work together in an effective way. This does not seem to be related to the buffering issue on the tell() side with file iteration.
+        chain_ends.append(pos)
         #bufsize = 15*(9+5)
         #print "testseeking=",chain_ends[0]-bufsize
         #data = []
@@ -56,7 +62,7 @@ def count_chains(fname):
         #data.extend(f.readlines(bufsize))        
         #print "testline is:",data[len(data)-3] 
     print "chain_ends=",chain_ends
-    return nblank/2,chain_ends; #two blanks after completed chain.
+    return nblank/2+1,chain_ends; #two blanks after completed chain.
 #count_chains
 
 #read arguments from outfile 
@@ -80,6 +86,108 @@ def get_flags(fname):
     return d
 # get_flags
   
+def get_param_text(basename):
+    with open(basename+"_traj.dat") as file:
+        parsline=file.readline()[1:]
+        namesline=file.readline()[1:]
+    namedpars=zip(namesline.split(),parsline.split())
+    partext=""
+    count=0;
+    for pair in namedpars:
+        count+=1
+        if(count>5):
+            count=1
+            partext+="\n"
+        partext+=pair[0]+"="+pair[1]+" "
+        #print "count=",count,"pair=",pair
+    return partext
+
+def plot_lightcurve(basename,caption="",centerfrac=-1.0):
+    #mimicing gnuplot: plot basename."_d_lcrv.dat" u 2:(-$3) ti "data" ,basename."_lcrv.dat" u 2:($4-$3) ti "" lw 2 w l,"" u 2:(-$4-$3) ti "model 1-sigma" lt 3 lw 2 w l, "" u 2:(-$3) ti "typical fit" lw 2 w l
+    data=np.loadtxt(basename+"_d_lcrv.dat")
+    model=np.loadtxt(basename+"_lcrv.dat")
+    xd=data[:,1]
+    xm=model[:,1]
+    if(centerfrac>0):
+        #find peak 90th percentile region
+        percentile=.90
+        y=np.append(data[:,2],model[:,2])
+        y.sort()
+        ycut=y[int(percentile*(len(y)-1))]
+        xtop=np.array([l[1] for l in data if l[2]>ycut])
+        xtop=np.append(xtop,np.array([l[1] for l in model if l[2]>ycut]))
+        xcent=xtop.mean()
+        xwid=xtop.std()
+        print "xcent=",xcent,"xwid=",xwid
+        xmin=xcent-centerfrac*xwid
+        xmax= xcent+centerfrac*xwid
+        print "ycut=",ycut
+        print xmin,"< x <",xmax
+        xd=np.ma.masked_where(np.any([xd < xmin , xd > xmax], axis=0), xd)
+        xm=np.ma.masked_where(np.any([xm < xmin , xm > xmax], axis=0), xm)
+        
+    #plt.clf()
+    fig=plt.figure()
+    if(caption==""):ax1=fig.add_axes((.1,.1,.8,.8))
+    else: ax1=fig.add_axes((.1,.2,.8,.7))
+    ax1.plot(xd,-data[:,2],'+',color='darkorchid',label='data')
+    ax1.plot(xm,-model[:,2]-model[:,3],'b-',label='_nolegend_')
+    ax1.plot(xm,-model[:,2]+model[:,3],'b-',label='typical 1-sigma range')
+    ax1.plot(xm,-model[:,2],'-',color='goldenrod',label='typical model')
+    ax1.margins(y=0.05)
+    ax1.legend()
+    if(not caption==""):fig.text(.1,.05,caption)
+                    
+def plot_magmap(basename,caption="",var=""):
+    #designed to mimic gnuplot:
+    '''
+    set view map
+    set xtics border in scale 0,0 mirror norotate  offset character 0, 0, 0 autojustify
+    set ytics border in scale 0,0 mirror norotate  offset character 0, 0, 0 autojustify
+    set ztics border in scale 0,0 nomirror norotate  offset character 0, 0, 0 autojustify
+    set rtics axis in scale 0,0 nomirror norotate  offset character 0, 0, 0 autojustify
+    set cblabel "magnification" 
+    set cbrange [*:10] noreverse nowriteback
+    set palette rgbformulae -21, -22, -23
+    set size square
+    plot  basename."_mmap.dat" using 1:2:($3) with image, trajname u 3:4  lt 1 pointsize 0.1 lc rgb "black"
+    rep ftrajname u 3:4  w l lc rgb "black" lw 0.1,trajname u 3:4 pointsize 0.02 lt 1 lc rgb "red"
+    '''
+    tol=1e-10;
+    magmax=10.0;
+    mdata=np.loadtxt(basename+var+"_mmap.dat")
+    print mdata.shape
+    x=np.unique(mdata[:,0])
+    x=x[np.append([True],x[1:]-x[:-1]>tol)]
+    dx=x[1:]-x[:-1]
+    print "dx limits=",max(dx),min(dx)
+    y=np.unique(mdata[:,1])
+    y=y[np.append([True],y[1:]-y[:-1]>tol)]
+    dx=y[1:]-y[:-1]
+    print "dy limits=",max(dx),min(dx)
+    nx=x.size
+    ny=y.size
+    print "nx,ny,nx*ny,ndata",nx,ny,nx*ny,mdata[:,2].size
+    z=mdata[:,2]
+    #z=(mdata[:,0]-min(x))/(max(x)-min(x))
+    #z=(mdata[:,1]-min(y))/(max(y)-min(y))
+    z=z.reshape(ny,nx)
+    fig=plt.figure()
+    if(caption==""):ax1=fig.add_axes((.1,.1,.8,.8))
+    else: ax1=fig.add_axes((.1,.2,.8,.7))
+    im=ax1.imshow(z, vmin=1.0,vmax=magmax,extent=(min(x),max(x),min(y),max(y)), origin='lower', cmap='hot_r')
+    cb=plt.colorbar(im,ticks=np.arange(magmax)+1)
+    im=ax1.imshow(z, vmin=1.0,vmax=magmax,extent=(min(x),max(x),min(y),max(y)), origin='lower', cmap='hot_r')
+    #superimpose the trajectory
+    mtraj=np.loadtxt(basename+"_traj.dat")
+    dtraj=np.loadtxt(basename+"_d_traj.dat")
+    
+    #ax1.autoscale(False)
+    ax1.plot( mtraj[:,2],mtraj[:,3],'b-',scaley=False,scalex=False)
+    ax1.autoscale(False)
+    ax1.scatter( dtraj[:,2],dtraj[:,3],color='cyan',alpha=1,s=1.0,zorder=3)
+    if(not caption==""):fig.text(.1,.05,caption)
+    
 ##########
 # setup stuff
 # determine basename from first argument.
@@ -89,9 +197,11 @@ parser.add_argument('fname', metavar='chain_file', type=str,
                    help='chain file path')
 parser.add_argument('datafile', metavar='data_file', type=str, nargs='?', default='',
                    help='lightcurve data file path')
-parser.add_argument('-i','--ichain', metavar='chain_index', type=int, nargs=1, default=-1,
+parser.add_argument('-i','--ichain', metavar='chain_index', type=int, default=0,
                    help='index of chain to view')
-parser.add_argument('-e','--execname', metavar='executable_file', type=str, nargs=1, default="",
+parser.add_argument('-o','--offset', metavar='steps', action='store', type=int, default=0,
+                   help='how far before end of chain to sample')
+parser.add_argument('-e','--execname', metavar='executable_file', type=str, default="",
                    help='executable file path')
 parser.add_argument('-p','--points', metavar='n', type=int, default=300,
                    help='specify number of sample points')
@@ -137,7 +247,8 @@ print "datafile=",datafile
 #    ichain=int(sys.argv[4])
 #else:
 #    ichain=-1
-ichain=args.ichain[0]
+
+ichain=args.ichain
 print "ichain="+str(ichain)
 
 npoints=args.points
@@ -158,11 +269,11 @@ cc,cends=count_chains(fname)
 print "cends=",cends," cc=",cc
 iend=-1
 if(ichain>=0 and cc>ichain):
-    iend=cends[ichain]
+    iend=cends[ichain]-args.offset
     cc=ichain
 print "iend=",iend," cc=",cc
 
-step,pars = get_step_pars(fname,iend)
+step,pars,post = get_step_pars(fname,iend)
 resultname=basename+"_c"+str(cc)+"_"+str(int(math.floor(step/1000)))+"k"
 parstr=""
 for val in pars:
@@ -179,13 +290,37 @@ sys.stdout.flush()
 subprocess.call(command.split())
 print "step 1"
 
+#command="gnuplot -e basename='"+resultname+"' "+gpscript
+#print command
+#print command.split()
+#sys.stdout.flush()
+#subprocess.call(command.split())
+#print "step 2"
 
-command="gnuplot -e basename='"+resultname+"' "+gpscript
-print command
-print command.split()
-sys.stdout.flush()
-subprocess.call(command.split())
-print "step 2"
+pdf = PdfPages(resultname+'.pdf')
+caption="Log-posterior is "+str(post)+" for parameters:\n"+get_param_text(resultname)
+plot_lightcurve(resultname,caption)
+#plt.show()
+pdf.savefig()
+plot_lightcurve(resultname,caption,1.5)
+#plt.show()
+pdf.savefig()
+plot_lightcurve(resultname,caption,0.5)
+#plt.show()
+pdf.savefig()
+plot_magmap(resultname,caption)
+#plt.show()
+pdf.savefig()
+plot_magmap(resultname,caption,"_z")
+#plt.show()
+pdf.savefig()
+plot_magmap(resultname,caption,"_zz")
+#plt.show()
+pdf.savefig()
+#plot_magmap(resultname,caption,"_zzz")
+#plt.show()
+#pdf.savefig()
+pdf.close()
 
 command="open "+resultname+".pdf"
 print command
