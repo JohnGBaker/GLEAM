@@ -94,6 +94,7 @@ public:
     addTypeOptions(opt);
     addOption("tcut","Cut times before tcut (relative to tmax). Default=-1e20","-1e20");
     opt.add(Option("Fn_max","Uniform prior max (min for additive) in Fn. Default=1.0 (18.0 additive)/","1"));
+    addOption("ref_time","Refer time parameters to this JD time>0. (Default -1.0 -> use data peak.)","-1.0");
   };
   ///Here provide options for the known types of ML_photometry_data...
   ///This is provided statically to allow options to select one or more types of data before specifying the 
@@ -123,6 +124,9 @@ public:
     have_time_frame=true;
   };
   virtual void setup(){
+    double ref_time;
+    *optValue("ref_time")>>ref_time;
+    if(ref_time>=0)set_reference_time(ref_time);
     ///Set up the output stateSpace for this object
     stateSpace space(1);
     string names[]={"Mn"};
@@ -198,8 +202,8 @@ public:
     *optValue("mock_jitter")>>jitter;
     *optValue("mock_noise")>>noise;
     cout<<"Preparing mock data."<<endl;
-    setup(tstart,tend,cadence,noise,jitter);
     ML_photometry_data::setup();
+    setup(tstart,tend,cadence,noise,jitter);
   };
   void setup(double tmin, double tmax, double cadence, double noise_lev, double log_dt_var=0){
     GaussianDist gauss(0.0,log_dt_var);
@@ -240,8 +244,8 @@ public:
     string filename;
     *optValue("OGLE_data")>>filename;
     cout<<"OGLE data file='"<<filename<<"'"<<endl;
-    setup(filename);
     ML_photometry_data::setup();
+    setup(filename);
   };
   void setup(const string &filepath){
     ifstream file(filepath.c_str());
@@ -279,8 +283,8 @@ public:
     string filename;
     *optValue("gen_data")>>filename;
     cout<<"generic data file='"<<filename<<"'"<<endl;
-    setup(filename);
     ML_photometry_data::setup();
+    setup(filename);
   };
   void setup(const string &filepath){
     //assemble soruce column info
