@@ -1,4 +1,5 @@
 #!/opt/local/bin/python
+#use: module load other/SSSO_Ana-PyD/SApd_2.4.0_py2.7
 import sys
 import os
 import numpy as np
@@ -322,7 +323,7 @@ pdf.savefig()
 #pdf.savefig()
 pdf.close()
 
-command="open "+resultname+".pdf"
+command="gs "+resultname+".pdf"
 print command
 print command.split()
 sys.stdout.flush()
