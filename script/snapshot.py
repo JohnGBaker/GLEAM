@@ -154,7 +154,7 @@ def plot_magmap(basename,caption="",var=""):
     plot  basename."_mmap.dat" using 1:2:($3) with image, trajname u 3:4  lt 1 pointsize 0.1 lc rgb "black"
     rep ftrajname u 3:4  w l lc rgb "black" lw 0.1,trajname u 3:4 pointsize 0.02 lt 1 lc rgb "red"
     '''
-    tol=1e-10;
+    tol=1e-8;
     magmax=10.0;
     mdata=np.loadtxt(basename+var+"_mmap.dat")
     print mdata.shape
@@ -189,6 +189,30 @@ def plot_magmap(basename,caption="",var=""):
     ax1.scatter( dtraj[:,2],dtraj[:,3],color='cyan',alpha=1,s=1.0,zorder=3)
     if(not caption==""):fig.text(.1,.05,caption)
     
+def make_plots(resultname, post="unknown"):
+    pdf = PdfPages(resultname+'.pdf')
+    caption="Log-posterior is "+str(post)+" for parameters:\n"+get_param_text(resultname)
+
+    plot_lightcurve(resultname,caption)
+    pdf.savefig()
+
+    plot_lightcurve(resultname,caption,1.5)
+    pdf.savefig()
+
+    plot_lightcurve(resultname,caption,0.5)
+    pdf.savefig()
+
+    plot_magmap(resultname,caption)
+    pdf.savefig()
+
+    plot_magmap(resultname,caption,"_z")
+    pdf.savefig()
+
+    plot_magmap(resultname,caption,"_zz")
+    pdf.savefig()
+
+    pdf.close()
+
 ##########
 # setup stuff
 # determine basename from first argument.
@@ -204,11 +228,17 @@ parser.add_argument('-o','--offset', metavar='steps', action='store', type=int, 
                    help='how far before end of chain to sample')
 parser.add_argument('-e','--execname', metavar='executable_file', type=str, default="",
                    help='executable file path')
+parser.add_argument('-v','--viewname', metavar='name', type=str, default="",
+                   help='from a separate gleam-view run')
 parser.add_argument('-p','--points', metavar='n', type=int, default=300,
                    help='specify number of sample points')
 
 args = parser.parse_args()
 print(args)
+
+if(not args.viewname==""):
+    make_plots(args.viewname)
+    sys.exit()
 
 #fname = sys.argv[1]
 fname=args.fname
@@ -291,37 +321,7 @@ sys.stdout.flush()
 subprocess.call(command.split())
 print "step 1"
 
-#command="gnuplot -e basename='"+resultname+"' "+gpscript
-#print command
-#print command.split()
-#sys.stdout.flush()
-#subprocess.call(command.split())
-#print "step 2"
-
-pdf = PdfPages(resultname+'.pdf')
-caption="Log-posterior is "+str(post)+" for parameters:\n"+get_param_text(resultname)
-plot_lightcurve(resultname,caption)
-#plt.show()
-pdf.savefig()
-plot_lightcurve(resultname,caption,1.5)
-#plt.show()
-pdf.savefig()
-plot_lightcurve(resultname,caption,0.5)
-#plt.show()
-pdf.savefig()
-plot_magmap(resultname,caption)
-#plt.show()
-pdf.savefig()
-plot_magmap(resultname,caption,"_z")
-#plt.show()
-pdf.savefig()
-plot_magmap(resultname,caption,"_zz")
-#plt.show()
-pdf.savefig()
-#plot_magmap(resultname,caption,"_zzz")
-#plt.show()
-#pdf.savefig()
-pdf.close()
+make_plots(resultname,post)
 
 command="gs "+resultname+".pdf"
 print command
