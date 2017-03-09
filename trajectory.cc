@@ -40,7 +40,7 @@ Point operator*(const Point &a, const double &val){return Point(a.x*val,a.y*val)
 /// with ecliptic sky coordinates.
 ///
 void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double &z)const{
-  t=t+phys_time0;
+  t=get_phys_time(t)+phys_time0;
   ///We take t to be terrestrial time, TT, time in days since the beginning of 
   ///the J2000 epoch, meaning seconds since J2000 (ts) divided by 86400. 
   /// I.e. t=ts/86400.  Note that the J2000 epoch reference corresponds to 
@@ -67,7 +67,7 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
   if(e>emax)e=emax;
   //argument of perihelion argp=lonp here
   //mean anomaly M (in range -pi<=M<PI, eccentric anom. E (solves M=E-e*sin(E),
-  double M=(floor(((L-lonp)/M_PI+1)/2.0)-1.0)*M_PI*2,E=M+e*sin(M),Eold=0;
+  double M=L-lonp-floor(((L-lonp)/M_PI+1)/2.0)*M_PI*2,E=M+e*sin(M),Eold=0;
   //solve for E
   while(abs(E-Eold)>1e-13*abs(Eold)){Eold=E;E=Eold+(M-Eold+e*sin(Eold))/(1-e*cos(Eold));}
   //perihl. cartesian coords
@@ -78,7 +78,7 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
     {
       cout<<"ParallaxTrajectory::get_obs_pos_ssb: cp,xper,sp,yper,E,Eold:"<<cp<<", "<<xper<<", "<<sp<<", "<<yper<<", "<<E<<", "<<Eold<<endl;
       cout<<"L,e,M,a:"<<L<<", "<<e<<", "<<M<<", "<<a<<endl;
-      cout<<"phys_time0="<<phys_time0<<endl;
+      cout<<"phys_time0="<<phys_time0<<" t="<<t<<" yr="<<2000+t/265.25<<endl;
     }
   //ecliptic coords
   x=cp*xper-sp*yper;

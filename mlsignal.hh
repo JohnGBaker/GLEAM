@@ -192,7 +192,7 @@ public:
 	variances[i]*=fac*fac;
 	//cout<<times[i]<<", "<<Ival<<", "<<variances[i]<<endl;
 	if(!isfinite(Ival)&&!burped){
-	  cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
+	  cout<<"get_model_signal(smear): model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
 	  burped=true;
 	}
       }
@@ -206,7 +206,7 @@ public:
 	double Ival = I0 - 2.5*log10(Fs*mu+1-Fs);
 	model.push_back(Ival);
 	if(!isfinite(Ival)&&!burped){
-	  cout<<"model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
+	  cout<<"get_model_signal: model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
 	  burped=true;
 	}
       }
@@ -348,9 +348,11 @@ public:
     double xcm  =  worklens->getCenter().x;
     Trajectory *tr=traj->clone();
     tr->setState(s);
+    cout<<"Dumping trajectory:"<<tr->print_info()<<endl;
     tr->set_times(times);
     cout<<"times range from "<<tr->t_start()<<" to "<<tr->t_end()<<endl;
-    cout<<tr->print_info()<<endl;
+    //cout<<tr->print_info()<<endl;
+    Trajectory::verbose=true;
     out<<"#"<<s.get_string()<<endl;
     out<<"#";
     for(int i=0;i<s.size();i++)out<<s.getSpace()->get_name(i)<<" ";

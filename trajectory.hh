@@ -123,8 +123,8 @@ public:
   virtual int Nsamples()const {if(have_times)return times.size(); else return (int)((t_end()-t_start())/cad)+1;};
   ///Return frame time of ith obs. 
   virtual double get_obs_time(int ith)const {if(have_times)return times[ith]; else return ts-toff+cad*ith;};
-  virtual double get_phys_time(double frame_time){ return frame_time*tE+tpass;}//referenced to phys_time0;
-  virtual double get_frame_time(double phys_time){return (phys_time-tpass)/tE;}
+  virtual double get_phys_time(double frame_time)const{ return frame_time*tE+tpass;}//referenced to phys_time0;
+  virtual double get_frame_time(double phys_time)const{return (phys_time-tpass)/tE;}
   ///Argument takes frame time below
   virtual Point get_obs_pos(double t)const {double x=p0.x+(t-toff)*v0.x,y=p0.y+(t-toff)*v0.y;return Point(x,y);};
   virtual Point get_obs_vel(double t)const {return v0;};
@@ -295,7 +295,7 @@ public:
     return new ParallaxTrajectory(*this);
   };
   //virtual void rotate(double pieE,double phimu){};
-  Point get_obs_pos(double t)const {return Trajectory::get_obs_pos(t)+get_obs_pos_offset(t);};
+  Point get_obs_pos(double t)const override{return Trajectory::get_obs_pos(t)+get_obs_pos_offset(t);};
   Point get_obs_vel(double t)const {return Trajectory::get_obs_vel(t)+get_obs_vel_offset(t);};
   ///The following functions are to help with computing the parallax
   ///First we need to define the observer orbital motion in barycentric coordinates
@@ -395,6 +395,7 @@ protected:
     addOption("source_ra","Source R.A. for parallax (in degrees).");
     addOption("source_dec","Source Dec. for parallax (in degrees).");
   };
+  string print_info()const override{ostringstream s;s<<"ParallaxTrajectory({r0="<<r0<<", tE="<<tE<<", ra="<<source_ra<<", dec="<<source_dec<<", piE="<<piE<<", phimu="<<phimu<<"})"<<endl;return s.str();};
 };
 
 #endif
