@@ -869,11 +869,14 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
 
 double GLensBinary::mag(const Point &p){
   double x=p.x,y=p.y,x1=x-L/2,x2=x+L/2,r1sq=x1*x1+y*y,r2sq=x2*x2+y*y;
+  //cout<<"x,y,r1sq,r2sq:"<<x<<" "<<y<<" "<<r1sq<<" "<<r2sq<<endl;
   double m1=(1-nu), m2=nu, dEr4=m1*r2sq-m2*r1sq;
   double cosr2=x1*x2+y*y,cos2r4=cosr2*cosr2;
   double r4=r1sq*r2sq,r8=r4*r4;
   double invmuR8=r8-dEr4*dEr4-4*m1*m2*cos2r4;
-  double mg=r8/invmuR8;
+  double mg=0;
+  if(r8>0)mg=r8/invmuR8;
+  //cout<<"mg="<<mg<<endl;
   return mg;
 };
 

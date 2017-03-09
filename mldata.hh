@@ -288,9 +288,10 @@ public:
   };
   void setup(const string &filepath){
     //assemble soruce column info
-    double errlev;
+    double errlev,toffset;
     *optValue("gen_data_err_lev")>>errlev;
     int tcol,col,ecol,maxcol=0;
+    *optValue("gen_data_time_off")>>toffset;
     *optValue("gen_data_time_col")>>tcol;
     if(tcol>maxcol)maxcol=tcol;
     *optValue("gen_data_col")>>col;
@@ -312,7 +313,7 @@ public:
 	  //cout "i="<<i<<endl;
 	  double val;
 	  ss>>val;
-	  if(i==tcol)times.push_back(val);
+	  if(i==tcol)times.push_back(val+toffset);
 	  if(i==col)mags.push_back(val);
 	  if(errlev<=0&&i==ecol)dmags.push_back(val);
 	}
@@ -333,6 +334,7 @@ public:
   void addOptions(Options &opt,const string &prefix=""){
     ML_photometry_data::addOptions(opt,prefix);
     addOption("gen_data_time_col","Column with data values. Default=0","0");
+    addOption("gen_data_time_off","Add this to column values for JD time. Default=0","0");
     addOption("gen_data_col","Column with data values. Default=1","1");
     addOption("gen_data_err_col","Column with data values. Default=(next after data)","-1");
     addOption("gen_data_err_lev","Set a uniform error, instead of reading from file. Default=none","-1");

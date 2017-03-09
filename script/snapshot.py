@@ -126,7 +126,6 @@ def plot_lightcurve(basename,caption="",centerfrac=-1.0):
         print xmin,"< x <",xmax
         xd=np.ma.masked_where(np.any([xd < xmin , xd > xmax], axis=0), xd)
         xm=np.ma.masked_where(np.any([xm < xmin , xm > xmax], axis=0), xm)
-        
     #plt.clf()
     fig=plt.figure()
     if(caption==""):ax1=fig.add_axes((.1,.1,.8,.8))
@@ -135,6 +134,20 @@ def plot_lightcurve(basename,caption="",centerfrac=-1.0):
     ax1.plot(xm,-model[:,2]-model[:,3],'b-',label='_nolegend_')
     ax1.plot(xm,-model[:,2]+model[:,3],'b-',label='typical 1-sigma range')
     ax1.plot(xm,-model[:,2],'-',color='goldenrod',label='typical model')
+    ax1.margins(y=0.05)
+    ax1.legend()
+    if(not caption==""):fig.text(.1,.05,caption)
+                    
+def plot_residual(basename,caption=""):
+    #mimicing gnuplot: plot basename."_d_lcrv.dat" u 2:(-$3) ti "data" ,basename."_lcrv.dat" u 2:($4-$3) ti "" lw 2 w l,"" u 2:(-$4-$3) ti "model 1-sigma" lt 3 lw 2 w l, "" u 2:(-$3) ti "typical fit" lw 2 w l
+    data=np.loadtxt(basename+"_d_lcrv.dat")
+    xd=data[:,1]
+    delta=-(data[:,2]-data[:,3])
+    fig=plt.figure()
+    if(caption==""):ax1=fig.add_axes((.1,.1,.8,.8))
+    else: ax1=fig.add_axes((.1,.2,.8,.7))
+    ax1.plot(xd,delta,'+',color='darkorchid',label='data')
+    #ax1.errorbar(xd,delta,yerr=data[:,4],color='darkorchid',label='data')
     ax1.margins(y=0.05)
     ax1.legend()
     if(not caption==""):fig.text(.1,.05,caption)
@@ -194,6 +207,9 @@ def make_plots(resultname, post="unknown"):
     caption="Log-posterior is "+str(post)+" for parameters:\n"+get_param_text(resultname)
 
     plot_lightcurve(resultname,caption)
+    pdf.savefig()
+
+    plot_residual(resultname,caption)
     pdf.savefig()
 
     plot_lightcurve(resultname,caption,1.5)
