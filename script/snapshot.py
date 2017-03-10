@@ -192,10 +192,10 @@ def plot_magmap(basename,caption="",var=""):
     im=ax1.imshow(z, vmin=1.0,vmax=magmax,extent=(min(x),max(x),min(y),max(y)), origin='lower', cmap='hot_r')
     cb=plt.colorbar(im,ticks=np.arange(magmax)+1)
     im=ax1.imshow(z, vmin=1.0,vmax=magmax,extent=(min(x),max(x),min(y),max(y)), origin='lower', cmap='hot_r')
+
     #superimpose the trajectory
     mtraj=np.loadtxt(basename+"_traj.dat")
-    dtraj=np.loadtxt(basename+"_d_traj.dat")
-    
+    dtraj=np.loadtxt(basename+"_d_traj.dat")    
     #ax1.autoscale(False)
     ax1.plot( mtraj[:,2],mtraj[:,3],'b-',scaley=False,scalex=False)
     ax1.autoscale(False)
