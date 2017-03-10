@@ -73,12 +73,13 @@ protected:
   double phys_time0;
   bool have_phys_time_ref; 
   double tpass_ref_time;
+  bool allow_neg_r0;//For non-parallax, this is not allowed
 public:
   static bool verbose;
-  Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tpass(0),tpass_ref_time(0){
+  Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tpass(0),tpass_ref_time(0),allow_neg_r0(false){
     typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
-  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0),have_phys_time_ref(false),phys_time0(0),tpass_ref_time(0){
+  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0),have_phys_time_ref(false),phys_time0(0),tpass_ref_time(0),allow_neg_r0(false){
     typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
   Trajectory():Trajectory(Point(0,0),Point(1,0)){
@@ -171,6 +172,8 @@ public:
       *optValue("remap_r0_ref_val")>>r0_ref;
       do_remap_r0=true;
     }
+    double max_r0;
+    *optValue("max_r0")>>max_r0;
     if(optSet("log_tE"))do_log_tE=true;
     *optValue("tE_max")>>tE_max;
     haveSetup();
@@ -184,12 +187,18 @@ public:
     sp=space;
     //set nativePrior
     double twidth=300,t0=0;
-    double r0s=6.0;
-    if(do_remap_r0)r0s=1.0;
+    
+    double r0s=max_r0;
+    if(allow_neg_r0)r0s*=2.0;//restricting to positive only (not appropriate with parallax)
+    if(do_remap_r0){
+      if(allow_neg_r0)cout<<"Trajectory::setup:  Warning remap_r0 not appropriate with ParallaxTrajectory!"<<endl;
+      r0s=1.0;
+    }
     const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
     valarray<double>    centers((initializer_list<double>){ r0s/2.0, tE_max/2,  t0     });
     valarray<double> halfwidths((initializer_list<double>){ r0s/2.0, tE_max/2,  twidth });
     valarray<int>         types((initializer_list<int>){        uni,      uni,  gauss  });
+    if(allow_neg_r0 and not do_remap_r0)centers[0]=0;
     if(do_log_tE){
       centers[1]=log10(tE_max)/2;
       halfwidths[1]=log10(tE_max)/2;
@@ -228,6 +237,7 @@ public:
   void addOptions(Options &opt,const string &prefix=""){
     Optioned::addOptions(opt,prefix);
     addOption("log_tE","Use log10 based variable (and Gaussian prior with 1-sigma range [0:log10(tE_max)] ) for tE parameter rather than direct tE value.");
+    addOption("max_r0","Max r0 impact parameter range. (linear prior only,set negative to force positve r0, default=6.0)","6.0");
     addOption("remap_r0","Use remapped r0 coordinate.");
     addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");
     addOption("tE_max","Uniform prior max in tE. Default=100.0/","100.0");
@@ -274,6 +284,7 @@ public:
   virtual ~ParallaxTrajectory(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
   ParallaxTrajectory(){
     typestring="Trajectory";option_name="EarthTraj";option_info="Earth parallax relative trajectory.";
+    allow_neg_r0=true;
   };
   /*
     ParallaxTrajectory(Point pos0, Point vel0, double t_end, double caden, double source_ra=0, double source_dec=0, double t2000off=0, double ts=0):Trajectory(pos0,vel0,t_end,caden,ts){

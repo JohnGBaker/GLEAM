@@ -109,33 +109,44 @@ Point ParallaxTrajectory::ssb_los_transform(double x, double y, double z)const{
   ///Here we must assume some coordinate frame orientation for the observer plane. 
   ///In particular we assume that the ecliptic intersects the observer plane along the x-axis
   ///and SSB north projects onto the y-axis.  This transformation breaks down if the source-lens
-  ///lies on/near one of the SSB poles, as is roughly the case for the LMC.  An alternative would
-  /// The transformation from BBS (r,\theta,\phi) to the observation plane x-y-z coordinates is then:
+  ///lies on/near one of the SSB poles, as is roughly the case for the LMC. 
+  /// The transformation from SSB (r,\theta,\phi) to the observation plane x-y-z coordinates is then:
   ///   \f$ x = - r \sin\theta \sin(\phi-l) \f$
   ///   \f$ y = - r \sin\theta \cos(\phi-l) \sin b + r \cos\theta \cos b \f$
   ///   \f$ z = - r \sin\theta \cos(\phi-l) \cos b - r \cos\theta \sin b \f$
   ///with l=source_lon and b=source_lat.  We have included z for completeness, though it is irrelevant.
+  ///
+  ///To check: concretely we should have:
+  ///  - orbiting in ecliptic toward the source, then b=0,theta=pi/2, phi=l-pi/2 -> (x,y,z)=(r,0,0)
+  ///  - orbiting in ecliptic (theta=pi/2) at nearest point the source, then phi=l, -> (x,y,z)=(0,-r*sin(b),-r*cos(b))
+  ///  - at ecliptic north (theta=0)   -> (x,y,z)-> (0,r cos(b),-r sin(b))
+  ///  - orbiting in ecliptic with source at ecliptic north (b=pi/2), then (x,y,z) -> (r cos(phi-(l-pi/2)),-r sin(phi-(l-pi/2)),0)
+  /// All these check out.
+  ///
   ///In terms of SSB cartesian coordinates: \f$ z_{SSB} = r\cos\theta, x_{SSB} = r\sin\theta\cos\phi, etc. \f$ 
   ///So we get:
   ///   xnew = -y*cl + x*sl
-  ///   ynew = -(x*cl+y*cl)*sb +z*cb
-  ///   znew = -(x*cl+y*cl)*cb -z*sb
+  ///   ynew = -(x*cl+y*sl)*sb +z*cb
+  ///   znew = -(x*cl+y*sl)*cb -z*sb
   /// where cl=cos(source_lon), etc.
   double xnew,ynew;
   xnew = -y*cos_source_lon + x*sin_source_lon;
   ynew = -(x*cos_source_lon + y*sin_source_lon)*sin_source_lat + z*cos_source_lat;
-  //last we rotate to lens frame
-  double xlens,ylens;
-  xlens = xnew * cos_dphi - ynew * sin_dphi;
-  ylens = xnew * sin_dphi + ynew * cos_dphi;
+  //last we rotate to a frame in which the SSB moves in x-direction in observer plane
+  //We assume the SSB moves through the observer plane in the Phi0 direction. So we rotate clock-wise by Phi0.
+  //Typical convention relates parallax to the apparent direction of motion of the lens-source which we call dphi=-Phi0.
+  //We thus rotate the x-y plane counter-clockwise by dphi.
+  double xtraj,ytraj;
+  xtraj = xnew * cos_dphi - ynew * sin_dphi;
+  ytraj = xnew * sin_dphi + ynew * cos_dphi;
   if(verbose)
 #pragma omp critical 
     {
       cout<<"ParallaxTrajectory::ssb_los_transform: xnew,ynew= "<<xnew<<","<<ynew<<endl;
-      cout<<"ParallaxTrajectory::ssb_los_transform: xlens,ylens= "<<xlens<<","<<ylens<<endl;
+      cout<<"ParallaxTrajectory::ssb_los_transform: xtraj,ytraj= "<<xtraj<<","<<ytraj<<endl;
     }
   
-  return Point(xlens,ylens);
+  return Point(xtraj,ytraj);
 };
 
 
