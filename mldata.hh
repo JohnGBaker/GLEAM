@@ -158,13 +158,17 @@ private:
 protected:
   ///Initial data processing common to ML_photometry_data
   void processData(){
+    ///Data times are converted from the time frame in the original data files to an internal time frame
+    ///time0 holds the time in the data-file frame which maps to internal-time=0
     if(!have_time0){
       if(have_time_frame){
 	if(time_frame->registered()){
 	  time0=time_frame->getRef()[0];
+	  cout<<"ML_photometry::processData: Set from supplied frame, time0="<<setprecision(15)<<time0<<endl;
 	}
 	else{
 	  time0=getFocusLabel();
+	  cout<<"ML_photometry::processData: Defining frame based on data, time0="<<setprecision(15)<<time0<<endl;
 	  vector<double> ref(1);
 	  ref[0]=time0;
 	  time_frame->setRegister(ref);
