@@ -94,7 +94,6 @@ public:
     addTypeOptions(opt);
     addOption("tcut","Cut times before tcut (relative to tmax). Default=-1e20","-1e20");
     opt.add(Option("Fn_max","Uniform prior max (min for additive) in Fn. Default=1.0 (18.0 additive)/","1"));
-    addOption("ref_time","Refer time parameters to this JD time>0. (Default -1.0 -> use data peak.)","-1.0");
   };
   ///Here provide options for the known types of ML_photometry_data...
   ///This is provided statically to allow options to select one or more types of data before specifying the 
@@ -124,9 +123,6 @@ public:
     have_time_frame=true;
   };
   virtual void setup(){
-    double ref_time;
-    *optValue("ref_time")>>ref_time;
-    if(ref_time>=0)set_reference_time(ref_time);
     ///Set up the output stateSpace for this object
     stateSpace space(1);
     string names[]={"Mn"};
@@ -158,13 +154,17 @@ private:
 protected:
   ///Initial data processing common to ML_photometry_data
   void processData(){
+    ///Data times are converted from the time frame in the original data files to an internal time frame
+    ///time0 holds the time in the data-file frame which maps to internal-time=0
     if(!have_time0){
       if(have_time_frame){
 	if(time_frame->registered()){
 	  time0=time_frame->getRef()[0];
+	  cout<<"ML_photometry::processData: Set from supplied frame, time0="<<setprecision(15)<<time0<<endl;
 	}
 	else{
 	  time0=getFocusLabel();
+	  cout<<"ML_photometry::processData: Defining frame based on data, time0="<<setprecision(15)<<time0<<endl;
 	  vector<double> ref(1);
 	  ref[0]=time0;
 	  time_frame->setRegister(ref);
@@ -176,6 +176,7 @@ protected:
     }
     cout<<"ML_photometry data offset by "<<setprecision(15)<<time0<<" -> 0"<<endl;
     for(double &t : times)t-=time0;//permanently offset times from their to put the peak at 0.
+    cout<<"...first data point is recorded at t[0]= "<<setprecision(15)<<times[0]<<endl;
     double tcut;
     *optValue("tcut")>>tcut;
     cropBefore(tcut);

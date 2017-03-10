@@ -30,33 +30,31 @@ typedef struct Point {
 ///Next is a class for trajectories through the observer plane
 ///base class implements a straight-line trajectory
 class Trajectory : public bayes_component {
-  //Transition notes:
-  //In defining Trajectory parameters everything is done nominally in a frame with
-  //the source-CM to lens-CM line-of-sight as origin in the observer plane.
-  //Trajectory parameters indicate where the Sun/Earth passes through that
-  //plane, thus Trajectory parameters include at least r0, [phi?], and probably
-  //also tpass.  An issue is that, as of now, tpass is defined in physical
-  //units while everything else about the trajectory is in Einstein units.
-  //For Parallax trajectories, we also need the absolute physical time
-  //this all means that we probably need tE available as trajectory parameter
-  //as well, which is natural tE mainly relates the rate that the sun crosses
-  //the observer plane to the Einstein units.
-  //However, we should consider the possibility that we are working with data from
-  //several observers, such as Earth/Spitzer...  In that case, the solar parameters
-  //should be common to all trajectories. Still in our construction these parameters
-  //seem relevant only/mainly to the Trajectorys and nowhere else.  An approach for
-  //this, similar to our plan for time-alignment of data objects, can be to have
-  //one trajectory serve as the base for the others, providing these common parameters.
-  //This could be set up at in the setup (where parameters are realized anyway)
-  //though a scheme for setting up at construction might also be considered.
-  //On other consideration, we do not want to have phi necessarily be a parameter of Trajectory
-  //since this is setting the relative angle between the lens and the observer
-  //plane.  The observer plane orientation can be regarded as fixed wrt the suns motion direction.
-  //The lens rotation and center offset can be implemented as an explicit coordinate transformation
-  //as another layer with the GLens class.  That is, GLens internals will not all Traj::get_obs_pos
-  //directly, but will call GLens::get_obs_pos which will apply any offset and (null by default)
-  //rotation.  Overloaded versions of this can reorient the lens for binaries, this can be time
-  //dependent for orbiting binaries.
+  ///Trajectory parameters connect times to observer angular positions relative to the source-CM to lens-CM line-of-sight
+  ///as origin in the observer plane.  Trajectory parameters indicate where the Sun/Earth/Satellite passes through that
+  ///plane, thus Trajectory parameters include at least:
+  ///      tE     Einstein crossing time  (days)
+  ///      r0     SSB impact parameter   (Einstein units)
+  ///      tpass  time of SSB closest approach (absolute time in days)
+  ///Where SSB is Solar-system barycenter.
+  ///
+  ///An issue is the time referencing of tpass.  Depending on how the data is set up, times may come naturally as relative
+  ///to data peak, absolute Julian days or time since start of J2000 epoch. While the time-referencing doesn't matter for the
+  ///base class (corresponging to observation at the Sun), for non-trivial derived-class parallax trajectories, we also need
+  ///the absolute physical time reference to associate to ephemeris information. The bayes_frame time frame provides a way to
+  ///anchor these time references.
+  ///
+  ///The convention is that r0, tE, tpass remain with respect to the passing of the SSB and that observer plane orientation
+  ///is regarded as fixed wrt the suns motion direction. (An old parameter phi allowed for actively changing the trajectory
+  ///angle, and internal support for that probably should be eliminated).  Note that lens rotation and center offset are
+  ///handled by the GLens object be implemented as an explicit coordinate transformation
+  ///
+  ///Supporting the future functionality of working with data from several observers, such as Earth/Spitzer.  In that case,
+  ///the solar parameters should be common to all trajectories.  An approach for this, similar to our plan for time-alignment
+  ///of data objects, can be to have one trajectory serve as the base for the others, providing these common parameters.
+  ///This could be set up at in the setup (where parameters are realized anyway) though a scheme for setting up at
+  ///construction might also be considered.  TBD
+
 protected:
   Point p0;
   Point v0;
@@ -74,12 +72,13 @@ protected:
   bayes_frame *phys_time_ref_frame;
   double phys_time0;
   bool have_phys_time_ref; 
+  double tpass_ref_time;
 public:
   static bool verbose;
-  Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tpass(0){
+  Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tpass(0),tpass_ref_time(0){
     typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
-  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0),have_phys_time_ref(false),phys_time0(0){
+  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0),have_phys_time_ref(false),phys_time0(0),tpass_ref_time(0){
     typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
   Trajectory():Trajectory(Point(0,0),Point(1,0)){
@@ -144,7 +143,7 @@ public:
     checkWorkingStateSpace();
     r0=s.get_param(idx_r0);
     tE=s.get_param(idx_tE);
-    tpass=s.get_param(idx_tpass);
+    tpass=s.get_param(idx_tpass)-tpass_ref_time;
     if(do_remap_r0)r0=r0_ref/sqrt(1.0/r0-1.0);
     if(do_log_tE)tE=pow(10.0,tE);
     //setup(Point(0,r0), Point(1,0));
@@ -153,18 +152,21 @@ public:
   };
   ///This overload of setup is (defacto?) part of the StateSpaceInterface
   virtual void setup(){
-    //We internally us time referenced to the J2000 epoch start
+    //We internally use time referenced to the J2000 epoch start
     const double J2000day0=2451545.0;
     if(have_phys_time_ref){
       if(phys_time_ref_frame->registered()){
 	phys_time0=phys_time_ref_frame->getRef()[0]-J2000day0;
+	cout<<"Trajectory::setup: Using JDframe yields phys_time0="<<phys_time0<<" since start of J2000 epoch. "<<endl;
       }
-      else{
+      else{ //working without a defined frame in this case
+	cout<<"Trajectory::setup: Defining JDframe using phys_time0="<<phys_time0<<" since start of J2000 epoch. "<<endl;
 	vector<double> ref(1);
 	ref[0]=phys_time0+J2000day0;
 	phys_time_ref_frame->setRegister(ref);
       }
     }
+    *optValue("ref_time")>>tpass_ref_time;
     if(optSet("remap_r0")){
       *optValue("remap_r0_ref_val")>>r0_ref;
       do_remap_r0=true;
@@ -207,6 +209,7 @@ public:
   ///with cdf->1 as r0->infinity.
   ///Appropriately this implies a maximal pdf somewhere in the middle, which should be near the 
   ///expected sensitivity limit (large r0 means small magnification).
+  ///[To be fixed.  As Jeremy points out impact parameter is essentially a 1-D draw, not 2-D, and should thus scale linearly not with cross-section]
   ///A simple such function is s=(1-cdf)=1/(1+(r0_ref/r0)^2).  The max in the pdf will be at r0=r0_ref/sqrt(3) ~ r0_ref
   ///We realize this by choosing from the unit interval for s with r0=r0_ref/sqrt(1/s-1) (thi inverse cdf).
   ///Calling this function turns this behavior on and sets r0_ref.  To understand how to scale r0_ref,
@@ -228,29 +231,20 @@ public:
     addOption("remap_r0","Use remapped r0 coordinate.");
     addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");
     addOption("tE_max","Uniform prior max in tE. Default=100.0/","100.0");
+    addOption("ref_time","Interpret tpass parameter as offset from this time. (Default 0.0","0.0");
   };
 
 };
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-///Here is a ParallaxTrajectory class for when the observer motion cannot be neglected.
+///This is a ParallaxTrajectory class for when the observer motion relative to the Sun cannot be neglected.
 ///The nominal version of this class includes the Earth's trajectory accurate to
 ///1e4 km or about a few minutes motion.  The class is designed to be easily generalizable
 ///to other orbits by overloading the function that provides the orbital trajectory.
 ///
-///This implementation will not be ready to use until we generalize the handling of Trajectory
-///objects and their parameters overall.  Right now these are hard coded in mlsignal.hh and in
-///gleam.cc.  Supporting new parameters will require eliminating most or all explicit parameter
-///references in gleam.cc and thus requires alternative handling of the priors. We also need
-///to do a re-think of the parameterization of the trajectory/lens parameters.
-///
-///Parameter rethink:
-/// Previously, the trajectory parameters were interpreted in the lens-frame, with an angle parameter
-/// which specifies the rotation between the lens frame and the velocity direction of the
-/// Earth-sun projected to the image plane.  Since the velocity is assumed to be constant, we
-/// are free to more precisely interpret this angle as orientation at the point of closest
-/// approach of the Sun's path to the COM line-of-sight origin.
+///Parameter comments:
+/// The SSB velocity is assumed to be constant, and oriented in the "x-direction"
 /// To complete the specification we need another angle relating the Sun's path to the physical
 /// frame (e.g. of the ecliptic). That additional angle is a heliocentric version of the so-called
 /// parallax direction (See Gould2014[arxiv:1408.0797] for somewhat relevant discussion). To give
