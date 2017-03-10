@@ -72,12 +72,13 @@ protected:
   bayes_frame *phys_time_ref_frame;
   double phys_time0;
   bool have_phys_time_ref; 
+  double tpass_ref_time;
 public:
   static bool verbose;
-  Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tpass(0){
+  Trajectory(Point pos0,Point vel0,double t_end,double cadence, double ts=0):p0(pos0),v0(vel0),cad(cadence),tf(t_end),ts(ts),toff(0),have_times(false),tE(1),tpass(0),tpass_ref_time(0){
     typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
-  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0),have_phys_time_ref(false),phys_time0(0){
+  Trajectory(Point pos0,Point vel0):p0(pos0),v0(vel0),cad(1),tf(1),ts(0),have_times(false),tE(1),tpass(0),have_phys_time_ref(false),phys_time0(0),tpass_ref_time(0){
     typestring="Trajectory";option_name="LinearTraj";option_info="Linear relative trajectory.";
   };
   Trajectory():Trajectory(Point(0,0),Point(1,0)){
@@ -142,7 +143,7 @@ public:
     checkWorkingStateSpace();
     r0=s.get_param(idx_r0);
     tE=s.get_param(idx_tE);
-    tpass=s.get_param(idx_tpass);
+    tpass=s.get_param(idx_tpass)-tpass_ref_time;
     if(do_remap_r0)r0=r0_ref/sqrt(1.0/r0-1.0);
     if(do_log_tE)tE=pow(10.0,tE);
     //setup(Point(0,r0), Point(1,0));
@@ -165,6 +166,7 @@ public:
 	phys_time_ref_frame->setRegister(ref);
       }
     }
+    *optValue("ref_time")>>tpass_ref_time;
     if(optSet("remap_r0")){
       *optValue("remap_r0_ref_val")>>r0_ref;
       do_remap_r0=true;
@@ -229,6 +231,7 @@ public:
     addOption("remap_r0","Use remapped r0 coordinate.");
     addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");
     addOption("tE_max","Uniform prior max in tE. Default=100.0/","100.0");
+    addOption("ref_time","Interpret tpass parameter as offset from this time. (Default 0.0","0.0");
   };
 
 };
