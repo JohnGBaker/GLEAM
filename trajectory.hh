@@ -309,6 +309,7 @@ protected:
   ///These are internal functions needed to realize the parallax
   ///First note that we will use time standardized to in JD since J2000
   ///Define the observer trajectory position in SSB coordinates
+  ///First argument should be frame-time
   virtual void get_obs_pos_ssb(double t, double &x, double &y, double &z)const;
   ///Define the observer trajectory velocity in SSB coordinates
   ///For this class we define an approx Earth-Moon barycenter trajectory but that can be overloaded.
@@ -316,6 +317,7 @@ protected:
   ///Using the approx location of the source, transform from ssb in source-lens line-of-sight frame.
   virtual Point ssb_los_transform(double x, double y, double z)const;
   ///Compute observer position offset from ssb in source-lens line-of-sight frame.
+  ///Argument takes frame-time
   virtual Point get_obs_pos_offset(double t)const{
     double x=0,y=0,z=0;
     get_obs_pos_ssb(t,x,y,z);
@@ -325,6 +327,7 @@ protected:
       {
 	cout<<"ParallaxTrajectory::get_obs_pos_offset: x,y,z= "<<x<<","<<y<<","<<z<<endl;
 	cout<<"ParallaxTrajectory::get_obs_pos_offset: t= "<<t<<endl;
+	cout<<"ParallaxTrajectory::get_obs_pos_offset/norm: = ("<<result.x/piE<<","<<result.y/piE<<")"<<endl;
 	cout<<"ParallaxTrajectory::get_obs_pos_offset: = ("<<result.x<<","<<result.y<<")  piE="<<piE<<endl;
       }
     return result;
@@ -336,7 +339,7 @@ protected:
     return ssb_los_transform(x,y,z)*piE;
   };
   ///approximately convert equatorial to ecliptic coordinates
-  void equatorial2ecliptic(double source_ra, double source_dec, double source_lat, double source_lon){
+  void equatorial2ecliptic(double source_ra, double source_dec, double &source_lat, double &source_lon){
     const double degrad=180.0/M_PI;
     const double eps=23.4372/degrad; //as of 2016.0, decreasing at 0.00013/yr
     const double ceps=cos(eps),seps=sin(eps);
@@ -377,6 +380,12 @@ protected:
     sin_source_lon=sin(source_lon);
     cos_source_lat=cos(source_lat);
     sin_source_lat=sin(source_lat);
+    if(0)
+#pragma omp critical 
+      {
+	cout<<"ParallaxTrajectory::ssb_los_transform: (cos,sin) of source lon="<<source_lon<<" --> ("<<cos_source_lon<<","<<sin_source_lon<<")"<<endl;
+	cout<<"ParallaxTrajectory::ssb_los_transform: (cos,sin) of source lat="<<source_lat<<" --> ("<<cos_source_lat<<","<<sin_source_lat<<")"<<endl;
+      }
     //Augment nativeSpace;
     stateSpace space(2);
     string names[]={"logpiE","phimu"};

@@ -39,8 +39,8 @@ Point operator*(const Point &a, const double &val){return Point(a.x*val,a.y*val)
 /// The results are returned in the argument in Cartesian SSB coords consistent
 /// with ecliptic sky coordinates.
 ///
-void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double &z)const{
-  t=get_phys_time(t)+phys_time0;
+void ParallaxTrajectory::get_obs_pos_ssb(double t_frame, double & x, double &y, double &z)const{
+  double t=get_phys_time(t_frame)+phys_time0;
   ///We take t to be terrestrial time, TT, time in days since the beginning of 
   ///the J2000 epoch, meaning seconds since J2000 (ts) divided by 86400. 
   /// I.e. t=ts/86400.  Note that the J2000 epoch reference corresponds to 
@@ -73,18 +73,19 @@ void ParallaxTrajectory::get_obs_pos_ssb(double t, double & x, double &y, double
   //perihl. cartesian coords
   double xper=a*(cos(E)-e),yper=a*sqrt(1-e*e)*sin(E);
   double cp=cos(lonp),sp=sin(lonp),cI=cos(I),sI=sin(I);
-  if(verbose)
-#pragma omp critical 
-    {
-      cout<<"ParallaxTrajectory::get_obs_pos_ssb: cp,xper,sp,yper,E,Eold:"<<cp<<", "<<xper<<", "<<sp<<", "<<yper<<", "<<E<<", "<<Eold<<endl;
-      cout<<"L,e,M,a:"<<L<<", "<<e<<", "<<M<<", "<<a<<endl;
-      cout<<"phys_time0="<<phys_time0<<" t="<<t<<" yr="<<2000+t/265.25<<endl;
-    }
   //ecliptic coords
   x=cp*xper-sp*yper;
   double rhoyz=(sp*xper+cp*yper);
   y=rhoyz*cI;
   z=rhoyz*sI;
+  if(verbose)
+#pragma omp critical 
+    {
+      cout<<"ParallaxTrajectory::get_obs_pos_ssb: cp,xper,sp,yper,E,Eold:"<<cp<<", "<<xper<<", "<<sp<<", "<<yper<<", "<<E<<", "<<Eold<<endl;
+      cout<<"L,e,M,a:"<<L<<", "<<e<<", "<<M<<", "<<a<<endl;
+      cout<<"t_frame="<<t_frame<<" phys_time0="<<phys_time0<<" tE"<<tE<<" t="<<t<<" yr="<<2000+t/365.25<<endl;
+      cout<<"(x,y,z) = ("<<x<<", "<<y<<", "<<z<<")"<<endl;
+    }
 };
 
 ///Here we just compute the second order numerical derivative.  That is probably good enough...but we could do analytic..
@@ -142,6 +143,8 @@ Point ParallaxTrajectory::ssb_los_transform(double x, double y, double z)const{
   if(verbose)
 #pragma omp critical 
     {
+      cout<<"ParallaxTrajectory::ssb_los_transform: (cos,sin) of source lon= "<<cos_source_lon<<","<<sin_source_lon<<")"<<endl;
+      cout<<"ParallaxTrajectory::ssb_los_transform: (cos,sin) of source lat= "<<cos_source_lat<<","<<sin_source_lat<<")"<<endl;
       cout<<"ParallaxTrajectory::ssb_los_transform: xnew,ynew= "<<xnew<<","<<ynew<<endl;
       cout<<"ParallaxTrajectory::ssb_los_transform: xtraj,ytraj= "<<xtraj<<","<<ytraj<<endl;
     }
