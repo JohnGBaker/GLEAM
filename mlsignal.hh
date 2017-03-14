@@ -352,7 +352,7 @@ public:
     cout<<"Dumping trajectory:"<<tr->print_info()<<endl;
     tr->set_times(times);
     cout<<"times range from "<<tr->t_start()<<" to "<<tr->t_end()<<endl;
-    Trajectory::verbose=true;
+    //Trajectory::verbose=true;
     out<<"#"<<s.get_string()<<endl;
     out<<"#";
     for(int i=0;i<s.size();i++)out<<s.getSpace()->get_name(i)<<" ";
