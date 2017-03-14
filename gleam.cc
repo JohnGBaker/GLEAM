@@ -390,6 +390,7 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
   //fine trajectory
     ss.str("");ss<<outname<<"_traj.dat";
   {
+    times.resize(0);
     double delta_t=(tend-tstart)/(nsamples-1.0);
     for(int i=0;i<nsamples;i++){
       double t=tstart+i*delta_t;

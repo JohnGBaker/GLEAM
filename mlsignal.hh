@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 #include <valarray>
 #include "bayesian.hh"
 
@@ -360,7 +361,7 @@ public:
     for(auto tph:times){
       double t=tr->get_frame_time(tph);
       Point p=tr->get_obs_pos(t);//Note: here p comes out in traj frame.
-      out<<t+tref<<" "<<t<<" "<<p.x<<" "<<p.y<<endl;
+      out<<setprecision(15)<<t+tref<<" "<<t<<" "<<p.x<<" "<<p.y<<endl;
     }
   };
 

@@ -329,6 +329,7 @@ public:
       }
     }
     haveData();
+    cout<<"ML_generic_data: After initial read of data first datum time is times[0]="<<times[0]<<endl;
     processData();
     return;
   };
