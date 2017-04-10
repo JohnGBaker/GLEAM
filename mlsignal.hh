@@ -111,12 +111,15 @@ public:
 
       //compute the magnifications
       worktraj->set_times(xtimes);
-      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
+      variances.resize(0);
+      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags,variances);
 
       //Variables for the averaging
       vector<double>sum(nt);
+      vector<double>vsum(nt);
       vector<double>sum2(nt);
       vector< vector<double> >magsarray(nt,vector<double>(nsmear));
+      vector< vector<double> >dmagsarray(nt,vector<double>(nsmear));
       
       //conduct averaging to get results for original time grid
       for(int i=0;i<nt*nsmear;i++){
@@ -129,13 +132,22 @@ public:
 	//sum2[idata]+=val*val*weight[ismear];
 	magsarray[idata][ismear]=val;
       }
+      if(variances.size()>0){
+	for(int i=0;i<nt*nsmear;i++){
+	  double val=variances[indices[i]];
+	  int idata=table[i].first.first;
+	  int ismear=table[i].first.second;
+	  vsum[idata]+=val;
+	  dmagsarray[idata][ismear]=val;
+	}
+      }
       modelmags.resize(nt);
       variances.resize(nt);
 
       //cout<<"vals/t,avg,var:"<<endl;
       for(int i=0;i<nt;i++){
 	double avg = sum[i]/nsmear;
-	double var = ( sum2[i] - nsmear*avg*avg)/(nsmear-1.0);
+	double var = vsum[i]/nsmear + ( sum2[i] - nsmear*avg*avg)/(nsmear-1.0);
 	if(smear_trim_level>0){
 	  //We will recompute the average and variance after trimming back any values especially far from the smeared average.
 	  //The trim level is expressed as some maximum number of sigma away from the mean.
@@ -199,7 +211,8 @@ public:
       }
     } else {//no smearing
       worktraj->set_times(times);
-      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
+      vector<double>dmags;
+      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags,dmags);
       variances.resize(times.size());
       bool burped=false;
       for(int i=0;i<times.size();i++ ){
@@ -210,6 +223,7 @@ public:
 	  cout<<"get_model_signal: model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
 	  burped=true;
 	}
+	if(dmags.size()>0)variances[i]=dmags[indices[i]]*dmags[indices[i]];
       }
     }
       
