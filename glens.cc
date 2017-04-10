@@ -885,8 +885,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   double area0=getPolygonAreaCoM(curve,p,c0);
   magnification=area/area0;
   p=cent*(1.0/area)+c0*(-1.0/area0);//we are recycling this to use as the overall image centroid offset now.
-  cout<<"total area="<<area<<" > "<<area0<<endl;
-  cout<<"centroid shift=("<<p.x<<","<<p.y<<")"<<endl;
+  //cout<<"total area="<<area<<" > "<<area0<<endl;
+  //cout<<"centroid shift=("<<p.x<<","<<p.y<<")"<<endl;
 
   // Step 8: Compute variance, trimming excesses
   var=0;
@@ -897,7 +897,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     var+=dmg*dmg;
   }
   var/=vertex_mags.size();
-  cout<<"sqrt(var)="<<sqrt(var)<<endl;
+  //cout<<"sqrt(var)="<<sqrt(var)<<endl;
   
 }
 
@@ -912,9 +912,10 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   bool do_polygon = false;
   if(finite_source_method==1)do_polygon=true;
   if(finite_source_method==2)do_laplacian=true;
-  cout<<"source_radius="<<source_radius<<endl;
+
+  /*cout<<"source_radius="<<source_radius<<endl;
   cout<<"do_laplacian="<<do_laplacian<<endl;
-  cout<<"do_polygon="<<do_polygon<<endl;
+  cout<<"do_polygon="<<do_polygon<<endl;*/
 
   int Ngrid=traj.Nsamples();
   time_series.resize(Ngrid);
@@ -924,7 +925,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   for(int i=0; i<Ngrid;i++){
     double tgrid=traj.get_obs_time(i);
     Point b=get_obs_pos(traj,tgrid);
-    cout<<i<<" t="<<tgrid<<" b=("<<b.x<<","<<b.y<<")"<<endl;
+    //cout<<i<<" t="<<tgrid<<" b=("<<b.x<<","<<b.y<<")"<<endl;
     double Amag=0;
     Point CoM;
     double variance=0;
@@ -960,7 +961,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     //For now we just have fixed choice of analytic or polygon methods
 
     if(do_laplacian){
-      cout<<"doing laplacian"<<endl;
+      //cout<<"doing laplacian"<<endl;
       //This method builds on PejchaEA2007? method
       // Amag = \sum_k I[k]/I[0] Lap^k[mu] / (2^k k!)^2
       // I[k] = \int_0^1 r^(2k+1) B(r) dr
@@ -1002,7 +1003,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       //cout<<"extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
       //cout<<" mu_i={ ";for(auto mui : mu0s)cout<<mui<<" ";cout<<"}"<<endl;
       image_area_mag(b, source_radius, Npoly, Amag, variance, out);  
-      cout<<"Npoly="<<Npoly<<endl;
+      //cout<<"Npoly="<<Npoly<<endl;
       CoM=b;
     }
 
@@ -1011,7 +1012,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     thetas_series[i]=vector<Point>(1,CoM); //Note we return lenght-1 vector with the overall image centroid offset.
     mag_series[i]=Amag;
     dmag_series[i]=sqrt(variance);
-    cout<<"Amag="<<Amag<<endl;
+    //cout<<"Amag="<<Amag<<endl;
   }
 
 };
@@ -1154,7 +1155,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
       }
     } else { //not evolving, solve polynomial
       beta=get_obs_pos(traj,tgrid);
-      cout<<i<<" t="<<tgrid<<" b=("<<beta.x<<","<<beta.y<<")"<<endl;
+      //cout<<i<<" t="<<tgrid<<" b=("<<beta.x<<","<<beta.y<<")"<<endl;
       //cout<<"Not evolving: beta=("<<beta.x<<","<<beta.y<<")"<<endl;
       thetas.clear();
       thetas=invmap(beta);

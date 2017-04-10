@@ -144,9 +144,9 @@ public:
   };
   virtual void setState(const state &st){
     bayes_component::setState(st);
-    cout<<"idx_log_rho_star="<<idx_log_rho_star<<endl;
+    //cout<<"idx_log_rho_star="<<idx_log_rho_star<<endl;
     if(do_finite_source)source_radius=pow(10.0,st.get_param(idx_log_rho_star));
-    cout<<"source_radius="<<source_radius<<endl;
+    //cout<<"source_radius="<<source_radius<<endl;
   };
   //getCenter provides *trajectory frame* coordinates for the center. Except for with -2, which give the lens frame CM. 
   virtual Point getCenter(int option=-2)const{return Point(0,0);};
