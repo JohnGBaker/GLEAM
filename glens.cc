@@ -306,7 +306,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
   const bool refine_sphere=false;
   const double refine_limit_factor=10.;
-  const double refine_limit=pow(twopi*radius/N/refine_limit_factor,2.0);
+  const double refine_prec_limit=1e-12;
+  const double refine_limit=pow(twopi*radius/N/refine_limit_factor,2.0)+(p.x*p.x+p.y*p.y)*refine_prec_limit*refine_prec_limit;
   const int nadd_max=3;
   bool debug_area_mag=false;
   bool super_debug=false;
@@ -700,15 +701,15 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
       double dp2=dp.x*dp.x+dp.y*dp.y;
       while(nadd>0 and dp2<refine_limit*factor*factor)nadd--;//enforce an overall limit in how far we refine
       if(nadd==0)norefine=true;//We will go through this step again with a flag set indicating not to refine more
-      if(debug_area_mag)
+      if(debug_area_mag){
 	cout<<(norefine?"NOT ":"")<<"Refining! N="<<N<<" -> "<<N+nadd<<" maxnorm="<<maxnorm<<" > "<<maxnorm_limit<<endl;
-	/*
-      cout<<"f,dp2,refine_limit,f^2:"<<factor<<","<<dp2<<","<<refine_limit<<","<<factor*factor<<endl;
-      cout<<"p=("<<p.x<<","<<p.y<<")  radius="<<radius<<endl;
-
-      cout<<"p(last)=("<<curve[ilast].x<<","<<curve[ilast].y<<")"<<endl;
-      cout<<"p(this)=("<<curve[ithis].x<<","<<curve[ithis].y<<")"<<endl;
-      */
+       
+	cout<<"f,dp2,refine_limit,f^2:"<<factor<<","<<dp2<<","<<refine_limit<<","<<factor*factor<<endl;
+	cout<<"p=("<<p.x<<","<<p.y<<")  radius="<<radius<<endl;
+	
+	cout<<"p(last)=("<<curve[ilast].x<<","<<curve[ilast].y<<")"<<endl;
+	cout<<"p(this)=("<<curve[ithis].x<<","<<curve[ithis].y<<")"<<endl;
+      }
       double phi0=0,dphi=0;
       if(refine_sphere){
 	dp=p0-p;
@@ -1089,7 +1090,10 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   if(mag_pcut>1) mag_pcut=1.0;
   const double dmag_pcut=ftol;
   //cout<<"enter finite source compute traj"<<endl;
-
+  //performace diagnostic
+  int Nsum=0;
+  int Npoly;
+  
   if(finite_source_method<0)dont_mix=true;
   if(abs(finite_source_method)==1){
     do_polygon=true;
@@ -1113,6 +1117,8 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     Point CoM;
     double variance=0;
 
+    Nsum++;
+    
     //At first we just compute the ordinary magnification and a leading-order finite source term
     //This is probably relatively fast enough that we can do it without worry about the additional cost
     vector<Point>thetas=invmap(b);
@@ -1186,13 +1192,14 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       double extra_area = (mg0-1)/Npoly_Asat;
       if(extra_area>1.0)extra_area=1.0;       //extra_area ranges from 0 to 1
       //int Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*N2scale));
-      int Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*extra_area*N2scale));
+      Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*extra_area*N2scale));
       //results go in Amag and CoM
       //cout<<"extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
       //cout<<" mu_i={ ";for(auto mui : mu0s)cout<<mui<<" ";cout<<"}"<<endl;
       image_area_mag(b, source_radius, Npoly, Amag, variance, out);  
       //if(Npoly>Npoly_max*5)cout<<"Npoly="<<Npoly<<endl;
       CoM=b;
+      Nsum+=Npoly;
     }
     //Sanity check
     if(Amag<1){
@@ -1210,10 +1217,13 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     /*
     if(do_polygon_test)
     #pragma omp critical    
-      cout<<"Amag="<<Amag<<" var="<<variance<<endl;
+      cout<<"Npoly="<<Npoly<<" Amag="<<Amag<<" var="<<variance<<endl;
     */
   }
-
+  /*
+  #pragma omp critical
+  cout<<"Nsum="<<Nsum<<endl;
+  */
 };
     
 //Use GSL routine to integrate 
