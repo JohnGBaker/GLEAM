@@ -55,8 +55,9 @@ else
   CC = x86_64-apple-darwin15-gcc-mp-5 -fcx-fortran-rules
   F90 = x86_64-apple-darwin15-gfortran-mp-5 -fcx-fortran-rules
   #Note the lens code seems faster (compiled with x86_64-apple-darwin13-gfortran-mp-4.8) with -O2 than -O3
+  #CFLAGS = -march=corei7 -g -lquadmath -Wuninitialized -fno-inline -fno-default-inline  -fopenmp
   CFLAGS = -march=corei7 -g -lquadmath -Wuninitialized -O2  -fopenmp
-  #CXXFLAGS = $(CFLAGS) -std=c++11 -g
+  #CXXFLAGS = $(CFLAGS) -std=c++11 -g -fno-inline -fno-default-inline
   CXXFLAGS = $(CFLAGS) -std=c++11 -O3
   GSLROOT=/opt/local
 

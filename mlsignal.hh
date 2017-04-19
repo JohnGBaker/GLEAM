@@ -58,6 +58,7 @@ public:
   //Produce the signal model
   vector<double> get_model_signal(const state &st, const vector<double> &times, vector<double> &variances)const override{
     //Caution!  Global/Member variables should not change or there will be problems with openmp
+    //cout<<"enter get_model_signal"<<endl;
     checkWorkingStateSpace();
     double result=0;
     double I0,Fs;
@@ -69,6 +70,7 @@ public:
     vector<vector<Point> > thetas;
     vector<int> indices;
 
+    //cout<<"cloning"<<endl;
     //We need to clone lens/traj before working with them so that each omp thread is working with different copies of the objects.
     GLens *worklens=lens->clone();
     worklens->setState(st);
@@ -77,6 +79,7 @@ public:
 
     //If specified, implement smearing across a small time band
     if(smearing){
+      //cout<<"smearing"<<endl;
       //various tuning controls
       const int trimcountmax=3;      
       const double min_var_scale=1e-8;
@@ -111,12 +114,15 @@ public:
 
       //compute the magnifications
       worktraj->set_times(xtimes);
-      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
+      variances.resize(0);
+      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags,variances);
 
       //Variables for the averaging
       vector<double>sum(nt);
+      vector<double>vsum(nt);
       vector<double>sum2(nt);
       vector< vector<double> >magsarray(nt,vector<double>(nsmear));
+      vector< vector<double> >dmagsarray(nt,vector<double>(nsmear));
       
       //conduct averaging to get results for original time grid
       for(int i=0;i<nt*nsmear;i++){
@@ -129,13 +135,22 @@ public:
 	//sum2[idata]+=val*val*weight[ismear];
 	magsarray[idata][ismear]=val;
       }
+      if(variances.size()>0){
+	for(int i=0;i<nt*nsmear;i++){
+	  double val=variances[indices[i]];
+	  int idata=table[i].first.first;
+	  int ismear=table[i].first.second;
+	  vsum[idata]+=val;
+	  dmagsarray[idata][ismear]=val;
+	}
+      }
       modelmags.resize(nt);
       variances.resize(nt);
 
       //cout<<"vals/t,avg,var:"<<endl;
       for(int i=0;i<nt;i++){
 	double avg = sum[i]/nsmear;
-	double var = ( sum2[i] - nsmear*avg*avg)/(nsmear-1.0);
+	double var = vsum[i]/nsmear + ( sum2[i] - nsmear*avg*avg)/(nsmear-1.0);
 	if(smear_trim_level>0){
 	  //We will recompute the average and variance after trimming back any values especially far from the smeared average.
 	  //The trim level is expressed as some maximum number of sigma away from the mean.
@@ -198,8 +213,12 @@ public:
 	}
       }
     } else {//no smearing
+      //cout<<"not smearing"<<endl;
       worktraj->set_times(times);
-      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags);
+      vector<double>dmags;
+      //cout<<"calling compute traj"<<endl;
+      worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags,dmags);
+      //cout<<"prep variance"<<endl;
       variances.resize(times.size());
       bool burped=false;
       for(int i=0;i<times.size();i++ ){
@@ -210,6 +229,8 @@ public:
 	  cout<<"get_model_signal: model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
 	  burped=true;
 	}
+	if(dmags.size()>0)variances[i]=dmags[indices[i]]*dmags[indices[i]];
+	//cout<<i<<" var="<<variances[i]<<endl;
       }
     }
       

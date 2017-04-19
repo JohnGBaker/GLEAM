@@ -63,11 +63,12 @@ public:
   */
   double evaluate_log(state &s){
     //#pragma omp critical
-    //cout<<"Evaluating likelihood for params"<<s.get_string()<<endl;
+    //cout<<"Evaluating likelihood ["<<count<<"] for params:"<<s.get_string()<<endl;
     valarray<double>params=s.get_params();
     //clock_t tstart=clock();
     double tstart=omp_get_wtime();
     double result=log_chi_squared(s);
+    //cout<<"got result"<<endl;
     double post=result;
     if(prior)post+=prior->evaluate_log(s);
     //clock_t tend=clock();

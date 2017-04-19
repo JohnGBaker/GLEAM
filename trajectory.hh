@@ -25,8 +25,89 @@ typedef struct Point {
   friend Point operator-(const Point &p1, const Point &p2);
   friend Point operator*(const Point &p1, const double &val);
 }Point;
-//
 
+///Compute (two times) the area (with orientation) of triangle P0-P1-P2 
+///
+///This function is useful for both area and orientation calcuations of a triangle defined by 3 vertex Points.
+///To allow economizing multiplications when needed for orientation or for summed partial area, it returns twice the area,
+///allowing division by 2 to be done once at the end of the calculation if needed.
+///
+///When used for orientation it returns a positive value if p2 is to the left of the directed line from p0 to p1
+///yielding zero if the points align.
+inline double getTwiceTriangleArea(const Point &p0,const Point &p1,const Point &p2){
+  double dx1=p1.x-p0.x;
+  double dx2=p2.x-p0.x;
+  double dy1=p1.y-p0.y;
+  double dy2=p2.y-p0.y;
+  return dx1*dy2-dx2*dy1;
+};
+
+///Determine (signed) area of a polygon
+///
+///The polygon is provided as a list of vertex points.  An optional origin point p0 may also be provided.
+inline double getPolygonArea(const vector<Point>verts, const Point &p0=Point(0,0)){
+  double doublearea=0;
+  int n=verts.size();
+  for(int i=0;i<n;i++){
+    Point p1=verts[i];
+    Point p2=verts[(i+1)%n];
+    doublearea+=getTwiceTriangleArea(p0,p1,p2);
+  }
+  return doublearea/2.0;
+};
+	
+///Determine (signed) area of a polygon and its centroid*area
+///
+///The polygon is provided as a list of vertex points.  An optional origin point p0 may also be provided.
+///The value of centroid*signed_area is returned.  This avoids danger of divide-by-zero for a trivial polygon.
+inline double getPolygonAreaCoM(const vector<Point>verts, Point &CoM, const Point &p0=Point(0,0)){
+  double doublearea=0;
+  double x=0,y=0;
+  int n=verts.size();
+  for(int i=0;i<n;i++){
+    Point p1=verts[i];
+    Point p2=verts[(i+1)%n];
+    double threexc=p0.x+p1.x+p2.x;
+    double threeyc=p0.y+p1.y+p2.y;
+    double dm=getTwiceTriangleArea(p0,p1,p2);
+    doublearea+=dm;
+    x+=dm*threexc;
+    y+=dm*threeyc;    
+  }
+  CoM=Point(x/6.0,y/6.0);
+  return doublearea/2.0;
+}
+	
+///Determine whether a point lies inside a polygon.
+///
+///Computes the winding number for the closed path defined by the polygon to determine
+///whether the point is inside.  The polygon is defined by a vector of Points corresponding
+///to the ordered set of vertices.
+///
+///For cases where the polygon wraps around itself, the 
+inline int pointInPolygon(const Point &p, const vector<Point>&verts){
+  int nwind=0;
+  for(int i=0;i<verts.size();i++){ //loop over edges from v[0] to v[i+1]
+    int inext=(i+1)%verts.size();
+    if(verts[i].y <= p.y){ //case: segment does not begin in upper half plane 
+      if(verts[inext].y > p.y){ // and segment crosses into upper half plane
+	if(getTwiceTriangleArea(verts[i],verts[i+1],p) > 0){
+	  //use triangle area orientation to determine if segment winds positive (CCW) from Q4 to Q1
+	  nwind++;
+	}
+      }
+    } else {  //alternative case segment does begin in upper half plane
+      if(verts[inext].y <= p.y){ // and crosses into lower plane or midline;
+	if(getTwiceTriangleArea(verts[i],verts[i+1],p) < 0){
+	  //use triangle area orientation to determine if segment winds negative (CC) from Q1 to Q4
+	  nwind--;
+	}
+      }
+    }
+  }
+  return nwind;
+}
+	
 ///Next is a class for trajectories through the observer plane
 ///base class implements a straight-line trajectory
 class Trajectory : public bayes_component {

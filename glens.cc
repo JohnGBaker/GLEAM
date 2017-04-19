@@ -88,8 +88,1136 @@ const double epsTOL=1e-18;
 // ******************************************************************
 //
 
+//Compute curves through the 
+void GLens::inv_map_curve(const vector<Point> &curve, vector<vector<Point> > &curve_images, vector<vector<double>> &curve_mags)
+{
+  // Given a curve of Points through the observer plane, compute the corresponding curve in the lens plane.
+  //
+  //Arguments:
+  //
+  //vector<Point> curve               -provides the list of observer-plane pointe
+  //bool image_curves                 -the vectors comprising theta_series are each set to the same length and reordered
+  //                                   so that matrix can be transposed to a matrix of curves this is achieved by finding
+  //                                   nearest-neighbor alignments according to the ordering in curve, each theta will be
+  //                                   of the same (maximum) length with parity=0 if there is no solution for that image
+  //vector<vector<int>> & mag         -signed magnification for that image, or zero for no image
+  //
+  //
+  
+  //internal
+  ///clear the outputs
+  curve_images.clear();
+  curve_mags.clear();
+
+  //Main loop over curve
+  int Ngrid=curve.size();
+  for(int i=0; i<Ngrid;i++){
+    Point beta=curve[i];
+    vector<Point> thetas;
+    //cout<<"curve: beta=("<<beta.x<<","<<beta.y<<")"<<endl;
+    thetas.clear();
+    thetas=invmap(beta);
+    //record results;
+    curve_images.push_back(thetas);
+    vector<double> mags;
+    for(Point th:thetas)mags.push_back(mag(th));
+    curve_mags.push_back(mags);
+  }
+}
+
+//Use GSL routine to integrate polygon trajectory
+//just a sketch...
+/*void GLens::integrate_invmap_curve (const vector<Point> &curve, vector<vector<Point> > &curve_images, vector<vector<double>> &curve_mags)
+{
+  //
+  //control parameters:
+  const double intTOL = GL_int_tol;  //control integration error tolerance
+  const double test_result_tol = 1e-4;  //control integration error tolerance
+  if(have_integrate)integrate=use_integrate;
+  double prec=cout.precision();cout.precision(20);
+  const double rWide_int_fac=100.0;
+
+  ///clear the outputs
+  time_series.clear();
+  thetas_series.clear();
+  index_series.clear();
+  mag_series.clear();
+
+  trajectory=&traj;//a convenience for passing to the integrator
+  int NintSize=2*NimageMax;
+
+  //Set up for GSL integration routines
+  const gsl_odeiv2_step_type * stepType = gsl_odeiv2_step_rkf45;
+  gsl_odeiv2_step * step=nullptr;
+  gsl_odeiv2_control * control=nullptr;
+  gsl_odeiv2_evolve * evol=nullptr;
+  gsl_odeiv2_system sys = {poly_root_integration_func_vec, NULL, (size_t)NintSize, this};
+  double h=1e-5;
+  step = gsl_odeiv2_step_alloc (stepType, NintSize);
+  control = gsl_odeiv2_control_y_new (intTOL, 0.0);
+  //control = gsl_odeiv2_control_standard_new (intTOL, 0.0,1.0,10.0);//Also apply limits on the derivative
+  evol = gsl_odeiv2_evolve_alloc (NintSize);
+  gsl_odeiv2_control_init(control,intTOL,0.0,1,0);//Do I need this?
+  gsl_odeiv2_evolve_reset(evol);//or this
+  
+  
+  //Main loop over observation times specified in the Trajectory object
+  //initialization
+  Point beta;
+  vector<Point> thetas;
+  double t_old;
+  for(int i=0; i<Ngrid;i++){
+    double tgrid=traj.get_obs_time(i);
+    //entering main loop
+    
+    double t=t_old;
+    //The next loop steps (probably more finely) toward the next grid time point.      
+    while(t<tgrid){
+      //integrate each image
+      if(debugint)cout<<"\n t="<<t<<" mg="<<mg<<endl;
+      Ntheta=thetas.size();
+      double theta[NintSize];
+      for(int image=0;image<thetas.size();image++){
+	theta[2*image]=thetas[image].x;
+	theta[2*image+1]=thetas[image].y;
+      }
+      for(int k=2*thetas.size();k<NintSize;k++)theta[k]=0;
+      int status = gsl_odeiv2_evolve_apply (evol, control, step, &sys, &t, tgrid, &h, theta);
+      //Need some step-size control checking for near caustics?
+      if (status != GSL_SUCCESS) { 
+	evolving=false;//switch to polynomial
+	break;
+      }
+      //record results
+      for(int image=0;image<thetas.size();image++){
+	thetas[image]=Point(theta[2*image],theta[2*image+1]);	    
+      }
+      time_series.push_back(t);
+      thetas_series.push_back(thetas);
+    }
+
+    gsl_odeiv2_evolve_reset(evol);
+    
+    
+    if(time_series.size()<1)cout<<"Time series empty i="<<i<<endl;
+    t_old=tgrid;
+    index_series.push_back(time_series.size()-1);
+  }//end of main observation times loop
+  
+  gsl_odeiv2_evolve_free (evol);
+  gsl_odeiv2_control_free (control);
+  gsl_odeiv2_step_free (step);
+  
+}
+*/
+
+///Assign a vector of subject points to the closest pairing of another vector of model points
+///
+///Result is returned as a vector of int of the same length as the subject vector, which must
+///be no longer than the model vector.  When model is longer then a vector of the leftovers
+//and a equal-length vector of the original index locations of these are return in leftovers
+//and leftovers_map.
+//In maxnorm, the function returns the largest squared-distance between any of the associated points.
+vector<int> assign_points(const vector<Point> model, const vector<Point> subject, vector<Point> &leftovers,vector<int> &leftovers_map,double &maxnorm){
+  //We assume the model contains at least as many elements as the subject so that all
+  //subject element will be assigned to the nearest model element (or some overall nearest)
+  //For now we do these in order.  It might be better to do a global fit...
+  maxnorm=0;
+  if(model.size()<subject.size()){
+    cout<<"(glens.cc)assign_points: model must include at least as many points as subject!"<<endl;
+    exit(1);
+  }
+  vector<int> assignments(subject.size());
+  vector<bool> used(model.size(),false);
+  for(int i=0;i<subject.size();i++){
+    double mindist2=1e100;
+    int j0=-1;
+    Point elem=subject[i];
+    for(int j=0;j<model.size();j++){
+      if(used[j])continue;
+      Point cand=model[j];
+      double dx=cand.x-elem.x;
+      double dy=cand.y-elem.y;
+      double dist2=dx*dx+dy*dy;
+      if(j0<0||mindist2>dist2){
+	mindist2=dist2;
+	j0=j;
+      }
+      //cout<<"j="<<j<<" dist2="<<dist2<<" <= "<<mindist2<<" -> "<<j0<<endl;
+    }
+    if(mindist2>maxnorm)maxnorm=mindist2;
+    assignments[i]=j0;
+    used[j0]=true;
+  }
+  leftovers.clear();
+  leftovers_map.clear();
+  if(model.size()>subject.size()){
+    for(int j=0;j<model.size();j++){
+      if(not used[j]){
+	leftovers.push_back(model[j]);
+	leftovers_map.push_back(j);
+      }
+    }
+  }
+  //cout<<"returning:";for(int i=0;i<assignments.size();i++)cout<<" "<<assignments[i];cout<<endl;
+  return assignments;  
+}
+
+///Some tools for the segment lists used in the image_area function below
+typedef pair<int,int> joint;
+bool jointOrder(const joint &j1, const joint &j2) {
+  return j1.second < j2.second;
+};
+
+///Compute magnification of a finite N-sided polygon by finding the area of images based on the method Gould-Gaucherel
+///
+///The method requires the following steps: First make a list of points defining the polygon, an apply inv_map_curve to
+///find the associated image points.  Next we compute the infinitessimal (signed) magnification of point.  Next we must
+///organize these points into curves.  There are a couple general principles to this.  First, each image has a parity
+///sign, which should be the same as the sign of each of its component point infinitessimal magnifications.  Second,
+///though there should always be an even number of image points beyond NimageMin, when the polygon spans a caustic, some
+///images may not exist for all ///polygon points.  If the latter is not true then we try to infill a missing point or
+///remove a spurious image point. When there is a jump in the number of images then the added or subtracted images must
+///be paired.  The association of curves into points is realized by a minimum-area principle with the constraint that
+///parities must align.
+///
+///The Gould-Goucherel method recognizes the image curves as either closed curves, or paired segments.  The points are
+///regarded as vectors from some origin. For each edge within a closed curve or interior section of segment p2-p1 , the area
+///contribution is computed by dA=p1Xp2 (or dA=p2Xp1 for negative parity).  Though the individual segments contributions will
+///depend on the choice of origin, the overall area will not.  Note that when the origin is outside the image, the extra area
+///will be compensated by negative area somewhere else.  The edges of the segments are must be sewn together by finding pairs
+///or opposing-parity curves with an edge at the same vertex.  These curves are, in effect, stiched together by adding area
+///contributions as would arise if the curve was connected dA=p1_pos X p2_neg.  The magnification is computed by dividing the
+///summed image area by the similarly computed polygon area.
+///
+///The function returns an estimate for the 'variance' over the surface.
+///Presently, this is simply the varance of the point-magnifications around the polygon
+///wrt the area magnification.
+///
+void GLens::image_area_mag(Point &p, double radius, int & N, double &magnification, double &var, ostream *out){
+  //p      : input  -observer position, relative source center
+  //       : output -returns centroid shift
+  //radius : input  -source radius
+  double const twopi=2*M_PI;
+
+  //Controls
+  //const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
+  const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
+  const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
+  const bool refine_sphere=false;
+  const double refine_limit_factor=10.;
+  const double refine_limit=pow(twopi*radius/N/refine_limit_factor,2.0);
+  const int nadd_max=3;
+  bool debug_area_mag=false;
+  bool super_debug=false;
+  bool fix_vertex_images=true;
+  //Construct polygon
+  double dphi=twopi/N;
+  vector<Point> curve(N);
+  for(int i=0;i<N;i++)curve[i]=Point(p.x+radius*cos(dphi*i),p.y+radius*sin(dphi*i));
+  
+  //Get image points and mags
+  vector<vector<Point> >  image_points;
+  vector<vector<double> > image_point_mags;
+  vector<double> vertex_mags;  //Used only for variance estimate at end.
+  //inv_map_curve(curve,image_points,image_point_mags);
+  
+  //Step 1: Preliminary loop over the polygon vertices.
+  //This will be the most computationally intensive step unless we need to do a lot of refinement near caustics 
+  for(int i=0; i<N;i++){
+    Point beta=curve[i];
+    vector<Point> thetas;
+    thetas.clear();
+    thetas=invmap(beta);
+    vector<double> mags;
+    for(Point th:thetas)mags.push_back(mag(th));
+    double total_mg=0;
+    for(double mg : mags){
+      total_mg+=abs(mg);
+    }
+    if(fix_vertex_images){ //check for some kinds of errors and try to fix:
+      int ni=thetas.size();
+      if( NimageMin==ni+1 ){//Seem to be missing an image
+	//Do some prep
+	int netp=0;
+	vector<Point>odds;
+	for(int j=0;j<thetas.size();j++){
+	  int p=copysign(1.0,mags[j]);
+	  netp+=p;
+	  if(p<0)odds.push_back(thetas[j]);
+	}
+	if(netp==0){//Seems we can fix it!
+	  //Try to detect which lens center is farthest from any of the odd images:
+	  int kmiss=-1;
+	  double rknormfar=0;
+	  for(int k=1;k<NimageMin;k++){
+	    Point c=getCenter(k);
+	    //find closest odd image to this center
+	    double rknormmin=INFINITY;
+	    for(auto b:odds){
+	      Point rk=b+c*(-1.0);
+	      double rknorm=rk.x*rk.x+rk.y*rk.y;
+	      if(rknorm<rknormmin)rknormmin=rknorm;
+	    }
+	    if(rknormfar<rknormmin){
+	      rknormfar=rknormmin;
+	      kmiss=k;
+	    }
+	  }
+	  Point cmiss=getCenter(kmiss);
+	  //cout<<"VERTEX lens_center "<<kmiss<<" at ("<<cmiss.x<<","<<cmiss.y<<") seems to be missing its image; adding an image at this center!"<<endl;	
+	  thetas.push_back(cmiss);
+	  mags.push_back(-1e-100);
+	}
+      }
+    }
+    //record results;
+    image_points.push_back(thetas);
+    image_point_mags.push_back(mags);
+    vertex_mags.push_back(total_mg);
+  }
+  /*
+  cout<<"first pass image points:"<<endl;
+  for(int j=0;j<N;j++){
+    cout<<j<<" ";
+    for(int k=0;k<image_points[j].size();k++){
+      cout<<"  "<<image_points[j][k].x<<" "<<image_points[j][k].y;
+    }
+    cout<<endl;
+  }
+  */
+    
+  //Step 2: We find a vertex to serve as a suitable starting place
+  //        Based on that starting place, we set/assign the parities for the image_curves to be assembled
+  vector<vector<Point>>image_curves(NimageMax,vector<Point>(N+1));
+  vector<vector<bool>>empty(NimageMax,vector<bool>(N+1,true));
+  vector<vector<int>>mate(NimageMax,vector<int>(N+1,-1));
+  vector<int>parities(NimageMax);
+  int i0=-1;
+  for(int i=0;i<N;i++){
+    int ni=image_points[i].size();
+    int netp=0;//parity sum
+    for(int j=0;j<ni;j++)netp+=copysign(1.0,image_point_mags[i][j]);
+    //cout<<i<<" < "<<N<<" ni="<<ni<<" NimageMin="<<NimageMin<<" NimageMax="<<NimageMax<<" netp="<<netp<<endl;
+    //cout<<" pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
+    vector<int>even_curves,odd_curves;
+    if( ni >= NimageMin && ni <= NimageMax && (ni-NimageMin)%2==0 && -netp==NimageMin%2 ){
+      i0=i;
+      for(int j=0;j<NimageMax;j++){
+	if(j<ni){ 
+	  int p=copysign(1.0,image_point_mags[i0][j]);
+	  image_curves[j][0]=image_points[i0][j];
+	  parities[j]=p;
+	  empty[j][0]=false;
+	} else { //alternate parities for empty slots
+	  parities[j]=(j%2)*2-1;
+	  //cout<<"set parities["<<j<<"]="<<parities[j]<<" j%2="<<(j%2)<<endl;
+	  empty[j][0]=true;
+	}
+	if(parities[j]>0)even_curves.push_back(j);
+	else odd_curves.push_back(j);
+      }
+      break;
+    }
+  }
+  if(i0<0){//Fail if not found
+    cout<<"GLens::image_area_mag: Found no vertex with acceptable number of images."<<endl;
+    magnification=INFINITY;
+    var=0;
+    return;
+  }  
+  //static int i0save=-1;if(i0!=i0save)cout<<" i0="<<i0<<endl;i0save=i0;
+  if(debug_area_mag)cout<<"Enter: i0="<<i0<<endl;
+  //cout<<" parities: "<<parities[0]<<" "<<parities[1]<<" "<<parities[2]<<" "<<parities[3]<<" "<<parities[4]<<endl;
+
+  
+  //Step 3: Check image sets, assign them to curves, and refine as needed
+
+  //initialization
+  double norefine=false;
+  double maxnorm;
+  vector<joint>segment_ends,segment_begins;
+  vector<Point>leftover;
+  vector<int>ileftover,imap;
+  vector<Point>evens,odds,last_evens,last_odds,leftevens,leftodds;
+  vector<int>last_evens_ind,last_odds_ind,evens_ind,odds_ind,ileftevens,ileftodds;
+  //initialize evens/odds
+  {
+    int netp=0;
+    for(int j=0;j<image_points[i0].size();j++){
+      int p=copysign(1.0,image_point_mags[i0][j]);
+      netp+=p;
+      if(p>0){
+	evens.push_back(image_points[i0][j]);
+	evens_ind.push_back(j);
+      } else {
+	odds.push_back(image_points[i0][j]);
+	odds_ind.push_back(j);
+      }
+    }
+  }
+  //Loop
+  for(int i=1;i<=(image_points.size());i++){
+    //Step 3A: Initialization of loop interior
+    //Note: By the end we will have gone through the loop once for each point that ends up in image_points
+    //We may insert points into image_points
+    //The starting point is i0 (Note we need to increment i0 if we insert points at/before i0;
+    N=image_points.size();
+    int ithis=(i+i0)%N;
+    int ilast=(i+i0-1)%N;
+    int last_ni=image_points[ilast].size();
+    int ni=image_points[ithis].size();
+    int netp=0;
+    bool refine=false;
+    
+    //Step 3B: Assign points to even / odd lists
+    last_evens=evens;last_evens_ind=evens_ind;evens.clear();evens_ind.clear();
+    last_odds=odds;last_odds_ind=odds_ind;odds.clear();odds_ind.clear();
+    netp=0;
+    for(int j=0;j<ni;j++){
+      int p=copysign(1.0,image_point_mags[ithis][j]);
+      netp+=p;
+      if(p>0){
+	evens.push_back(image_points[ithis][j]);
+	evens_ind.push_back(j);
+      } else {
+	odds.push_back(image_points[ithis][j]);
+	odds_ind.push_back(j);
+      }
+    }
+
+
+    //Step 3C: Basic sanity check on the next points image set
+    if(debug_area_mag)cout<<"i="<<i<<" ilast="<<ilast<<" ithis="<<ithis<<" i0="<<i0<<" norefine="<<norefine<<endl;
+    bool pass=( ni >= NimageMin && ni <= NimageMax && (ni-NimageMin)%2==0 && -netp==NimageMin%2 );
+    //cout<<" ni="<<ni<<"  last_ni="<<last_ni<<endl;
+    //cout<<"i="<<i<<" ni="<<ni<<" NimageMin="<<NimageMin<<" NimageMax="<<NimageMax<<" netp="<<netp<<endl;
+    //cout<<"  pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
+    if(not pass){
+      if(NimageMin-ni==1 and netp==0){//Detect lost an image point near one of the point lenses
+	//Try to detect which lens center is farthest from any of the odd images:
+	int kmiss=-1;
+	double rknormfar=0;
+	for(int k=1;k<NimageMin;k++){
+	  Point c=getCenter(k);
+	  //find closest odd image to this center
+	  double rknormmin=INFINITY;
+	  for(auto b:odds){
+	    Point rk=b+c*(-1.0);
+	    double rknorm=rk.x*rk.x+rk.y*rk.y;
+	    if(rknorm<rknormmin)rknormmin=rknorm;
+	  }
+	  if(rknormfar<rknormmin){
+	    rknormfar=rknormmin;
+	    kmiss=k;
+	  }
+	}
+	Point cmiss=getCenter(kmiss);
+	//cout<<"lens_center "<<kmiss<<" at ("<<cmiss.x<<","<<cmiss.y<<") seems to be missing its image; adding an image at this center!"<<endl;	
+	//cout<<"N="<<N<<endl;
+	image_points[ithis].push_back(cmiss);
+	image_point_mags[ithis].push_back(-1e-100);
+	odds.push_back(cmiss);
+	odds_ind.push_back(ni);
+	ni++;
+	netp=-1;
+      } else {
+	cout<<"GLens::image_area_mag: Point did not pass need to add handling of unexpected patterns of images."<<endl;
+	cout<<"N="<<N<<endl;
+	cout<<"ni="<<ni<<" NimageMin="<<NimageMin<<" NimageMax="<<NimageMax<<" netp="<<netp<<endl;
+	cout<<" pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
+	cout<<print_info()<<endl;
+	cout<<"centers=";for(int k=1;k<NimageMin;k++)cout<<"  "<<getCenter(k).x<<" "<<getCenter(k).y;
+	cout<<"\npoints:"<<endl;
+	Point b=curve[ithis];
+	cout<<"b="<<b.x<<" "<<b.y<<endl;
+	for(int j=0;j<image_points[ithis].size();j++){
+	  Point db=map(image_points[ithis][j])-b;
+	  cout<<" "<<image_points[ithis][j].x<<" "<<image_points[j][ithis].y<<" "<<image_point_mags[ithis][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	}
+	cout<<"last points:"<<endl;
+	cout<<" ilast="<<ilast<<" < "<<image_points.size()<<endl;
+	b=curve[ithis];
+	cout<<"b="<<b.x<<" "<<b.y<<endl;
+	for(int j=0;j<image_points[ilast].size();j++){
+	  Point db=map(image_points[ithis][j])-b;
+	  cout<<" "<<image_points[ilast][j].x<<" "<<image_points[ilast][j].y<<" "<<image_point_mags[ilast][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	}
+	cout<<"  ...trying to fail gracefully by neglecting this point..."<<endl;
+	//debug_area_mag=true;
+	//Copy forward the last image point, and hope for the best...
+	for(int k=0;k<NimageMax;k++)image_curves[k][ithis]=image_curves[k][ilast];
+	evens=last_evens;evens_ind=last_evens_ind;
+	odds=last_odds;odds_ind=last_odds_ind;
+	norefine=false;
+	continue;
+      }
+    }
+
+    //cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
+    //cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
+    //cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
+    //cout<<" last_evens_ind("<<last_evens.size()<<"):  ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
+    //cout<<" odds_ind("<<odds.size()<<"):  ";for(int j=0;j<odds_ind.size();j++)cout<<" "<<odds_ind[j];cout<<endl;
+    //cout<<" evens_ind("<<evens.size()<<"):  ";for(int j=0;j<evens_ind.size();j++)cout<<" "<<evens_ind[j];cout<<endl;
+    //cout<<" evens("<<evens.size()<<"):  ";for(int j=0;j<evens.size();j++)cout<<"  "<<evens[j].x<<" "<<evens[j].y;cout<<endl;
+    //cout<<" last_evens("<<last_evens.size()<<"):  ";for(int j=0;j<last_evens.size();j++)cout<<"  "<<last_evens[j].x<<" "<<last_evens[j].y;cout<<endl;
+    //cout<<" odds("<<odds.size()<<"):  ";for(int j=0;j<odds.size();j++)cout<<"  "<<odds[j].x<<" "<<odds[j].y;cout<<endl;
+    //cout<<" last_odds("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds.size();j++)cout<<"  "<<last_odds[j].x<<" "<<last_odds[j].y;cout<<endl;
+
+    //Step 3D: Assign new set of points to curves and check if refinement is needed 
+    //         We must handle connectivity given a variety of cases for the number of images.
+    //         { same # of images, number increased, number decreased }
+    //cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
+    //cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
+    //cout<<" last_evens_ind("<<last_evens.size()<<"): ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
+    //cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
+    for(int idummy=0;idummy<1;idummy++){//this is a dummy loop to enable conveniently break-ing out of the analysis if we need to refine
+      if(ni<last_ni){
+	//Case 1: number of images decreased.  First have to figure which to drop;
+	//idea: loop over all images at new point, and assign each to an old point then make those empty
+	//First we connect the even curves
+	if(debug_area_mag)cout<<"case1a"<<endl;
+	imap=assign_points(last_evens,evens,leftevens,ileftevens,maxnorm);
+	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1a="<<maxnorm<<endl;
+	  break;}
+	for(int k=0;k<evens.size();k++){
+	  int ic=last_evens_ind[imap[k]];
+	  //cout<<"evens["<<k<<"] -> image_curves["<<ic<<"]"<<endl;
+	  image_curves[ic][i]=evens[k]; // add image to selected curve
+	  empty[ic][i]=false;
+	  evens_ind[k]=ic;
+	}
+	//Then the odd curves
+	if(debug_area_mag)cout<<"case1b"<<endl;
+	imap=assign_points(last_odds,odds,leftodds,ileftodds,maxnorm);
+	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1b="<<maxnorm<<endl;
+	  break;}
+	for(int k=0;k<odds.size();k++){
+	  int ic=last_odds_ind[imap[k]];
+	  //cout<<"odds["<<k<<"] -> image_curves["<<ic<<"]"<<endl;
+	  image_curves[ic][i]=odds[k]; // add image to selected curve
+	  empty[ic][i]=false;
+	  odds_ind[k]=ic;
+	}	  
+	//Now mate the terminating ends
+	if(debug_area_mag)cout<<"case1c"<<endl;
+	imap=assign_points(leftodds,leftevens,leftover,ileftover,maxnorm);
+	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1c="<<maxnorm<<endl;
+	  break;}
+	for(int k=0;k<leftevens.size();k++){
+	  int jeven=last_evens_ind[ileftevens[k]];
+	  int jodd=last_odds_ind[ileftodds[imap[k]]];
+	  //cout<<"leftevens["<<k<<"] -> image_curves["<<jeven<<"]"<<endl;
+	  //cout<<"leftodds["<<k<<"] -> image_curves["<<jodd<<"]"<<endl;
+	  mate[jeven][ilast]=jodd;
+	  segment_ends.push_back(joint(jeven,(i-1)%N));
+	  mate[jodd][ilast]=jeven;
+	  segment_begins.push_back(joint(jodd,(i-1)%N));
+	  ////this is wrong...
+	  //evens_ind[ileftevens[k]]=jeven;
+	  //odds_ind[ileftodds[k]]=jodd;
+	}
+	
+      } else {
+	// Cases 2/3: same number of images or new images have appeared;
+	//cout<<"Assign:"<<endl;
+	if(debug_area_mag)cout<<"case2a"<<endl;
+	imap=assign_points(evens,last_evens,leftevens,ileftevens,maxnorm);
+	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 2a="<<maxnorm<<endl;
+	  break;}
+	for(int k=0;k<last_evens.size();k++){
+	  int ic=last_evens_ind[k];
+	  //cout<<"evens["<<imap[k]<<"] -> image_curves["<<ic<<"]"<<endl;
+	  image_curves[ic][i]=evens[imap[k]]; // add image to selected curve
+	  empty[ic][i]=false;
+	  evens_ind[imap[k]]=ic;
+	}
+	if(debug_area_mag)cout<<"case2b"<<endl;
+	imap=assign_points(odds,last_odds,leftodds,ileftodds,maxnorm);
+	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 2b="<<maxnorm<<endl;
+	  break;}
+	for(int k=0;k<last_odds.size();k++){
+	  int ic=last_odds_ind[k];
+	  //cout<<"odds["<<imap[k]<<"] -> image_curves["<<ic<<"]"<<endl;
+	  image_curves[ic][i]=odds[imap[k]]; // add image to selected curve
+	  empty[ic][i]=false;
+	  odds_ind[imap[k]]=ic;
+	}
+	//now mate the terminating ends  (Note: at this point it should be true that leftevens and leftodds are equal-length
+	if(leftodds.size()!=leftevens.size()){
+	  cout<<"This shouldn't happen. New odds not equal to new evens!"<<endl;
+	  exit(1);
+	}
+	if(leftodds.size()>0){
+	  //Case 3: New images have appeared
+	  //cout<<"New!"<<endl;
+	  //cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
+	  //cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
+	  //cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
+	  //cout<<" last_evens_ind("<<last_evens.size()<<"):  ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
+	  if(debug_area_mag)cout<<"case3"<<endl;
+	  imap=assign_points(leftodds,leftevens,leftover,ileftover,maxnorm);
+	  if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 3="<<maxnorm<<endl;
+	    break;}
+	  int jeven=0,jodd=0;
+	  for(int k=0;k<leftevens.size();k++){
+	    for(int j=jeven;j<NimageMax;j++){
+	      jeven=j;
+	      if(empty[j][i] and parities[j]>0)break;
+	    }
+	    //cout<<"leftevens["<<k<<"] -> image_curves["<<jeven<<"]"<<endl;
+	    image_curves[jeven][i]=leftevens[k];
+	    empty[jeven][i]=false;
+	    for(int j=jodd;j<NimageMax;j++){
+	      jodd=j;
+	      if(empty[j][i] and parities[j]<0)break;
+	    }
+	    //cout<<"leftodds["<<k<<"] -> image_curves["<<jodd<<"]"<<endl;
+	    image_curves[jodd][i]=leftodds[k];
+	    empty[jodd][i]=false;
+	    mate[jeven][i]=jodd;
+	    segment_begins.push_back(joint(jeven,i));
+	    mate[jodd][i]=jeven;
+	    segment_ends.push_back(joint(jodd,i));
+	    evens_ind[ileftevens[k]]=jeven;
+	    odds_ind[ileftodds[k]]=jodd;
+	  }
+	}
+      }
+    }
+      
+      //Step 3E: Refine if called for
+    if(refine){
+      //We refine by integer an integer factor
+      //After refinement want: maxnorm -> maxnorm/factor^2 < maxnorm_limit
+      //So we need: factor^2 > maxnorm/maxnorm_limit
+      int nadd=sqrt(maxnorm/maxnorm_limit);
+      if(nadd>nadd_max)nadd=nadd_max;//enforce a maximum degree of refinement in one step
+      double factor=1+nadd;
+      Point p0=curve[ilast];
+      Point dp=curve[ithis]-curve[ilast];
+      double dp2=dp.x*dp.x+dp.y*dp.y;
+      while(nadd>0 and dp2<refine_limit*factor*factor)nadd--;//enforce an overall limit in how far we refine
+      if(nadd==0)norefine=true;//We will go through this step again with a flag set indicating not to refine more
+      if(debug_area_mag)
+	cout<<(norefine?"NOT ":"")<<"Refining! N="<<N<<" -> "<<N+nadd<<" maxnorm="<<maxnorm<<" > "<<maxnorm_limit<<endl;
+	/*
+      cout<<"f,dp2,refine_limit,f^2:"<<factor<<","<<dp2<<","<<refine_limit<<","<<factor*factor<<endl;
+      cout<<"p=("<<p.x<<","<<p.y<<")  radius="<<radius<<endl;
+
+      cout<<"p(last)=("<<curve[ilast].x<<","<<curve[ilast].y<<")"<<endl;
+      cout<<"p(this)=("<<curve[ithis].x<<","<<curve[ithis].y<<")"<<endl;
+      */
+      double phi0=0,dphi=0;
+      if(refine_sphere){
+	dp=p0-p;
+	phi0=atan2(dp.y,dp.x);
+	dp=curve[ithis]-p;
+	double phi1=atan2(dp.y,dp.x);
+	if(phi1<phi0)phi1+=2*M_PI;
+	dphi-phi1-phi0;
+      }
+      //We assemble everthing we need into vectors, then insert these into the originals
+      vector<vector<Point> > new_image_points;
+      vector<vector<double> >new_image_point_mags;
+      vector<Point> new_curve_points;
+      int iinsert=ithis;
+      if(iinsert==0)iinsert=N;
+      for(int k=0;k<nadd;k++){
+	Point pnew;
+	if(refine_sphere){
+	  double phinew= phi0 + dphi * ((k+1.0)/factor);
+	  pnew=p+Point(cos(phinew),sin(phinew))*radius;
+	} else pnew = p0 + dp * ((k+1.0)/factor);
+	new_curve_points.push_back(pnew);
+	vector<Point> thetas=invmap(pnew);
+	new_image_points.push_back(thetas);
+	vector<double> mags;
+	for(Point th:thetas)mags.push_back(mag(th));
+	new_image_point_mags.push_back(mags);
+	//cout<<"inserting point ("<<pnew.x<<","<<pnew.y<<") at position "<<iinsert+k<<endl;
+	//cout<<" thetas = ";for(int j=0;j<thetas.size();j++)cout<<thetas[j].x<<" "<<thetas[j].y<<"  ";cout<<endl;
+      }
+      /*
+      cout<<"before inserting:"<<endl;
+      for(int j=0;j<N;j++){
+	cout<<j<<" ";
+	for(int k=0;k<image_points[j].size();k++){
+	  cout<<"  "<<image_points[j][k].x<<" "<<image_points[j][k].y;
+	}
+	cout<<endl;
+	}
+      */
+      curve.insert(curve.begin()+iinsert,new_curve_points.begin(),new_curve_points.end());
+      image_points.insert(image_points.begin()+iinsert,new_image_points.begin(),new_image_points.end());
+      image_point_mags.insert(image_point_mags.begin()+iinsert,new_image_point_mags.begin(),new_image_point_mags.end());
+      //also need to add space in the image curfves for the new points.
+      for(int j=0;j<NimageMax;j++){
+	image_curves[j].resize(N+nadd+1);
+	empty[j].resize(N+nadd+1,true);
+	mate[j].resize(N+nadd+1,-1);
+      }
+      if(i0>=i)i0+=nadd;
+      
+      if(debug_area_mag){
+	cout<<"inserted "<<nadd<<" points. i0="<<i0<<" len(image_points)="<<image_points.size()<<endl;
+	/*
+	cout<<"after inserting:"<<endl;
+	for(int j=0;j<N+nadd;j++){
+	  cout<<j<<" ";
+	  for(int k=0;k<image_points[j].size();k++){
+	    cout<<"  "<<image_points[j][k].x<<" "<<image_points[j][k].y;
+	  }
+	  cout<<endl;
+	}
+	*/
+      }
+      
+      //Now we try to forget this step ever happened
+      i--;
+      evens=last_evens;evens_ind=last_evens_ind;
+      odds=last_odds;odds_ind=last_odds_ind;
+    }
+    else norefine=false;  //reset after each step
+    if(debug_area_mag){
+      cout<<"done with i="<<i<<" segment_ends.size="<<segment_ends.size()<<endl<<endl;
+      cout<<"end of loop interior."<<endl; 
+      /*
+	for(int j=0;j<N;j++){
+	cout<<j<<" ";
+	for(int k=0;k<image_curves.size();k++){
+	  cout<<"  "<<image_curves[k][j].x<<" "<<image_curves[k][j].y;
+	  if(empty[k][j])cout<<"[empty]";
+	}
+	cout<<endl;
+      }
+      */
+    }
+  }
+  N=image_points.size();
+  if(super_debug){
+    cout<<" N --> "<<N<<endl;
+    cout<<"final image points:"<<endl;
+    for(int j=0;j<N;j++){
+      cout<<j<<" ";
+      for(int k=0;k<image_points[j].size();k++){
+	cout<<"  "<<image_points[j][k].x<<" "<<image_points[j][k].y;
+      }
+      cout<<endl;
+    }
+    cout<<"initial image curves:"<<endl;
+    for(int j=0;j<N;j++){
+      cout<<j<<" ";
+      for(int k=0;k<image_curves.size();k++){
+	cout<<"  "<<image_curves[k][j].x<<" "<<image_curves[k][j].y;
+	if(empty[k][j])cout<<"[empty]";
+      }
+      cout<<endl;
+    }
+    cout<<" parities:";
+    for(int i=0;i<parities.size();i++)cout<<"  "<<parities[i]<<endl;
+    cout<<"Segments:"<<endl;
+    for(int k=0;k<segment_ends.size();k++){
+      cout<<"  end:"<<k<<"=("<<segment_ends[k].first<<","<<segment_ends[k].second<<")"<<endl;
+      cout<<"  begin:"<<k<<"=("<<segment_begins[k].first<<","<<segment_begins[k].second<<")"<<endl;
+    }
+  }
+
+  //Step 4: Define segment connections to sew the ends together.
+  //Now we define segment connections to the ends together
+  //We have looped to N above, one extra for closure, but we match these to the 0 slot.
+  //These will be the same set of points as at index 0, but may not be assigned to the same curves;
+  vector<Point>end,start;
+  vector<int>iend,istart;
+  for(int j=0;j<NimageMax;j++){
+    if(not empty[j][0]){
+      start.push_back(image_curves[j][0]);
+      istart.push_back(j);
+    }
+    if(not empty[j][N]){
+      end.push_back(image_curves[j][N]);
+      iend.push_back(j);
+    }
+  }
+  //cout<<"end:";for(int i=0;i<end.size();i++)cout<<"  "<<end[i].x<<" "<<end[i].y;cout<<endl;
+  //cout<<"start:";for(int i=0;i<start.size();i++)cout<<"  "<<start[i].x<<" "<<start[i].y;cout<<endl;
+  imap=assign_points(start,end,leftover,ileftover,maxnorm);
+  if(maxnorm>maxnorm_limit){
+    cout<<"We should be adding a point!"<<endl;
+  }
+  for(int j=0;j<end.size();j++){
+    int jend=iend[j];
+    int jstart=istart[imap[j]];
+    //cout<<"j="<<j<<" jend="<<jend<<" jstart="<<jstart<<endl;
+    if(mate[jend][N]<0){//no mate already assigned at end
+      //cout<<"no mate"<<endl;
+      if(parities[jend]>0){
+	segment_ends.push_back(joint(jend,N-1));
+	segment_begins.push_back(joint(jstart,0));
+      } else {
+	segment_ends.push_back(joint(jstart,0));
+	segment_begins.push_back(joint(jend,N-1));
+      }
+    } else {
+      //Special case that we have identified the N-label point as a start.
+      //This should really be at 0...
+      //but we must it may be on  a different curve's 0, so we have to fix it now.
+      //cout<<"mate"<<endl;
+      for(int k=0;k<segment_ends.size();k++){
+	//cout<<"k="<<k<<": "<<(segment_ends[k]==joint(jend,N))<<"  "<<(segment_begins[k]==joint(jend,N))<<endl;
+	if(segment_ends[k]==joint(jend,N)){
+	  segment_ends[k]=joint(jstart,0);
+	}
+	if(segment_begins[k]==joint(jend,N)){
+	  segment_begins[k]=joint(jstart,0);
+	}
+      }
+    }
+  }
+  //cout<<"Fixed ends"<<endl; 
+  //for(int k=0;k<segment_ends.size();k++){
+  //  cout<<"  end:"<<k<<"=("<<segment_ends[k].first<<(parities[segment_ends[k].first]>0?"+":"-")<<","<<segment_ends[k].second<<")"<<endl;
+  // cout<<"  begin:"<<k<<"=("<<segment_begins[k].first<<(parities[segment_begins[k].first]>0?"+":"-")<<","<<segment_begins[k].second<<")"<<endl;
+  // }
+  
+  // Step 5:
+  //Next we connect the segments (abstractly) into some number of closed curves as vectors of segment-joint indices
+  vector<vector<int>>closed_curve_segments;//
+  vector<bool>used(segment_ends.size(),false);
+  for(int i=0;i<segment_begins.size();i++){//loop over all the 
+    if(used[i])continue;
+    //cout<<"starting curve with seg "<<i<<endl;
+    //start a new curve, beginning with this segment
+    closed_curve_segments.push_back(vector<int>(0));
+    vector<int>this_curve;
+    this_curve.push_back(i);
+    used[i]=true;
+    int seg=i;
+    while(true){
+      int jbegin=segment_begins[seg].first;
+      int ibegin=segment_begins[seg].second;
+      //cout<<"seg begins:("<<jbegin<<","<<ibegin<<")"<<endl;
+      //find where this segment ends:
+      seg=-1;
+      int mindelta=N+1;
+      for(int k=0;k<segment_ends.size();k++){
+	//cout<<"ends/begins:"<<segment_ends.size()<<"/"<<segment_begins.size()<<endl;
+	//cout<<"trying seg:"<<k<<"=("<<segment_ends[k].first<<","<<segment_ends[k].second<<")"<<endl;
+	if(segment_ends[k].first!=jbegin)continue;//j must match
+	int iend=segment_ends[k].second;
+	int delta=(iend-ibegin)*parities[jbegin];
+	//cout<<"  ...delta="<<delta<<endl;
+	if(delta<0)continue;//must end after starting (in parity dirirection)
+	if(delta<mindelta){
+	  //cout<<"  ...<mindelta="<<mindelta<<endl;
+	  mindelta=delta;
+	  seg=k;
+	}
+      }
+      if(seg<0){
+	if(this_curve.size()<2)
+	  cout<<"Failed to find second point in curve"<<endl;
+	else
+#pragma omp critical	
+	  {
+	    cout<<"Failed to find next segment. Something is wrong!:"<<endl;
+	    for(int k=0;k<segment_ends.size();k++){
+	      cout<<k<<"b=("<<segment_ends[k].first<<","<<segment_ends[k].second<<")"<<endl;
+	      cout<<k<<"e=("<<segment_begins[k].first<<","<<segment_begins[k].second<<")"<<endl;
+	    }
+	    for(int j=0;j<N;j++){
+	      cout<<j<<" ";
+	      for(int k=0;k<image_curves.size();k++){
+		cout<<"  "<<image_curves[k][j].x<<" "<<image_curves[k][j].y;
+		if(empty[k][j])cout<<"[empty]";
+	      }
+	      cout<<endl;
+	    }
+	  }
+      }
+      //cout<<" found next seg "<<seg<<endl;
+      if(seg<0 or used[seg]){
+	//cout<<"completed curve: ";
+	/*for(int seg: this_curve){
+	  cout<<"("<<segment_ends[seg].first<<","<<segment_ends[seg].second<<")="
+	    <<"("<<segment_begins[seg].first<<","<<segment_begins[seg].second<<") ... ";
+	}
+	cout<<endl;*/
+	closed_curve_segments.back()=this_curve;
+	break;//this segment already listed, closes off curve (other ways to test, but this seems fast).
+      } else {
+	//cout<<" appending next seg "<<seg<<endl;
+	this_curve.push_back(seg);
+	used[seg]=true;
+      }
+      //cout<<"end of inner while loop: seg="<<seg<<endl;
+    }
+  }
+  if(super_debug){
+    cout<<"Computed curves"<<endl; 
+    cout<<"# Found "<<closed_curve_segments.size()<<" closed curves:"<<endl;
+    for(auto curve: closed_curve_segments){
+      cout<<"#";
+      for(auto seg: curve){
+	cout<<"("<<segment_ends[seg].first<<","<<segment_ends[seg].second<<(parities[segment_ends[seg].first]>0?"+":"-")<<")="
+	    <<"("<<segment_begins[seg].first<<","<<segment_begins[seg].second<<(parities[segment_begins[seg].first]>0?"+":"-")<<") ... ";
+      }
+      cout<<endl;
+    }
+  }
+
+  // Step 6: Now we actually assemble the closed curves
+  vector<vector<Point>>closed_curves;
+  for(auto scurve:closed_curve_segments){
+    vector<Point>curve;
+    for(int i=0;i<scurve.size();i++){
+      int iseg=scurve[i];
+      int inext=scurve[(i+1)%scurve.size()];
+      int j=segment_begins[iseg].first;
+      int istart=segment_begins[iseg].second;
+      int iend=segment_ends[inext].second;
+      //cout<<"i,j,iseg,inext,istart,iend: "<<i<<" "<<j<<" "<<iseg<<" "<<inext<<" "<<istart<<" "<<iend<<endl;
+      //cout<<"("<<segment_ends[iseg].first<<","<<segment_ends[iseg].second<<(parities[segment_ends[iseg].first]>0?"+":"-")<<")="
+      //  <<"("<<segment_begins[iseg].first<<","<<segment_begins[iseg].second<<(parities[segment_begins[iseg].first]>0?"+":"-")<<") ... ";
+      if(parities[j]>0){
+	//cout<<"parities[j]="<<parities[j]<<" image_curves[j].size()="<<image_curves[j].size()<<endl;
+	//(Seems this should work for C++11 standard even for neg parity, but with gcc5 seems not.) 
+	curve.insert(curve.end(),image_curves[j].begin()+istart,image_curves[j].begin()+iend+parities[j]);
+	//cout<<"inserted"<<endl;
+      } else {
+	//neg parity
+	//first insert in the wrong order
+	//cout<<"inserting"<<endl;
+	//cout<<" image_curves[j].size()="<<image_curves[j].size()<<endl;
+	curve.insert(curve.end(),image_curves[j].begin()+iend,image_curves[j].begin()+istart+1);
+	//cout<<"reversing"<<endl;
+	//then reverse order in place
+	reverse(curve.end()-istart+iend-1,curve.end());
+      }
+    }
+    closed_curves.push_back(curve);
+  }  
+  //cout<<"Assembled curves"<<endl;
+  if(out){
+    *out<<endl;
+    int n=0;
+    for(auto & curve : closed_curves)if(curve.size()>n)n=curve.size();
+    for(int i=0;i<n+1;i++){			
+      for(auto & curve : closed_curves){
+	int ii=i%curve.size();//just keep wrapping if curve is shorter than longest
+	*out<<curve[ii].x<<" "<<curve[ii].y<<" ";
+      }
+      *out<<endl;
+    }
+  }
+
+  
+  // Step 7: Compute area and overall image centroid
+  double area=0;
+  Point cent(0,0);
+  for(int i=0;i<closed_curves.size();i++){
+    vector<Point>&curve=closed_curves[i];
+    Point pcentroid(0,0);//pointwise centroid
+    for(auto pt :curve){
+      pcentroid = pcentroid + pt;
+    }
+    pcentroid = pcentroid*(1.0/curve.size());
+    //cout<<"pcentroid["<<i<<"]=("<<pcentroid.x<<","<<pcentroid.y<<")"<<endl;
+    Point dAreaCentroid;
+    double carea=getPolygonAreaCoM(curve,pcentroid,dAreaCentroid);
+    //cout<<"curve area="<<area<<endl;
+    area+=carea;
+    cent=cent+dAreaCentroid;
+    //this next part is a quality control diagnostic, to verify that we don't run into surprises where the signed area is not as expected...
+    if(false){
+      bool inside=false;
+      for(int j=0;j<closed_curves.size();j++){
+	if(j!=i and pointInPolygon(curve[0],closed_curves[j])!=0){
+	  if(carea>0){
+	    cout<<"curve "<<i<<" is inside curve "<<j<<" area["<<i<<"]="<<carea<<endl;
+	    cout<<"GLens::image_area_mag: Area seems to have wrong sign!"<<endl;
+	  } else inside=true;
+	}
+      }
+      if(carea<0 and not inside){
+	cout<<"curve "<<i<<" is NOT inside another curve but area["<<i<<"]="<<carea<<endl;
+	cout<<"GLens::image_area_mag: Area seems to have wrong sign!"<<endl;
+	cout<<"winding numbers for each curve around first point in polygon["<<i<<"]"<<endl;
+	for(int j=0;j<closed_curves.size();j++)
+	  cout<<pointInPolygon(curve[0],closed_curves[j])<<endl;
+      }
+      cout<<"count_area="<<carea<<endl;
+    }  //End of diagnositic
+
+  }
+  Point c0;
+  double area0=getPolygonAreaCoM(curve,p,c0);
+  magnification=area/area0;
+  p=cent*(1.0/area)+c0*(-1.0/area0);//we are recycling this to use as the overall image centroid offset now.
+  //cout<<"total area="<<area<<" > "<<area0<<endl;
+  //cout<<"centroid shift=("<<p.x<<","<<p.y<<")"<<endl;
+
+  // Step 8: Compute variance, trimming excesses
+  var=0;
+  for( auto mg : vertex_mags){
+    double dmg=mg-magnification;
+    if(dmg>magnification)dmg=magnification;
+    dmg*=source_var;
+    var+=dmg*dmg;
+  }
+  var/=vertex_mags.size();
+  //cout<<"sqrt(var)="<<sqrt(var)<<endl;
+  
+}
+
+vector<double> GLens::_compute_trajectory_dummy_dmag;//dummy argument
+
+void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<double>&mag_series, vector<double>&dmag_series, ostream *out){
+  //Can optionally provide out stream to which to write image curves.
+  //Controls
+  const int Npoly_max=finite_source_Npoly_max*(1+4*source_radius);        //Part of magnification-based estimate for polygon order.
+  const double Npoly_Asat=2.0;   //Saturate at Npoly_max when image_area/pi = Npoly_Asat 
+  bool dont_mix= false;
+  bool do_laplacian = false;
+  bool do_polygon = false;
+  const double rho2=source_radius*source_radius;
+  const double mtol=1e-4;
+  const double ftol=1e-2;
+  const double mag_lcut=mtol/rho2;
+  double mag_pcut=mtol/rho2/rho2;
+  if(mag_pcut>1) mag_pcut=1.0;
+  const double dmag_pcut=ftol;
+  //cout<<"enter finite source compute traj"<<endl;
+
+  if(finite_source_method<0)dont_mix=true;
+  if(abs(finite_source_method)==1){
+    do_polygon=true;
+    do_laplacian=true;
+  } else if(abs(finite_source_method)==2)do_laplacian=true;
+
+  /*cout<<"source_radius="<<source_radius<<endl;
+  cout<<"do_laplacian="<<do_laplacian<<endl;
+  cout<<"do_polygon="<<do_polygon<<endl;*/
+
+  int Ngrid=traj.Nsamples();
+  time_series.resize(Ngrid);
+  thetas_series.resize(Ngrid);
+  mag_series.resize(Ngrid);
+  dmag_series.resize(Ngrid);
+  for(int i=0; i<Ngrid;i++){
+    double tgrid=traj.get_obs_time(i);
+    Point b=get_obs_pos(traj,tgrid);
+    //cout<<i<<" t="<<tgrid<<" b=("<<b.x<<","<<b.y<<")"<<endl;
+    double Amag=0;
+    Point CoM;
+    double variance=0;
+
+    //At first we just compute the ordinary magnification and a leading-order finite source term
+    //This is probably relatively fast enough that we can do it without worry about the additional cost
+    vector<Point>thetas=invmap(b);
+    int nk=thetas.size();
+    double mg0 = mag(thetas);
+    vector<double> mu0s(nk),mus(nk);
+    for(int k=0;k<nk;k++)mu0s[k]=mag(thetas[k]);
+    //Now estimate the leading order finite source term:
+    //This is a smaller calculation than the full Laplacian, keep in only up to 1/r^6 terms
+    // dA*/A=1 + 4*norm(mu*dgamma)
+    //Interestingly, for each of the images, the same term is dominant, and it is dA~O(1/r^6)
+    //For the near-lens images, mu is small but dgamma is large, yielding the same order.
+    //Analytically I get leading order for a binary as:
+    //
+    // A* = 1 + 2(1-q(1-q))r^(-4)( 1 + 4rho^2/r^2 )
+    //
+    //where all 3 images are included.
+    for(int k=0;k<nk;k++){
+      Point th=thetas[k];
+      vector<complex<double> > gammas=compute_shear(th,1);
+      double dArel=norm(mu0s[k]*gammas[1]*source_radius);
+      double Ak=abs(mu0s[k])*(1+dArel);
+      Amag+=Ak;
+      CoM=CoM+th*Ak;
+    }
+    CoM=CoM*(1.0/Amag);
+    
+    //Eventually we will want to dynamically select efficient methods for different regions.
+    //For now we just have fixed choice of analytic or polygon methods
+    //cout<<  Amag -1 <<" > "<<mag_lcut<<" ? "<<( Amag - 1 > mag_lcut)<<endl;
+    if(do_laplacian and ( Amag - 1 > mag_lcut or dont_mix)){
+      //cout<<"doing laplacian"<<endl;
+      //This method builds on PejchaEA2007? method
+      // Amag = \sum_k I[k]/I[0] Lap^k[mu] / (2^k k!)^2
+      // I[k] = \int_0^1 r^(2k+1) B(r) dr
+      //Where B(rho/rho*) is the surface brightness at radius rho, for star-disk of radius rho*.
+      //For constant surface brightness, I[k]/I[0]=1/(k+1)
+      //Here we just keep the first nonleading term
+      Amag=0;
+      CoM=Point(0,0);
+      for(int k=0;k<nk;k++){
+	Point th=thetas[k];
+	vector<complex<double> > gammas=compute_shear(th,1);
+	double Lmu=Laplacian_mu(th);
+	double dArel=Lmu*source_radius*source_radius/4.0/mu0s[k];
+	dArel/=2.0;  //This is a total experimental HACK playing around...
+	double Ak=abs(mu0s[k])*(1+dArel);
+	Amag+=Ak;
+	CoM=CoM+th*Ak;
+      }
+      CoM=CoM*(1.0/Amag);
+    }
+
+    //cout<<  Amag -1 <<" > "<<mag_pcut<<" ? or "<<  abs(Amag/mg0 - 1)  <<" > "<<dmag_pcut<<" ? "<<endl;
+    bool do_polygon_test= do_polygon  and ( Amag - 1 > mag_pcut or abs(Amag/mg0 - 1) > dmag_pcut or dont_mix);
+    if(do_polygon_test){
+      //cout<<"doing polygon"<<endl;
+      //This section computes the polygon order to apply
+      //There are several possibilities in principle:
+      //  -Use adaptive stepping in the polygon computation itself (maybe best long term)
+      //  -Use an estimate from an analytic estimate of size of finite source effect
+      //  -Use an estimate based on point-source magnification [implememted here]
+      //  -Fixed (probably way too slow).
+      //
+      //Magnification-based Npoly: Based on the idea that the mean side length of poly is fixed
+      //  -scales with sqrt(mg)
+      //  -min of 4          as  Area/pi -> rho^2
+      //  -max of Npoly_max  as  Area/pi >= Npoly_Asat
+      //  -always even (to preserve time symmetry)
+      const double N2scale=Npoly_max*Npoly_max/16.0-1.0;//4*sqrt(N2scale+1)=Npoly_max
+      double extra_area = (mg0-1)/Npoly_Asat;
+      if(extra_area>1.0)extra_area=1.0;       //extra_area ranges from 0 to 1
+      //int Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*N2scale));
+      int Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*extra_area*N2scale));
+      //results go in Amag and CoM
+      //cout<<"extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
+      //cout<<" mu_i={ ";for(auto mui : mu0s)cout<<mui<<" ";cout<<"}"<<endl;
+      image_area_mag(b, source_radius, Npoly, Amag, variance, out);  
+      //if(Npoly>Npoly_max*5)cout<<"Npoly="<<Npoly<<endl;
+      CoM=b;
+    }
+    //Sanity check
+    if(Amag<1){
+      //if(1-Amag>1e-1)cout<<"impossible total magnification = "<<Amag<<" (polygon="<<do_polygon_test<<"), setting to mg0="<<mg0<<endl;
+      Amag=mg0;
+    }
+    
+    //Pack it back up
+    time_series[i]=tgrid;
+    thetas_series[i]=vector<Point>(1,CoM); //Note we return lenght-1 vector with the overall image centroid offset.
+    mag_series[i]=Amag;
+    dmag_series[i]=sqrt(variance)*source_var;
+    
+
+    /*
+    if(do_polygon_test)
+    #pragma omp critical    
+      cout<<"Amag="<<Amag<<" var="<<variance<<endl;
+    */
+  }
+
+};
+    
 //Use GSL routine to integrate 
-void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<int> &index_series,vector<double>&mag_series,bool integrate)
+void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<int> &index_series,vector<double>&mag_series,vector<double> &dmag, bool integrate)
 {
   // Given a trajectory through the observer plane, and a list of observation times, integrate the Jacobian to yield the corresponding trajectory in the lens plane.
   //
@@ -102,6 +1230,16 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   //bool integrate (false for direct polynomial evaluation rather than integration. 
   //  if use_integrate is set then the value it overrides integrate 
   //
+  if(do_finite_source&&source_radius>0){//For finite-sources, we use a different approach
+    //ofstream out("curves.dat");
+    //finite_source_compute_trajectory( traj, time_series, thetas_series, mag_series, dmag, &out);
+    finite_source_compute_trajectory( traj, time_series, thetas_series, mag_series, dmag, NULL);
+    int n=time_series.size();
+    index_series.resize(n);
+    for(int i=0;i<n;i++)index_series[i]=i;
+    return;
+  }
+  
   //control parameters:
   double caustic_mag_poly_level = GL_int_mag_limit; //use direct polynomial eval near caustics.
   const double intTOL = GL_int_tol;  //control integration error tolerance
@@ -215,6 +1353,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
       }
     } else { //not evolving, solve polynomial
       beta=get_obs_pos(traj,tgrid);
+      //cout<<i<<" t="<<tgrid<<" b=("<<beta.x<<","<<beta.y<<")"<<endl;
       //cout<<"Not evolving: beta=("<<beta.x<<","<<beta.y<<")"<<endl;
       thetas.clear();
       thetas=invmap(beta);
@@ -233,6 +1372,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 	if(evolving)gsl_odeiv2_evolve_reset(evol);
       };
       if(!isfinite(mg)){
+	//We do some specific handling for GLensBinary here, could be cleaned up...
 	GLensBinary* gb;
 	bool squak=true;
 	if(gb=dynamic_cast< GLensBinary* > (this)){
@@ -384,6 +1524,9 @@ void GLens::addOptions(Options &opt,const string &prefix){
   opt.add(Option("GL_int_tol","Tolerance for GLens inversion integration. (1e-10)","1e-10"));
   opt.add(Option("GL_int_mag_limit","Magnitude where GLens inversion integration reverts to poly. (1.5)","1.5"));
   opt.add(Option("GL_int_kappa","Strength of driving term for GLens inversion. (0.1)","0.1"));
+  opt.add(Option("GL_finite_source","Flag to turn on finite source fitting. Optional argument to provide method [leading,laplacian,polygon,(no arg default), uses fastest appropriate, up to specification or use eg 'strict_polygon']"));
+  opt.add(Option("GL_finite_source_Npoly_max","Max number of sides in polygon source approximation.(30 default)","30"));
+  opt.add(Option("GL_finite_source_var","Factor (roughly) for variance in surface brightness from uniformity.(0.01 default)","0.01"));
 };
 
 void GLens::setup(){
@@ -391,14 +1534,104 @@ void GLens::setup(){
   *optValue("GL_int_tol")>>GL_int_tol;
   *optValue("GL_int_mag_limit")>>GL_int_mag_limit;
   *optValue("GL_int_kappa")>>kappa;
+  if(optSet("GL_finite_source")){
+    do_finite_source=true;
+    *optValue("GL_finite_source_var")>>source_var;
+    string method;
+    *optValue("GL_finite_source")>>method;
+    finite_source_method=0;
+    if(method=="polygon"||method=="true")finite_source_method=1;
+    else if(method=="laplacian")finite_source_method=2;
+    else if(method=="leading")finite_source_method=3;
+    else if(method=="strict_polygon")finite_source_method=-1;
+    else if(method=="strict_laplacian")finite_source_method=-2;
+    else{
+      cout<<"GLens::setup: Finite source method '"<<method<<"' not recognized."<<endl;
+      exit(1);
+    }
+    cout<<"finite source method = '"<<method<<"' -> "<<finite_source_method<<endl; 
+    *optValue("GL_finite_source_Npoly_max")>>finite_source_Npoly_max;
+  }
   haveSetup();
   cout<<"GLens set up with:\n\tintegrate=";
   if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
   else cout<<"false"<<endl;
-  nativeSpace=stateSpace(0);
-  setPrior(new sampleable_probability_function(&nativeSpace));//dummy
+  if(do_finite_source){
+    string names[] =                                      {"log_rho_star"};
+    nativeSpace=stateSpace(1);
+    nativeSpace.set_names(names);
+    GLSpace=nativeSpace;
+    const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
+    valarray<double>    centers((initializer_list<double>){ -4.0  });
+    valarray<double> halfwidths((initializer_list<double>){  1.0  });
+    valarray<int>         types((initializer_list<int>)   { gauss });
+    setPrior(new mixed_dist_product(&GLSpace,types,centers,halfwidths));
+  } else {
+    nativeSpace=stateSpace(0);
+    setPrior(new sampleable_probability_function(&nativeSpace));//dummy
+  }
 };
 
+///Compute the Laplacian of the local image magnification explicitly
+///
+/// Using C-R (Wirtinger) calculus, the calculation is built on:
+///
+///    mu = ( 1 - gamma*gammac )^(-1)
+/// gamma = \sum_i^N nu_i / (zc*zc)   =  dbetac/dz
+///
+/// Where postscript c indicates conjugate
+///
+/// Note that dgamma/dzc = 0.
+///
+/// In the manifestly flat source/observer beta plane, but transformed
+/// to Wirtinger variables:
+///
+///   ds^2 = dz dzc
+///  Lap f = 4 (d/dz)(d/dzc) f
+///
+/// Then, after diffeomorphism to lens plane [away from caustics]:
+/// 
+/// Lap f = mu \partial_a ( ginv^{ab}/mu \partial b f )
+///    mu = srt(det[g]), as given above
+///  ginv = mu^2 (    1    -gamma )
+///              ( -gammac    1   )
+/// after algebra:
+///
+/// Lap f = 2 mu [-gammac (d/dz)^2 + (2-1/mu)(d/dz)(d/dzc) -gamma (d/dzc)^2 + gamma dgammac/dz (d/dz) ] f
+///
+/// Lap mu = mu^3 ( -4 gammac^2( 3 mu^2 gammac (dgamma/dz)^2 + mu (d^2gamma/dz^2) )
+///                 +2 ( 6 mu^2 - 6 mu + 1 )
+///                 + CC 
+///               )
+/// The same approach can be applied again to get Lap^2 mu, with a somewhat more complicated result
+/// involving up to d4gamma.
+double GLens::Laplacian_mu(const Point &p)const{
+  //Computuing the shear and derives is specialized to the lens-type, the rest is general...
+  vector<complex<double> >gammas=compute_shear(p,2);
+  complex<double>   gamma=gammas[0], gammac=conj(gamma), dgamma=gammas[1], d2gamma=gammas[2];
+  double invmu = 1-norm(gamma);
+  if(invmu==0)return 0;//Fail gracefully;  There is no appropriate result near caustics
+  double mu=1/invmu, mu2=mu*mu;
+  double term1 = real(-2.0*gammac*gammac*( 3.0*mu2*gammac*dgamma*dgamma + mu*d2gamma ));
+  double term2 = real(norm(dgamma)*( 6*mu*(mu-1) + 1 ));
+  return 4*mu*mu2*(term1+term2);
+};
+ 
+///Compute the complex lens shear, and some number of its derivatives
+/// gamma = \sum_i^N nu_i / (zc*zc)   =  dbetac/dz
+vector<complex<double> > GLens::compute_shear(const Point &p, int nder)const{
+  double x=p.x,y=p.y;
+  complex<double> z(x,y);
+  vector<complex<double> >gammas;   
+  complex<double>   gamma=1.0/z/z, gammac=conj(gamma);
+  complex<double> dNgamma=gamma;
+  gammas.push_back(gamma);
+  for(int n=0;n<nder;n++){
+    dNgamma *=-(n+2.0)/z;
+    gammas.push_back(dNgamma);
+  }
+  return gammas;
+};
 
 //
 // ******************************************************************
@@ -411,6 +1644,7 @@ GLensBinary::GLensBinary(double q,double L,double phi0):q(q),L(L),phi0(phi0),sin
   option_name="BinaryLens";
   option_info="Fixed binary point-mass lens";
   NimageMax=5;
+  NimageMin=3;
   nu=1/(1+q);
   rWide=5;
   do_remap_q=false;
@@ -425,9 +1659,9 @@ void GLensBinary::setup(){
   *optValue("GL_int_kappa")>>kappa;
   *optValue("GLB_rWide")>>rWide;
   haveSetup();
-  cout<<"GLens set up with:\n\tintegrate=";
-  if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
-  else cout<<"false"<<endl;
+  //cout<<"GLens set up with:\n\tintegrate=";
+  //if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
+  //else cout<<"false"<<endl;
   if(optSet("remap_q")){
     double q0_val;
     *optValue("q0")>>q0_val;
@@ -444,7 +1678,13 @@ void GLensBinary::setup(){
   if(do_remap_q)names[3]="s(1+q)";
   space.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi0.
   space.set_names(names);  
-  nativeSpace=space;
+
+  //cout<<"native::space=\n"<<nativeSpace.show()<<endl;
+  //cout<<"native is:\n"<<nativePrior->show()<<endl;
+  //cout<<"binary::space=\n"<<space.show()<<endl;
+  GLBinarySpace=space;
+  nativeSpace.attach(space);
+  //cout<<"new native::space=\n"<<nativeSpace.show()<<endl;
   if(optSet("GLB_gauss_q"))types[0]=gauss;
   if(do_remap_q){
     double qq=2.0/(q_ref+1.0);
@@ -453,7 +1693,15 @@ void GLensBinary::setup(){
     halfwidths[0]=ds;          //ie range=[s(q=1),s(q=inf)=1.0]
     types[0]=uni;
   }
-  setPrior(new mixed_dist_product(&nativeSpace,types,centers,halfwidths));
+  //setPrior(new mixed_dist_product(&nativeSpace,types,centers,halfwidths));
+  binaryPrior=make_shared<mixed_dist_product>(&GLBinarySpace,types,centers,halfwidths);
+  parentPrior=nativePrior;
+  //cout<<"parent is:\n"<<parentPrior->show()<<endl;
+  //cout<<"binary is:\n"<<binaryPrior->show()<<endl;
+  //cout<<"parent space is:\n"<<parentPrior->get_space()->show()<<endl;
+  //cout<<"binary space is:\n"<<binaryPrior->get_space()->show()<<endl;
+  setPrior(new independent_dist_product(&nativeSpace,parentPrior.get(),binaryPrior.get()));//append to prior
+  //cout<<"net prior is:\n"<<nativePrior->show()<<endl;
 };
 
 Point GLensBinary::map(const Point &p){
@@ -703,7 +1951,9 @@ vector<Point> GLensBinary::invmapWideBinary(const Point &p){
   return result;
 };
 
-vector<Point> GLensBinary::invmapWittMao(const Point &p){
+vector<Point> GLensBinary::invmapWittMao(const Point &p,bool no_check){
+  bool test_images=true;
+  //if no_check==true then we return all polynomial roots without checking that they are consistent with the forward map.
   //Here quantities are like WittMao95, but with:
   // z         ->  z*z1
   // 2m        -> M*z1^2  ; but in our normalization 2 m = nu+(1-nu) = 1
@@ -844,28 +2094,139 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p){
   
   vector<Point> result;
   const double TOL=LEADTOL*LEADTOL;
+  double maxerr=0;
+  int imaxerr=-1;
+  double minerrfail=INFINITY;
+  int iminerrfail=-1;
+
   for(int i=0;i<nroots;i++){
     Point newp=Point(0,0);
     if(z1scaled)
       newp=Point(real(roots[i])*z1,imag(roots[i])*z1);
     else 
       newp=Point(real(roots[i]),imag(roots[i]));
-    //Test solutions: Could also try keeping those with err/(1+B*Bb)<TOL say
-    Point btheta=map(newp);
-    double dx=btheta.x-p.x,dy=btheta.y-p.y;
-    //double dbx=newp.x-p.x,dby=newp.y-p.y;
-    double x=newp.x,y=newp.y,x1=x-L/2,x2=x+L/2,r1sq=x1*x1+y*y,r2sq=x2*x2+y*y;
-    double c1=(1-nu)/r1sq,c2=nu/r2sq;
-    if(debug){
-      cout<<"testing: "<<roots[i]<<" -> |("<<btheta.x<<"-"<<p.x<<","<<btheta.y<<"-"<<p.y<<")|="<<sqrt(dx*dx+dy*dy)<<" "<<(dx*dx+dy*dy<TOL*(1+c1+c2)?" < ":"!< ")<<LEADTOL*sqrt(1+c1+c2)<<"="<<LEADTOL<<"*√(1+"<<c1<<"+"<<c2<<")"<<endl;
+    if(no_check) result.push_back(newp);
+    else{
+      //Test solutions: Could also try keeping those with err/(1+B*Bb)<TOL say
+      Point btheta=map(newp);
+      double dx=btheta.x-p.x,dy=btheta.y-p.y;
+      double err=dx*dx+dy*dy;
+      //double dbx=newp.x-p.x,dby=newp.y-p.y;
+      double x=newp.x,y=newp.y,x1=x-L/2,x2=x+L/2,r1sq=x1*x1+y*y,r2sq=x2*x2+y*y;
+      double c1=(1-nu)/r1sq,c2=nu/r2sq;
+      err/=(1+c1+c2);
+      if(debug ){
+	cout<<"testing: "<<roots[i]<<" -> |("<<btheta.x<<"-"<<p.x<<","<<btheta.y<<"-"<<p.y<<")|="<<sqrt(dx*dx+dy*dy)<<" "<<(dx*dx+dy*dy<TOL*(1+c1+c2)?" < ":"!< ")<<LEADTOL*sqrt(1+c1+c2)<<"="<<LEADTOL<<"*√(1+"<<c1<<"+"<<c2<<")"<<endl;
+      }
+      if(err<TOL){     //RHS is squared estimate in propagating error of LEADTOL in root through map()
+	result.push_back(newp);
+	if(err>maxerr){
+	  maxerr=err;
+	  imaxerr=result.size()-1;
+	}
+      } else {
+	if(err<minerrfail){
+	  minerrfail=err;
+	  iminerrfail=i;
+	}
+      }
+      //For now we just adopt the ordering from the SG code.  Might change to something else if needed...
+    };
+  }
+  if(test_images){
+    int ni=result.size();
+    bool pass1=( ni >= NimageMin );
+    bool pass2=(ni <= NimageMax);
+    bool pass3=( (ni-NimageMin)%2==0 );
+    if(not (pass1 and pass2 and pass3)){
+      if(pass1 and not pass3){//This is something we can try to fix:
+	//cout<<"erasing a candidate image "<<imaxerr<<endl;
+	result.erase(result.begin()+imaxerr);
+      } else if(ni+1==NimageMin and minerrfail<TOL*100){//Looks like we missed an image near one of the lenses, but can see it with related TOL
+	Point newp=Point(0,0);
+	int i=iminerrfail;
+	if(z1scaled)
+	  newp=Point(real(roots[i])*z1,imag(roots[i])*z1);
+	else 
+	  newp=Point(real(roots[i]),imag(roots[i]));
+	double mg=mag(newp);
+	if(mg<0)result.push_back(newp);
+      }else {
+	//cout<<"something wrong with the image set "<<pass1<<" "<<pass2<<" "<<pass3<<", but we forge on"<<endl;
+      }
     }
-    if(dx*dx+dy*dy<TOL*(1+c1+c2))result.push_back(newp);      //RHS is squared estimate in propagating error of LEADTOL in root through map()
-    //For now we just adopt the ordering from the SG code.  Might change to something else if needed...
-  };
+  }
+
   if(debug)cout<<"Found "<<result.size()<<" images."<<endl;
 
   return result;
 };
+
+int GLensBinary::poly_root_integration_func_vec (double t, const double theta[], double thetadot[], void *instance){
+  //This is similar to the image point integration func, but we integrate the roots of the poly to be directly
+  //We use notation beta.x + i beta.y -> w and theta.x + i theta.y -> z
+  //
+  //Another change is that we have here written this function explicitly for sepcific derived GLens class
+  //
+  GLensBinary *thisobj = static_cast<GLensBinary *>(instance);
+  const Trajectory *traj=thisobj->trajectory;
+  Point beta0=thisobj->get_obs_pos(*traj,t);
+  Point betadot=thisobj->get_obs_vel(*traj,t);
+  complex<double> wdot(betadot.x,betadot.y);
+  bool fail=false;
+  for(int k=0;k<2*thisobj->NimageMax;k++)thetadot[k]=0;
+  //cout<<"beta0=("<<beta0.x<<","<<beta0.y<<")"<<endl;
+  for(int image =0; image<NimageMax;image++){
+    //Point p(theta[image*2+0],theta[image*2+1]);
+    complex<double> z(theta[image*2+0],theta[image*2+1]);
+    //double j00i,j10i,j01i,j11i,invJ = thisobj->invjac(p,j00i,j01i,j10i,j11i);
+    /*
+    //This block was provides contraint-driving in the original formulation
+    //It seems possible, but perhaps complicated to do this in the poly_root case
+    //The issue is that there is no explict inverse transform w(z) with the polynomial
+    //because that polynomial includes up to cubic-order combinations of w and w*.
+    //Using the original map equation w(z), as before, is not appropriate here since
+    //The polynomial has solutions which are inconsistent with that map function.
+    //A plausible way to implement this is to assume that the error in w is small
+    //then solve the w(z),w*(z) system in the small dw limit.  The resulting expression
+    //is a little bit complicated, so we don't yet implement that.
+    Point beta=thisobj->map(p);
+    double dx=beta.x-beta0.x,dy=beta.y-beta0.y;
+    double adjbetadot[2];
+    //double rscale=thisobj->estimate_scale(Point(theta[0],theta[1]));
+    //if our image is near one of the lenses, then we need to tread carefully
+    double rk=thisobj->kappa;//*rscale;
+    adjbetadot[0] = betadot.x;
+    adjbetadot[1] = betadot.y;
+    if(isfinite(dx))adjbetadot[0] += -rk*dx;
+    if(isfinite(dy))adjbetadot[1] += -rk*dy;
+    */
+    //Next we compute derivative, which previously looked like:
+    //
+    //if(isfinite(invJ)){
+    //thetadot[2*image]   = (j00i*adjbetadot[0]+j01i*adjbetadot[1]);
+    //thetadot[2*image+1] = (j10i*adjbetadot[0]+j11i*adjbetadot[1]);
+    //}
+    //
+    //In the complex notation, the effective invjacobian is simpler
+    // zdot = ( wdot + Ecc*wdotcc) * mu
+    // where E = nu1/z1^2 + nu2/z2^2, cc indicates conjugate and
+    // the magnification mu = 1 / (1 - E*Ecc) 
+    complex<double> c1((thisobj->L)/2,0), z1=z-c1, z2=z+c1;
+    complex<double> E = (1-nu)/z1/z1 + nu/z2/z2;
+    complex<double> zdotinvmu =  wdot +conj(E*wdot) ;
+    double invmu = 1-norm(E);
+    if(invmu==0){
+      //here we panic and rather than return NAN, we evolve as if the lensing effect is unit scale
+      //this is wrong, but it will move use past the point where
+      invmu=1;
+    }
+    thetadot[2*image]   = zdotinvmu.real()/invmu;
+    thetadot[2*image+1] = zdotinvmu.imag()/invmu;
+  }
+
+  return !fail?GSL_SUCCESS:3210124;
+}
 
 double GLensBinary::mag(const Point &p){
   double x=p.x,y=p.y,x1=x-L/2,x2=x+L/2,r1sq=x1*x1+y*y,r2sq=x2*x2+y*y;
@@ -880,6 +2241,7 @@ double GLensBinary::mag(const Point &p){
   return mg;
 };
 
+///returns J=det(d(map(p))/dp)^-1, sets, j_ik = d(map(pi))/dpk
 double GLensBinary::jac(const Point &p,double &j00,double &j01,double &j10,double &j11){
   double x=p.x,y=p.y,x1=x-L/2,x2=x+L/2,y2=y*y,r1sq=x1*x1+y2,r2sq=x2*x2+y2;
   double E1=(1-nu)/r1sq, E2=nu/r2sq,dE=E1-E2,E=E1+E2;
@@ -910,4 +2272,41 @@ double GLensBinary::invjac(const Point &p,double &ij00,double &ij01,double &ij10
   return mu;
 };
 
+///Compute the complex lens shear, and some number of its derivatives
+/// gamma = \sum_i^N nu_i / (zc*zc)   =  dbetac/dz
+vector<complex<double> > GLensBinary::compute_shear(const Point &p, int nder)const{
+  double x=p.x,y=p.y,x1=x-L/2,x2=x+L/2;
+  complex<double> z1(x1,y), z2(x2,y);
+  vector<complex<double> >gammas;   
+  complex<double> dNgamma1=(1-nu)/z1/z1, dNgamma2=nu/z2/z2;
+  gammas.push_back(dNgamma1+dNgamma2);
+  for(int n=0;n<nder;n++){
+    dNgamma1 *=-(n+2.0)/z1;
+    dNgamma2 *=-(n+2.0)/z2;
+    gammas.push_back(dNgamma1+dNgamma2);
+  }
+  return gammas;
+}
+ 
+///Compute the Laplacian of the local image magnification explicitly
+///
+///See explanation with GLens::Laplacian_mu
+/*
+double GLensBinary::Laplacian_mu(const Point &p)const{
+  //The first part is specialized to the binary lens, the rest is general...
+  double x=p.x,y=p.y,x1=x-L/2,x2=x+L/2,y2=y*y,r1sq=x1*x1+y2,r2sq=x2*x2+y2;
+  complex<double> z1(x1,y1), z2(x2,y2);
+  complex<double>   gamma1=(1-nu)/z1/z1,    gamma2=nu/z2/z2,       gamma=gamma1+gamma2, gammac=conj(gamma);
+  complex<double>  dgamma1=-2*gamma1/z1,   dgamma2=-2*gamma2/z2,  dgamma=dgamma1+dgamma2;
+  complex<double> d2gamma1=-3*dgamma1/z1, d2gamma2=-3*gamma2/z2, d2gamma=d2gamma1+d2gamma2;
+
+  //The rest is general for any lens system
+  double invmu = 1-norm(gamma);
+  if(invmu==0)return 0;//Fail gracefully;  There is no appropriate result near caustics
+  double mu=1/invmu, mu2=mu*mu;
+  double term1 = real(-2*gammac*gammac*( 3*mu2*gammac*dgamma*dgamma + mu*d2gamma ));
+  double term2 = real(norm(dgamma)*( 6*mu*(mu-1) + 1 ));
+  return 4*mu*mu2*(term1+term2);
+};
+*/
 

@@ -19,6 +19,9 @@ gleam: gleam.cc glens.cc glens.hh trajectory.cc trajectory.hh cmplx_roots_sg.o m
 gleam_quad: gleam.cc glens.cc glens.hh  trajectory.cc trajectory.hh cmplx_roots_sg_quad.o ptmcmc ${MCMC}/bayesian.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a
 	${CXX} ${CFLAGS} -o gleam_quad gleam.cc glens.cc trajectory.cc cmplx_roots_sg_quad.o -lgsl -L${GSLDIR} -I${GSLINC} -I${MCMC} -std=c++11 -lgfortran -lprobdist -lptmcmc -L${LIB} -DUSE_KIND_16 
 
+testGG: testGG.cc glens.o glens.hh  trajectory.cc trajectory.hh cmplx_roots_sg.o ptmcmc ${MCMC}/bayesian.hh ${LIB}/libprobdist.a  ${LIB}/libptmcmc.a .ptmcmc-version
+	${CXX} ${CFLAGS} -g -o testGG testGG.cc glens.o  trajectory.cc cmplx_roots_sg.o -lgsl -L${GSLDIR} -I${GSLINC} -I${MCMC} -std=c++11 -lgfortran -lprobdist -lptmcmc -L${LIB} 
+
 cmplx_roots_sg.o: cmplx_roots_sg.f90
 	${F90} ${CFLAGS} -c cmplx_roots_sg.f90
 

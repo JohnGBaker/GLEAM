@@ -17,11 +17,27 @@
 #include "mldata.hh"
 #include "mlsignal.hh"
 #include "mllike.hh"
+#include <signal.h>
+#include <execinfo.h>
+#include <unistd.h>
 
 using namespace std;
 
 typedef initializer_list<double> dlist;
 typedef initializer_list<int> ilist;
+
+void handler(int sig) {
+  void *array[10];
+  size_t size;
+
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 10);
+
+  // print out all the frames to stderr
+  fprintf(stderr, "Error: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
 
 bool debug = false;
 bool debugint = false;
@@ -43,6 +59,7 @@ void dump_lightcurve(const string &outname,bayes_likelihood&like,state &s,double
 //***************************************************************************************8
 //main test program
 int main(int argc, char*argv[]){
+  //signal(SIGABRT, handler);
 
   bayes_frame JDtime("JDtime");
   //Create the sampler

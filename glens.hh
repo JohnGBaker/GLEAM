@@ -33,7 +33,18 @@ extern bool debug;
 class GLens :public bayes_component{
 protected:
   int NimageMax;
+  int NimageMin;
   static const double constexpr dThTol=1e-9;
+  ///finite_source
+  bool do_finite_source;
+  int finite_source_method;
+  int finite_source_Npoly_max;
+  int idx_log_rho_star;
+  double source_radius;
+  double source_var;
+  //StateSpace and Prior
+  stateSpace GLSpace;
+
   ///For temporary association with a trajectory;
   const Trajectory *trajectory;
   ///Transform from trajectory frame to lens frame
@@ -47,6 +58,8 @@ protected:
   ///static access for use with non-member GSL integration routines
   static int GSL_integration_func (double t, const double theta[], double thetadot[], void *instance);
   static int GSL_integration_func_vec (double t, const double theta[], double thetadot[], void *instance);
+  virtual int poly_root_integration_func_vec (double t, const double theta[], double thetadot[], void *instance){
+    cout<<"GLens::poly_root_integration_func:  Not defined!"<<endl;exit(1);};
   //static Point get_obs_pos(const GLens* instance, const Trajectory & traj,double time){return instance->get_obs_pos(traj,time);};
   //static Point get_obs_vel(const GLens* instance, const Trajectory & traj,double time){return instance->get_obs_vel(traj,time);};
   ///For use with GSL integration
@@ -59,7 +72,7 @@ protected:
   bool have_saved_soln;
 public:
   virtual ~GLens(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
-  GLens(){typestring="GLens";option_name="SingleLens";option_info="Single point-mass lens";have_integrate=false;do_verbose_write=false;have_saved_soln=false;};
+  GLens(){typestring="GLens";option_name="SingleLens";option_info="Single point-mass lens";have_integrate=false;do_verbose_write=false;have_saved_soln=false;NimageMax=2;NimageMin=2;do_finite_source=false;idx_log_rho_star=-1;source_var=0;};
   virtual GLens* clone(){return new GLens(*this);};
   ///Lens map: map returns a point in the observer plane from a point in the lens plane.
   virtual Point map(const Point &p){
@@ -99,8 +112,18 @@ public:
   virtual double jac(const Point &p,double &j00,double &j01,double &j10,double &j11){cout<<"GLens::jac: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};
   ///returns J=det(d(map(p))/dp))^-1, sets, j_ik = (d(map(pi))/dpk)^-1
   virtual double invjac(const Point &p,double &j00,double &j01,double &j10,double &j11){cout<<"GLens::invjac: This should be a single lens of unit mass. It's a simple function: place it here if you need it."<<endl;exit(1);};;
+  ///Compute the Laplacian of the local image magnification explicitly
+  virtual double Laplacian_mu(const Point &p)const;
+  ///Compute the complex lens shear, and some number of its derivatives  
+  virtual vector<complex<double> > compute_shear(const Point &p, int nder)const;
   ///compute images and magnitudes along some trajectory
-  void compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<int> &index_series,vector<double>&mag_series,bool integrate=false);
+  static vector<double> _compute_trajectory_dummy_dmag;
+  void compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<int> &index_series,vector<double>&mag_series, vector<double> &dmag=_compute_trajectory_dummy_dmag, bool integrate=false);
+  virtual void finite_source_compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<double>&mag_series, vector<double> &dmag=_compute_trajectory_dummy_dmag, ostream *out=NULL);
+  void inv_map_curve(const vector<Point> &curve, vector<vector<Point> > &curves_images, vector<vector<double>> &curve_mags);
+  //Note that the centroid is returned in p, and the variance is returned in var
+  static double _image_area_mag_dummy_variance;
+  void image_area_mag(Point &p, double radius, int & N, double &magnification, double &var=_image_area_mag_dummy_variance, ostream *out=NULL);
   void set_integrate(bool integrate_or_not){use_integrate=integrate_or_not;have_integrate=true;}
   //For the Optioned interface:
   virtual void addOptions(Options &opt,const string &prefix="");
@@ -116,11 +139,19 @@ public:
   virtual void setup();
   virtual string print_info()const{ostringstream s;s<<"GLens()"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
   //For stateSpaceInterface
-  virtual void defWorkingStateSpace(const stateSpace &sp){//cout<<"GLens::defWSS:[this="<<this<<"]"<<endl;
-    haveWorkingStateSpace();};
-  virtual void setState(const state &s){checkWorkingStateSpace();};
-;
+  virtual void defWorkingStateSpace(const stateSpace &sp){
+    if(do_finite_source)idx_log_rho_star=sp.requireIndex("log_rho_star");
+    haveWorkingStateSpace();
+  };
+  virtual void setState(const state &st){
+    bayes_component::setState(st);
+    //cout<<"idx_log_rho_star="<<idx_log_rho_star<<endl;
+    if(do_finite_source)source_radius=pow(10.0,st.get_param(idx_log_rho_star));
+    //cout<<"source_radius="<<source_radius<<endl;
+  };
   //getCenter provides *trajectory frame* coordinates for the center. Except for with -2, which give the lens frame CM. 
+  //option=0 should return COM
+  //option=n>0 should return point lens locations
   virtual Point getCenter(int option=-2)const{return Point(0,0);};
   //Write a magnitude map to file.  
   //Points in this function and its arguments are in *trajectory frame* coordinates 
@@ -167,6 +198,9 @@ public:
 ///Working in units of total mass Einstein radius, the only parameters are
 /// mass ratio q and separation L
 class GLensBinary : public GLens{
+  shared_ptr<const sampleable_probability_function> parentPrior;//remember parent prior so we can replace nativePrior
+  shared_ptr<const sampleable_probability_function> binaryPrior;
+  stateSpace GLBinarySpace;
   double q;
   double L;
   double phi0,sin_phi0,cos_phi0;
@@ -174,7 +208,8 @@ class GLensBinary : public GLens{
   //mass fractions
   double nu;
   vector<Point> invmapAsaka(const Point &p);
-  vector<Point> invmapWittMao(const Point &p);
+  vector<Point> invmapWittMao(const Point &p,bool no_check=false);
+  virtual int poly_root_integration_func_vec (double t, const double theta[], double thetadot[], void *instance);
   //complex<double> saved_roots[6];
   vector<Point> theta_save;
   double rWide;
@@ -210,8 +245,10 @@ public:
   vector<Point> invmapWideBinary(const Point &p);
   double mag(const Point &p);
   using  GLens::mag;
+  ///returns J=det(d(map(p))/dp)^-1, sets, j_ik = d(map(pi))/dpk
   double jac(const Point &p,double &j00,double &j01,double &j10,double &j11);
   double invjac(const Point &p,double &j00,double &j01,double &j10,double &j11);
+  vector<complex<double> > compute_shear(const Point &p, int nder)const;
   //specific to this class:
   double get_q(){return q;};
   double get_L(){return L;};
@@ -227,7 +264,7 @@ public:
     else idx_q=sp.requireIndex("logq");
     idx_L=sp.requireIndex("logL");
     idx_phi0=sp.requireIndex("phi0");
-    haveWorkingStateSpace();
+    GLens::defWorkingStateSpace(sp);
   };  
   ///Set up the output stateSpace for this object
   ///
@@ -244,7 +281,7 @@ public:
     //  logL separation (in log10 Einstein units)
     //  q mass ratio
     //  alignment angle phi0, (binary axis rel to trajectory direction) at closest approach point
-    bayes_component::setState(st);
+    GLens::setState(st);
     //checkWorkingStateSpace();
     double f_of_q=st.get_param(idx_q);//either log_q or remapped q
     double logL=st.get_param(idx_L);
@@ -274,7 +311,7 @@ public:
     //cout<<"q,L,option="<<q<<", "<<L<<", "<<option<<endl;
     //center on {rminus-CoM,CoM-CoM,rplus-CoM}, when cent={-1,0,1} otherwise CoM-nominalorigin;
     switch(option){
-    case -1://minus lens rel to CoM
+    case -1://minus lens rel to CoM  (this is specific to GLensBinary)
       x0=-0.5*L;
       break;
     case 0:
@@ -282,6 +319,9 @@ public:
       break;
     case 1:
       x0=0.5*L;//plus lens rel to CoM
+      break;
+    case 2:
+      x0=-0.5*L;//minus lens (newer standard is that each lens-point is included at least to NimageMin; generalizes to n-lenses)
       break;
     default:
       x0=cm.x;
