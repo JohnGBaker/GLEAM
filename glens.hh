@@ -38,6 +38,7 @@ protected:
   ///finite_source
   bool do_finite_source;
   int finite_source_method;
+  int finite_source_Npoly_max;
   int idx_log_rho_star;
   double source_radius;
   double source_var;
@@ -149,6 +150,8 @@ public:
     //cout<<"source_radius="<<source_radius<<endl;
   };
   //getCenter provides *trajectory frame* coordinates for the center. Except for with -2, which give the lens frame CM. 
+  //option=0 should return COM
+  //option=n>0 should return point lens locations
   virtual Point getCenter(int option=-2)const{return Point(0,0);};
   //Write a magnitude map to file.  
   //Points in this function and its arguments are in *trajectory frame* coordinates 
@@ -308,7 +311,7 @@ public:
     //cout<<"q,L,option="<<q<<", "<<L<<", "<<option<<endl;
     //center on {rminus-CoM,CoM-CoM,rplus-CoM}, when cent={-1,0,1} otherwise CoM-nominalorigin;
     switch(option){
-    case -1://minus lens rel to CoM
+    case -1://minus lens rel to CoM  (this is specific to GLensBinary)
       x0=-0.5*L;
       break;
     case 0:
@@ -316,6 +319,9 @@ public:
       break;
     case 1:
       x0=0.5*L;//plus lens rel to CoM
+      break;
+    case 2:
+      x0=-0.5*L;//minus lens (newer standard is that each lens-point is included at least to NimageMin; generalizes to n-lenses)
       break;
     default:
       x0=cm.x;

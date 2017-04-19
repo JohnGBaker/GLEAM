@@ -58,6 +58,7 @@ public:
   //Produce the signal model
   vector<double> get_model_signal(const state &st, const vector<double> &times, vector<double> &variances)const override{
     //Caution!  Global/Member variables should not change or there will be problems with openmp
+    //cout<<"enter get_model_signal"<<endl;
     checkWorkingStateSpace();
     double result=0;
     double I0,Fs;
@@ -69,6 +70,7 @@ public:
     vector<vector<Point> > thetas;
     vector<int> indices;
 
+    //cout<<"cloning"<<endl;
     //We need to clone lens/traj before working with them so that each omp thread is working with different copies of the objects.
     GLens *worklens=lens->clone();
     worklens->setState(st);
@@ -77,6 +79,7 @@ public:
 
     //If specified, implement smearing across a small time band
     if(smearing){
+      //cout<<"smearing"<<endl;
       //various tuning controls
       const int trimcountmax=3;      
       const double min_var_scale=1e-8;
@@ -210,9 +213,12 @@ public:
 	}
       }
     } else {//no smearing
+      //cout<<"not smearing"<<endl;
       worktraj->set_times(times);
       vector<double>dmags;
+      //cout<<"calling compute traj"<<endl;
       worklens->compute_trajectory(*worktraj,xtimes,thetas,indices,modelmags,dmags);
+      //cout<<"prep variance"<<endl;
       variances.resize(times.size());
       bool burped=false;
       for(int i=0;i<times.size();i++ ){
@@ -224,6 +230,7 @@ public:
 	  burped=true;
 	}
 	if(dmags.size()>0)variances[i]=dmags[indices[i]]*dmags[indices[i]];
+	//cout<<i<<" var="<<variances[i]<<endl;
       }
     }
       
