@@ -226,7 +226,7 @@ public:
 	double Ival = I0 - 2.5*log10(Fs*mu+1-Fs);
 	model.push_back(Ival);
 	if(!isfinite(Ival)&&!burped){
-	  cout<<"get_model_signal: model infinite: modelmags="<<modelmags[indices[i]]<<" at state="<<st.show()<<endl;
+	  cout<<"get_model_signal: model infinite: modelmags="<<modelmags[indices[i]]<<" at t="<<times[i]<<" state="<<st.get_string()<<endl;
 	  burped=true;
 	}
 	if(dmags.size()>0)variances[i]=dmags[indices[i]]*dmags[indices[i]];
