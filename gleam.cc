@@ -370,7 +370,7 @@ int main(int argc, char*argv[]){
     bayes_sampler *s=s0->clone();
     s->initialize();
     s->run(base,ic);
-    s->analyze(base,ic,Nsigma,Nbest,*like);
+    //s->analyze(base,ic,Nsigma,Nbest,*like);
     delete s;
   }
   

@@ -344,6 +344,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	vector<Point>odds;
 	for(int j=0;j<thetas.size();j++){
 	  int p=copysign(1.0,mags[j]);
+	  if(mags[j]==0)p=-1;
 	  netp+=p;
 	  if(p<0)odds.push_back(thetas[j]);
 	}
@@ -398,7 +399,11 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   for(int i=0;i<N;i++){
     int ni=image_points[i].size();
     int netp=0;//parity sum
-    for(int j=0;j<ni;j++)netp+=copysign(1.0,image_point_mags[i][j]);
+    for(int j=0;j<ni;j++){
+      int p=copysign(1.0,image_point_mags[i][j]);
+      if(image_point_mags[i][j]==0)p=-1;
+      netp+=p;
+    }
     //cout<<i<<" < "<<N<<" ni="<<ni<<" NimageMin="<<NimageMin<<" NimageMax="<<NimageMax<<" netp="<<netp<<endl;
     //cout<<" pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
     vector<int>even_curves,odd_curves;
@@ -407,6 +412,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
       for(int j=0;j<NimageMax;j++){
 	if(j<ni){ 
 	  int p=copysign(1.0,image_point_mags[i0][j]);
+	  if(image_point_mags[i0][j]==0)p=-1;//This will probably be a negative (near point lens) image.
 	  image_curves[j][0]=image_points[i0][j];
 	  parities[j]=p;
 	  empty[j][0]=false;
@@ -422,9 +428,25 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     }
   }
   if(i0<0){//Fail if not found
-    cout<<"GLens::image_area_mag: Found no vertex with acceptable number of images."<<endl;
     magnification=INFINITY;
     var=0;
+    if(false){//Dump details for debugging
+      cout<<"GLens::image_area_mag: Found no vertex with acceptable number of images."<<endl;
+      cout<<"GLens::image_area_mag: Details:"<<endl;
+      cout<<print_info()<<endl;
+      cout<<"centers=";for(int k=1;k<NimageMin;k++)cout<<"  "<<getCenter(k).x<<" "<<getCenter(k).y;
+      cout<<"\npoints[0]:"<<endl;
+      int ithis=0;
+      Point b=curve[ithis];
+      cout<<"b="<<b.x<<" "<<b.y<<endl;
+      for(int j=0;j<image_points[ithis].size();j++){
+	Point bprime=map(image_points[ithis][j]);
+	Point db=bprime-b;
+	cout<<" "<<image_points[ithis][j].x<<" "<<image_points[j][ithis].y<<" "<<image_point_mags[ithis][j]
+	    <<" bprime= "<<bprime.x<<" "<<bprime.y
+	    <<" delta= "<<db.x<<" "<<db.y<<endl;
+      }
+    }
     return;
   }  
   //static int i0save=-1;if(i0!=i0save)cout<<" i0="<<i0<<endl;i0save=i0;
@@ -447,6 +469,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     int netp=0;
     for(int j=0;j<image_points[i0].size();j++){
       int p=copysign(1.0,image_point_mags[i0][j]);
+      if(image_point_mags[i0][j]==0)p=-1;
       netp+=p;
       if(p>0){
 	evens.push_back(image_points[i0][j]);
@@ -477,6 +500,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     netp=0;
     for(int j=0;j<ni;j++){
       int p=copysign(1.0,image_point_mags[ithis][j]);
+      if(image_point_mags[ithis][j]==0)p=-1;
       netp+=p;
       if(p>0){
 	evens.push_back(image_points[ithis][j]);
@@ -523,28 +547,30 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	ni++;
 	netp=-1;
       } else {
-	cout<<"GLens::image_area_mag: Point did not pass need to add handling of unexpected patterns of images."<<endl;
-	cout<<"N="<<N<<endl;
-	cout<<"ni="<<ni<<" NimageMin="<<NimageMin<<" NimageMax="<<NimageMax<<" netp="<<netp<<endl;
-	cout<<" pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
-	cout<<print_info()<<endl;
-	cout<<"centers=";for(int k=1;k<NimageMin;k++)cout<<"  "<<getCenter(k).x<<" "<<getCenter(k).y;
-	cout<<"\npoints:"<<endl;
-	Point b=curve[ithis];
-	cout<<"b="<<b.x<<" "<<b.y<<endl;
-	for(int j=0;j<image_points[ithis].size();j++){
-	  Point db=map(image_points[ithis][j])-b;
-	  cout<<" "<<image_points[ithis][j].x<<" "<<image_points[j][ithis].y<<" "<<image_point_mags[ithis][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	if(debug_area_mag){
+	  cout<<"GLens::image_area_mag: Point did not pass need to add handling of unexpected patterns of images."<<endl;
+	  cout<<"N="<<N<<endl;
+	  cout<<"ni="<<ni<<" NimageMin="<<NimageMin<<" NimageMax="<<NimageMax<<" netp="<<netp<<endl;
+	  cout<<" pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
+	  cout<<print_info()<<endl;
+	  cout<<"centers=";for(int k=1;k<NimageMin;k++)cout<<"  "<<getCenter(k).x<<" "<<getCenter(k).y;
+	  cout<<"\npoints:"<<endl;
+	  Point b=curve[ithis];
+	  cout<<"b="<<b.x<<" "<<b.y<<endl;
+	  for(int j=0;j<image_points[ithis].size();j++){
+	    Point db=map(image_points[ithis][j])-b;
+	    cout<<" "<<image_points[ithis][j].x<<" "<<image_points[j][ithis].y<<" "<<image_point_mags[ithis][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	  }
+	  cout<<"last points:"<<endl;
+	  cout<<" ilast="<<ilast<<" < "<<image_points.size()<<endl;
+	  b=curve[ithis];
+	  cout<<"b="<<b.x<<" "<<b.y<<endl;
+	  for(int j=0;j<image_points[ilast].size();j++){
+	    Point db=map(image_points[ithis][j])-b;
+	    cout<<" "<<image_points[ilast][j].x<<" "<<image_points[ilast][j].y<<" "<<image_point_mags[ilast][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	  }
+	  cout<<"  ...trying to fail gracefully by neglecting this point..."<<endl;
 	}
-	cout<<"last points:"<<endl;
-	cout<<" ilast="<<ilast<<" < "<<image_points.size()<<endl;
-	b=curve[ithis];
-	cout<<"b="<<b.x<<" "<<b.y<<endl;
-	for(int j=0;j<image_points[ilast].size();j++){
-	  Point db=map(image_points[ithis][j])-b;
-	  cout<<" "<<image_points[ilast][j].x<<" "<<image_points[ilast][j].y<<" "<<image_point_mags[ilast][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
-	}
-	cout<<"  ...trying to fail gracefully by neglecting this point..."<<endl;
 	//debug_area_mag=true;
 	//Copy forward the last image point, and hope for the best...
 	for(int k=0;k<NimageMax;k++)image_curves[k][ithis]=image_curves[k][ilast];
@@ -1068,6 +1094,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     var+=dmg*dmg;
   }
   var/=vertex_mags.size();
+  //cout<<"var="<<var<<" n="<<vertex_mags.size()<<endl;
   //cout<<"sqrt(var)="<<sqrt(var)<<endl;
   
 }
@@ -1077,17 +1104,20 @@ vector<double> GLens::_compute_trajectory_dummy_dmag;//dummy argument
 void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<double>&mag_series, vector<double>&dmag_series, ostream *out){
   //Can optionally provide out stream to which to write image curves.
   //Controls
+  const bool debug=false;
   const int Npoly_max=finite_source_Npoly_max*(1+4*source_radius);        //Part of magnification-based estimate for polygon order.
   const double Npoly_Asat=2.0;   //Saturate at Npoly_max when image_area/pi = Npoly_Asat 
   bool dont_mix= false;
   bool do_laplacian = false;
   bool do_polygon = false;
   const double rho2=source_radius*source_radius;
-  const double mtol=1e-4;
-  const double ftol=1e-2;
+  const double mtol=1e-5;
+  const double ftol=1e-2*source_radius;
   const double mag_lcut=mtol/rho2;
   double mag_pcut=mtol/rho2/rho2;
-  if(mag_pcut>1) mag_pcut=1.0;
+  const double shear_cut=0.25/rho2/rho2;
+  bool do_shear_test=false;
+  //if(mag_pcut>1) mag_pcut=1.0;
   const double dmag_pcut=ftol;
   //cout<<"enter finite source compute traj"<<endl;
   //performace diagnostic
@@ -1100,10 +1130,12 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     do_laplacian=true;
   } else if(abs(finite_source_method)==2)do_laplacian=true;
 
-  /*cout<<"source_radius="<<source_radius<<endl;
-  cout<<"do_laplacian="<<do_laplacian<<endl;
-  cout<<"do_polygon="<<do_polygon<<endl;*/
-
+  if(debug){
+    cout<<"source_radius="<<source_radius<<endl;
+    cout<<"do_laplacian="<<do_laplacian<<endl;
+    cout<<"do_polygon="<<do_polygon<<endl;
+  }
+  
   int Ngrid=traj.Nsamples();
   time_series.resize(Ngrid);
   thetas_series.resize(Ngrid);
@@ -1112,7 +1144,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   for(int i=0; i<Ngrid;i++){
     double tgrid=traj.get_obs_time(i);
     Point b=get_obs_pos(traj,tgrid);
-    //cout<<i<<" t="<<tgrid<<" b=("<<b.x<<","<<b.y<<")"<<endl;
+    if(debug)cout<<i<<" t="<<tgrid<<" b=("<<b.x<<","<<b.y<<")"<<endl;
     double Amag=0;
     Point CoM;
     double variance=0;
@@ -1126,6 +1158,10 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     double mg0 = mag(thetas);
     vector<double> mu0s(nk),mus(nk);
     for(int k=0;k<nk;k++)mu0s[k]=mag(thetas[k]);
+    if(debug){
+      cout<<"mg0="<<mg0<<endl;
+      for(int k=0;k<nk;k++)cout<<"  mu0s["<<k<<"]="<<mu0s[k]<<endl;
+    }
     //Now estimate the leading order finite source term:
     //This is a smaller calculation than the full Laplacian, keep in only up to 1/r^6 terms
     // dA*/A=1 + 4*norm(mu*dgamma)
@@ -1136,21 +1172,34 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     // A* = 1 + 2(1-q(1-q))r^(-4)( 1 + 4rho^2/r^2 )
     //
     //where all 3 images are included.
+    bool shear_test=false;
     for(int k=0;k<nk;k++){
       Point th=thetas[k];
-      vector<complex<double> > gammas=compute_shear(th,1);
-      double dArel=norm(mu0s[k]*gammas[1]*source_radius);
+      vector<complex<double> > gammas;
+      if(do_shear_test)gammas=compute_shear(th,2);
+      else gammas=compute_shear(th,1);
+      double dArel=0;
+      if(mu0s[k]!=0)dArel=norm(mu0s[k]*gammas[1]*source_radius);
       double Ak=abs(mu0s[k])*(1+dArel);
+      //cout<<"k="<<k<<gammas[1]<<" "<<dArel<<" "<<Ak<<endl;
       Amag+=Ak;
       CoM=CoM+th*Ak;
+      //This test is based on an estimator for the max difference in mu^-1 near a point where mu^-1=0 only for the outer mu>1 image. 
+      if(do_shear_test and mu0s[k]>1){
+	cout<<"shear test: "<<shear_cut<<" < "<< norm(gammas[0]*gammas[2]) + norm(gammas[1]*gammas[1]) <<" mu="<<mu0s[k]<<" "<<mg0<<endl;
+	shear_test = ( shear_cut < norm(gammas[0]*gammas[2]) + norm(gammas[1]*gammas[1]) );
+      }
     }
     CoM=CoM*(1.0/Amag);
+    if(debug)cout<<"Amag[lo]="<<Amag<<endl;
     
     //Eventually we will want to dynamically select efficient methods for different regions.
     //For now we just have fixed choice of analytic or polygon methods
-    //cout<<  Amag -1 <<" > "<<mag_lcut<<" ? "<<( Amag - 1 > mag_lcut)<<endl;
-    if(do_laplacian and ( Amag - 1 > mag_lcut or dont_mix)){
-      //cout<<"doing laplacian"<<endl;
+    if(debug)cout<<  Amag -1 <<" > "<<mag_lcut<<" ? "<<( Amag - 1 > mag_lcut)<<endl;
+    bool do_laplacian_test= do_laplacian and ( Amag - 1 > mag_lcut or dont_mix);
+    if(debug)cout<<" do_laplacian_test="<<do_laplacian_test<<endl;
+    if(do_laplacian_test){
+      if(debug)cout<<"doing laplacian"<<endl;
       //This method builds on PejchaEA2007? method
       // Amag = \sum_k I[k]/I[0] Lap^k[mu] / (2^k k!)^2
       // I[k] = \int_0^1 r^(2k+1) B(r) dr
@@ -1172,10 +1221,12 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       CoM=CoM*(1.0/Amag);
     }
 
-    //cout<<  Amag -1 <<" > "<<mag_pcut<<" ? or "<<  abs(Amag/mg0 - 1)  <<" > "<<dmag_pcut<<" ? "<<endl;
-    bool do_polygon_test= do_polygon  and ( Amag - 1 > mag_pcut or abs(Amag/mg0 - 1) > dmag_pcut or dont_mix);
+    
+    if(debug)cout<<  Amag -1 <<" > "<<mag_pcut<<" ? or "<<  abs(Amag/mg0 - 1)  <<" > "<<dmag_pcut<<" ?  shear_test="<<shear_test<<endl;
+    bool do_polygon_test= do_polygon  and ( shear_test or Amag - 1 > mag_pcut or abs(Amag/mg0 - 1) > dmag_pcut or dont_mix);
+    if(debug)cout<<" do_polygon_test="<<do_polygon_test<<endl;
     if(do_polygon_test){
-      //cout<<"doing polygon"<<endl;
+      if(debug)cout<<"doing polygon"<<endl;
       //This section computes the polygon order to apply
       //There are several possibilities in principle:
       //  -Use adaptive stepping in the polygon computation itself (maybe best long term)
@@ -1212,18 +1263,17 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     thetas_series[i]=vector<Point>(1,CoM); //Note we return lenght-1 vector with the overall image centroid offset.
     mag_series[i]=Amag;
     dmag_series[i]=sqrt(variance)*source_var;
-    
+    //cout<<i<<" mg0="<<mg0<<" Amag="<<Amag<<endl;
 
-    /*
-    if(do_polygon_test)
+    
+    if(debug and do_polygon_test)
     #pragma omp critical    
       cout<<"Npoly="<<Npoly<<" Amag="<<Amag<<" var="<<variance<<endl;
-    */
   }
-  /*
-  #pragma omp critical
-  cout<<"Nsum="<<Nsum<<endl;
-  */
+    if(debug){
+#pragma omp critical
+      cout<<"Nsum="<<Nsum<<endl;
+    }
 };
     
 //Use GSL routine to integrate 
