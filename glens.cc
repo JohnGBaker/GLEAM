@@ -305,7 +305,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
   const bool refine_sphere=false;
-  const double refine_limit_factor=10.;
+  //const double refine_limit_factor=10.;
+  const double refine_limit_factor=100.;
   const double refine_prec_limit=1e-12;
   const double refine_limit=pow(twopi*radius/N/refine_limit_factor,2.0)+(p.x*p.x+p.y*p.y)*refine_prec_limit*refine_prec_limit;
   const int nadd_max=3;
@@ -1105,7 +1106,8 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   //Can optionally provide out stream to which to write image curves.
   //Controls
   const bool debug=false;
-  const int Npoly_max=finite_source_Npoly_max*(1+4*source_radius);        //Part of magnification-based estimate for polygon order.
+  //const int Npoly_max=finite_source_Npoly_max;        //Part of magnification-based estimate for polygon order.
+  const int Npoly_max=finite_source_Npoly_max*(1+16*(source_radius<1?source_radius:1));  //Empirical hank based on limited example
   const double Npoly_Asat=2.0;   //Saturate at Npoly_max when image_area/pi = Npoly_Asat 
   bool dont_mix= false;
   bool do_laplacian = false;
@@ -1209,12 +1211,13 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       Amag=0;
       CoM=Point(0,0);
       for(int k=0;k<nk;k++){
+	if(mu0s[k]==0)continue;
 	Point th=thetas[k];
-	vector<complex<double> > gammas=compute_shear(th,1);
 	double Lmu=Laplacian_mu(th);
 	double dArel=Lmu*source_radius*source_radius/4.0/mu0s[k];
 	dArel/=2.0;  //This is a total experimental HACK playing around...
 	double Ak=abs(mu0s[k])*(1+dArel);
+	if(debug)cout<<k<<" "<<th.x<<" "<<th.y<<" L="<<Lmu<<" mu="<<mu0s[k]<<" Ak="<<endl;
 	Amag+=Ak;
 	CoM=CoM+th*Ak;
       }
@@ -1244,8 +1247,9 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       if(extra_area>1.0)extra_area=1.0;       //extra_area ranges from 0 to 1
       //int Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*N2scale));
       Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*extra_area*N2scale));
+      if(debug)
+	cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" N2scale="<<N2scale<<" extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
       //results go in Amag and CoM
-      //cout<<"extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
       //cout<<" mu_i={ ";for(auto mui : mu0s)cout<<mui<<" ";cout<<"}"<<endl;
       image_area_mag(b, source_radius, Npoly, Amag, variance, out);  
       //if(Npoly>Npoly_max*5)cout<<"Npoly="<<Npoly<<endl;
@@ -1585,7 +1589,7 @@ void GLens::addOptions(Options &opt,const string &prefix){
   opt.add(Option("GL_int_mag_limit","Magnitude where GLens inversion integration reverts to poly. (1.5)","1.5"));
   opt.add(Option("GL_int_kappa","Strength of driving term for GLens inversion. (0.1)","0.1"));
   opt.add(Option("GL_finite_source","Flag to turn on finite source fitting. Optional argument to provide method [leading,laplacian,polygon,(no arg default), uses fastest appropriate, up to specification or use eg 'strict_polygon']"));
-  opt.add(Option("GL_finite_source_Npoly_max","Max number of sides in polygon source approximation.(30 default)","30"));
+  opt.add(Option("GL_finite_source_Npoly_max","Max number of sides in polygon source approximation.(10 default)","10"));
   opt.add(Option("GL_finite_source_var","Factor (roughly) for variance in surface brightness from uniformity.(0.01 default)","0.01"));
 };
 
