@@ -8,6 +8,7 @@
 #include <cmath>
 #include <algorithm>
 #include <complex>
+#include "omp.h"
 #ifdef USE_KIND_16
 #include <quadmath.h>
 #else
@@ -305,8 +306,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
   const bool refine_sphere=false;
-  //const double refine_limit_factor=10.;
-  const double refine_limit_factor=100.;
+  const double refine_limit_factor=10.;
+  //const double refine_limit_factor=100.;
   const double refine_prec_limit=1e-12;
   const double refine_limit=pow(twopi*radius/N/refine_limit_factor,2.0)+(p.x*p.x+p.y*p.y)*refine_prec_limit*refine_prec_limit;
   const int nadd_max=3;
@@ -1125,7 +1126,13 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   //performace diagnostic
   int Nsum=0;
   int Npoly;
-  
+
+  //diagnostics
+  bool diagnose=true;
+  static int d_count=0,d_N=0,d_every=5000;
+  static double d_time=0,d_rho,t_rho,t_N;
+  double tstart=omp_get_wtime();
+
   if(finite_source_method<0)dont_mix=true;
   if(abs(finite_source_method)==1){
     do_polygon=true;
@@ -1274,10 +1281,30 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     #pragma omp critical    
       cout<<"Npoly="<<Npoly<<" Amag="<<Amag<<" var="<<variance<<endl;
   }
-    if(debug){
+
+  if(debug){
 #pragma omp critical
-      cout<<"Nsum="<<Nsum<<endl;
+    cout<<"Nsum="<<Nsum<<endl;
+  }
+    
+  if(diagnose){
+    double dt=omp_get_wtime()-tstart;
+#pragma omp critical
+    {
+      if(source_radius>1)cout<<"rho="<<source_radius<<"!"<<endl;
+      d_count++;
+      d_N+=Nsum;
+      d_rho+=source_radius;
+      d_time+=dt;
+      t_N+=Nsum*dt;
+      t_rho+=source_radius*dt;
+      if(d_count%d_every==0){
+	cout<<"d_count="<<d_count<<" Nsum, rho, dt="<<Nsum<<" "<<source_radius<<" "<<dt<<endl;
+	cout<<" <Nsum>, <rho>, <dt>="<<d_N/(double)d_count<<" "<<d_rho/d_count<<" "<<d_time/d_count<<endl;
+	cout<<" <Nsum>_t, <rho>_t "<<t_N/(double)d_time<<" "<<t_rho/d_time<<endl;
+      }
     }
+  }
 };
     
 //Use GSL routine to integrate 
@@ -1591,6 +1618,8 @@ void GLens::addOptions(Options &opt,const string &prefix){
   opt.add(Option("GL_finite_source","Flag to turn on finite source fitting. Optional argument to provide method [leading,laplacian,polygon,(no arg default), uses fastest appropriate, up to specification or use eg 'strict_polygon']"));
   opt.add(Option("GL_finite_source_Npoly_max","Max number of sides in polygon source approximation.(10 default)","10"));
   opt.add(Option("GL_finite_source_var","Factor (roughly) for variance in surface brightness from uniformity.(0.01 default)","0.01"));
+  opt.add(Option("GL_finite_source_log_rho_max","Set max uniform prior range for log_rho. (-100->gaussian prior default)","-100"));
+  opt.add(Option("GL_finite_source_log_rho_min","Set min if uniform prior for log_rho. (-6.0 default)","-6"));
 };
 
 void GLens::setup(){
@@ -1598,6 +1627,8 @@ void GLens::setup(){
   *optValue("GL_int_tol")>>GL_int_tol;
   *optValue("GL_int_mag_limit")>>GL_int_mag_limit;
   *optValue("GL_int_kappa")>>kappa;
+  double finite_source_log_rho_max;
+  double finite_source_log_rho_min;
   if(optSet("GL_finite_source")){
     do_finite_source=true;
     *optValue("GL_finite_source_var")>>source_var;
@@ -1615,6 +1646,8 @@ void GLens::setup(){
     }
     cout<<"finite source method = '"<<method<<"' -> "<<finite_source_method<<endl; 
     *optValue("GL_finite_source_Npoly_max")>>finite_source_Npoly_max;
+    *optValue("GL_finite_source_log_rho_max")>>finite_source_log_rho_max;
+    *optValue("GL_finite_source_log_rho_min")>>finite_source_log_rho_min;
   }
   haveSetup();
   cout<<"GLens set up with:\n\tintegrate=";
@@ -1627,9 +1660,14 @@ void GLens::setup(){
     GLSpace=nativeSpace;
     const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
     valarray<double>    centers((initializer_list<double>){ -4.0  });
-    valarray<double> halfwidths((initializer_list<double>){  1.0  });
+    valarray<double>     scales((initializer_list<double>){  1.0  });
     valarray<int>         types((initializer_list<int>)   { gauss });
-    setPrior(new mixed_dist_product(&GLSpace,types,centers,halfwidths));
+    if(finite_source_log_rho_max>=-100.0){//set uniform prior for log_rho
+      centers[0]=(finite_source_log_rho_max+finite_source_log_rho_min)/2.0;
+      scales[0]=(finite_source_log_rho_max-finite_source_log_rho_min)/2.0;
+      types[0]= uni;
+    }
+    setPrior(new mixed_dist_product(&GLSpace,types,centers,scales));
   } else {
     nativeSpace=stateSpace(0);
     setPrior(new sampleable_probability_function(&nativeSpace));//dummy
