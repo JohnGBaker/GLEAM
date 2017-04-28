@@ -1362,7 +1362,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     double dt=omp_get_wtime()-tstart;
 #pragma omp critical
     {
-      if(source_radius>1)cout<<"rho="<<source_radius<<"!"<<endl;
+      //if(source_radius>1)cout<<"rho="<<source_radius<<"!"<<endl;
       d_count++;
       d_N+=Nsum;
       d_rho+=source_radius;
@@ -1737,7 +1737,7 @@ void GLens::setup(){
     valarray<double>    centers((initializer_list<double>){ -4.0  });
     valarray<double>     scales((initializer_list<double>){  1.0  });
     valarray<int>         types((initializer_list<int>)   { gauss });
-    if(finite_source_log_rho_max>=-100.0){//set uniform prior for log_rho
+    if(finite_source_log_rho_max>-100.0){//set uniform prior for log_rho
       centers[0]=(finite_source_log_rho_max+finite_source_log_rho_min)/2.0;
       scales[0]=(finite_source_log_rho_max-finite_source_log_rho_min)/2.0;
       types[0]= uni;
