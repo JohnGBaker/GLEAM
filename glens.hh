@@ -42,6 +42,8 @@ protected:
   int idx_log_rho_star;
   double source_radius;
   double source_var;
+  double finite_source_refine_limit;
+  double finite_source_decimate_dtmin;
   //StateSpace and Prior
   stateSpace GLSpace;
 

@@ -306,10 +306,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
   const bool refine_sphere=false;
-  const double refine_limit_factor=10.;
-  //const double refine_limit_factor=100.;
   const double refine_prec_limit=1e-12;
-  const double refine_limit=pow(twopi*radius/N/refine_limit_factor,2.0)+(p.x*p.x+p.y*p.y)*refine_prec_limit*refine_prec_limit;
+  const double refine_limit=pow(twopi*radius/N/finite_source_refine_limit,2.0)+(p.x*p.x+p.y*p.y)*refine_prec_limit*refine_prec_limit;
   const int nadd_max=3;
   bool debug_area_mag=false;
   bool super_debug=false;
@@ -1054,8 +1052,9 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     pcentroid = pcentroid*(1.0/curve.size());
     //cout<<"pcentroid["<<i<<"]=("<<pcentroid.x<<","<<pcentroid.y<<")"<<endl;
     Point dAreaCentroid;
-    double carea=getPolygonAreaCoM(curve,pcentroid,dAreaCentroid);
+    double carea=getPolygonAreaCoM(curve,dAreaCentroid,pcentroid);
     //cout<<"curve area="<<area<<endl;
+    //cout<<i<<" darea_centroid = "<<dAreaCentroid.x<<" "<<dAreaCentroid.y<<endl;
     area+=carea;
     cent=cent+dAreaCentroid;
     //this next part is a quality control diagnostic, to verify that we don't run into surprises where the signed area is not as expected...
@@ -1122,16 +1121,18 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   bool do_shear_test=false;
   //if(mag_pcut>1) mag_pcut=1.0;
   const double dmag_pcut=ftol;
-  //cout<<"enter finite source compute traj"<<endl;
-  //performace diagnostic
-  int Nsum=0;
-  int Npoly;
+  //decimation
+  double decimate_dtmin=source_radius*finite_source_decimate_dtmin;
 
+  //cout<<"decimate_dtmin="<<decimate_dtmin<<endl;
   //diagnostics
   bool diagnose=true;
   static int d_count=0,d_N=0,d_every=5000;
   static double d_time=0,d_rho,t_rho,t_N;
   double tstart=omp_get_wtime();
+  int Nsum=0;
+
+  int Npoly;
 
   if(finite_source_method<0)dont_mix=true;
   if(abs(finite_source_method)==1){
@@ -1146,12 +1147,26 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   }
   
   int Ngrid=traj.Nsamples();
-  time_series.resize(Ngrid);
-  thetas_series.resize(Ngrid);
-  mag_series.resize(Ngrid);
-  dmag_series.resize(Ngrid);
+  vector<double>full_time_series(Ngrid);
+  vector<int>time_series_map;
+  time_series.resize(0);
+  double tlast=-INFINITY;
   for(int i=0; i<Ngrid;i++){
-    double tgrid=traj.get_obs_time(i);
+    double t=full_time_series[i]=traj.get_obs_time(i);
+    if(i+1>=Ngrid or traj.get_obs_time(i+1)-tlast>=decimate_dtmin){
+      time_series.push_back(t);
+      time_series_map.push_back(i); 
+      tlast=t;
+    }
+  }
+  int Neval=time_series.size();
+  //cout<<"Neval="<<Neval<<" < "<<Ngrid<<endl;
+  thetas_series.resize(Neval);
+  mag_series.resize(Neval);
+  dmag_series.resize(Neval);
+  
+  for(int i=0; i<Neval;i++){
+    double tgrid=time_series[i];
     Point b=get_obs_pos(traj,tgrid);
     if(debug)cout<<i<<" t="<<tgrid<<" b=("<<b.x<<","<<b.y<<")"<<endl;
     double Amag=0;
@@ -1201,6 +1216,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     }
     CoM=CoM*(1.0/Amag);
     if(debug)cout<<"Amag[lo]="<<Amag<<endl;
+    if(debug)cout<<"CoM[lo]="<<CoM.x<<" "<<CoM.y<<endl;
     
     //Eventually we will want to dynamically select efficient methods for different regions.
     //For now we just have fixed choice of analytic or polygon methods
@@ -1254,8 +1270,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       if(extra_area>1.0)extra_area=1.0;       //extra_area ranges from 0 to 1
       //int Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*N2scale));
       Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*extra_area*N2scale));
-      if(debug)
-	cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" N2scale="<<N2scale<<" extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
+      if(debug)cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" N2scale="<<N2scale<<" extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
       //results go in Amag and CoM
       //cout<<" mu_i={ ";for(auto mui : mu0s)cout<<mui<<" ";cout<<"}"<<endl;
       image_area_mag(b, source_radius, Npoly, Amag, variance, out);  
@@ -1270,16 +1285,17 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     }
     
     //Pack it back up
-    time_series[i]=tgrid;
-    thetas_series[i]=vector<Point>(1,CoM); //Note we return lenght-1 vector with the overall image centroid offset.
+    //cout<<"COM="<<CoM.x<<" "<<CoM.y<<endl;
+    thetas_series[i]=vector<Point>(1,CoM-b); //Note we return lenght-1 vector with the overall image centroid offset.
     mag_series[i]=Amag;
     dmag_series[i]=sqrt(variance)*source_var;
     //cout<<i<<" mg0="<<mg0<<" Amag="<<Amag<<endl;
 
     
-    if(debug and do_polygon_test)
-    #pragma omp critical    
+    if(debug and do_polygon_test){
+#pragma omp critical    
       cout<<"Npoly="<<Npoly<<" Amag="<<Amag<<" var="<<variance<<endl;
+    }
   }
 
   if(debug){
@@ -1287,6 +1303,61 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     cout<<"Nsum="<<Nsum<<endl;
   }
     
+  if(Neval<Ngrid){//Need to reconstitute full grid by interpolation.
+    int imap=0;
+    double t0,t1,m0,m1,v0,v1;
+    Point c0,c1;
+    vector<double>full_mag_series(Ngrid);
+    vector<double>full_dmag_series(Ngrid);
+    vector<vector<Point> > full_thetas_series(Ngrid);
+    for(int i=0; i<Ngrid;i++){
+      if(imap==0 or ( imap+1<time_series_map.size() and time_series_map[imap]<=i ) ){
+	t0=time_series[imap];
+	t1=time_series[imap+1];
+	m0=mag_series[imap];
+	m1=mag_series[imap+1];
+	v0=dmag_series[imap];
+	v1=dmag_series[imap+1];
+	c0=thetas_series[imap][0];
+	c1=thetas_series[imap+1][0];
+	imap++;
+      }
+      double t=full_time_series[i];
+      //fill values by linear interpolation, minimizing issues when edges are not smooth
+      full_mag_series[i]=(m1*(t-t0)+m0*(t1-t))/(t1-t0);
+      full_dmag_series[i]=(v1*(t-t0)+v0*(t1-t))/(t1-t0);
+      vector<Point> thetas;
+      thetas.push_back((c1*(t-t0)+c0*(t1-t))*(1.0/(t1-t0)));
+      full_thetas_series[i]=thetas;
+      /*
+      cout<<"i="<<i<<endl;
+      cout<<"  t: "<<t0<<", "<<t1<<" -> "<<full_time_series[i]<<endl;
+      cout<<"  m: "<<m0<<", "<<m1<<" -> "<<full_mag_series[i]<<endl;
+      cout<<"  v: "<<v0<<", "<<v1<<" -> "<<full_dmag_series[i]<<endl;
+      cout<<" cx: "<<c0.x<<", "<<c1.x<<" -> "<<full_thetas_series[i][0].x<<endl;
+      cout<<" cy: "<<c0.y<<", "<<c1.y<<" -> "<<full_thetas_series[i][0].y<<endl;
+      */
+    }
+    /*
+    cout<<"sizes time:"<<time_series.size()<<" -> "<<full_time_series.size()<<endl;
+    cout<<"sizes  mag:"<<mag_series.size()<<" -> "<<full_mag_series.size()<<endl;
+    cout<<"sizes dmag:"<<dmag_series.size()<<" -> "<<full_dmag_series.size()<<endl;
+    cout<<"sizes thts:"<<thetas_series.size()<<" -> "<<full_thetas_series.size()<<endl;
+    */
+
+    //now copy back:
+    mag_series=full_mag_series;
+    dmag_series=full_dmag_series;
+    thetas_series=full_thetas_series;
+    time_series=full_time_series;
+  }
+  /*
+  cout<<"sizes time:"<<time_series.size()<<endl;
+  cout<<"sizes  mag:"<<mag_series.size()<<endl;
+  cout<<"sizes dmag:"<<dmag_series.size()<<endl;
+  cout<<"sizes thts:"<<thetas_series.size()<<endl;
+  */
+
   if(diagnose){
     double dt=omp_get_wtime()-tstart;
 #pragma omp critical
@@ -1620,6 +1691,8 @@ void GLens::addOptions(Options &opt,const string &prefix){
   opt.add(Option("GL_finite_source_var","Factor (roughly) for variance in surface brightness from uniformity.(0.01 default)","0.01"));
   opt.add(Option("GL_finite_source_log_rho_max","Set max uniform prior range for log_rho. (-100->gaussian prior default)","-100"));
   opt.add(Option("GL_finite_source_log_rho_min","Set min if uniform prior for log_rho. (-6.0 default)","-6"));
+  opt.add(Option("GL_finite_source_refine_limit","Maximum refinement factor. (100.0 default)","100.0"));
+  opt.add(Option("GL_finite_source_decimate_dtmin","Interpolate time-steps closer than this fraction of source size. (0.05 default)","0.05"));
 };
 
 void GLens::setup(){
@@ -1648,6 +1721,8 @@ void GLens::setup(){
     *optValue("GL_finite_source_Npoly_max")>>finite_source_Npoly_max;
     *optValue("GL_finite_source_log_rho_max")>>finite_source_log_rho_max;
     *optValue("GL_finite_source_log_rho_min")>>finite_source_log_rho_min;
+    *optValue("GL_finite_source_refine_limit")>>finite_source_refine_limit;
+    *optValue("GL_finite_source_decimate_dtmin")>>finite_source_decimate_dtmin;
   }
   haveSetup();
   cout<<"GLens set up with:\n\tintegrate=";
