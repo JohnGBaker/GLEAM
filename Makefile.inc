@@ -51,9 +51,9 @@ ifneq ($(findstring discover,$(shell hostname)),)
   endif
 else 
 #laptop
-  CXX = x86_64-apple-darwin15-g++-mp-5 -fcx-fortran-rules
-  CC = x86_64-apple-darwin15-gcc-mp-5 -fcx-fortran-rules
-  F90 = x86_64-apple-darwin15-gfortran-mp-5 -fcx-fortran-rules
+  CXX = g++-mp-5 -fcx-fortran-rules
+  CC = gcc-mp-5 -fcx-fortran-rules
+  F90 = gfortran-mp-5 -fcx-fortran-rules
   #Note the lens code seems faster (compiled with x86_64-apple-darwin13-gfortran-mp-4.8) with -O2 than -O3
   #CFLAGS = -march=corei7 -g -lquadmath -Wuninitialized -fno-inline -fno-default-inline  -fopenmp
   CFLAGS = -march=corei7 -g -lquadmath -Wuninitialized -O2  -fopenmp
