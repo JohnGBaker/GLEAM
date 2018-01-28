@@ -1,4 +1,54 @@
-d7479d9ed454e85ac045878cb18d2f074a83b24e
+d547ba096a0123c1f3056fb653ff8debb071a25e
 On branch master
-Your branch is up-to-date with 'origin/master'.
-nothing to commit, working directory clean
+Your branch is ahead of 'origin/master' by 2 commits.
+  (use "git push" to publish your local commits)
+
+Changes to be committed:
+  (use "git reset HEAD <file>..." to unstage)
+
+	modified:   ptmcmc.cc
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git checkout -- <file>..." to discard changes in working directory)
+
+	modified:   ptmcmc.cc
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+
+	line60.patch
+	m4-2014-0270_e_0005k_4.out
+	m4-2014-0270_e_0005k_4_PTstats.dat
+	m4-2014-0270_e_0005k_4_t0.dat
+	m4-2014-0270_f_0005k_4.out
+	m4-2014-0270_f_0005k_4_PTstats.dat
+	m4-2014-0270_f_0005k_4_t0.dat
+	m4-2014-0270_p64_test_0.out
+	m4-2014-0270_p64_test_0_PTstats.dat
+	m4-2014-0270_p64_test_0_t0.dat
+	m4-2014-0270_p6_test_0.out
+	m4-2014-0270_p6_test_0_PTstats.dat
+	m4-2014-0270_p6_test_0_t0.dat
+	m4-2014-0270_test_0.out
+	m4-2014-0270_test_0_PTstats.dat
+	m4-2014-0270_test_0_t0.dat
+	ptmcmc.cc.11f32b28
+	ptmcmc.cc.2262f38
+	ptmcmc.cc.rej
+	ptmcmc.hh.11f32b28
+	ptmcmc.hh.2262f38
+
+diff --git a/ptmcmc.cc b/ptmcmc.cc
+index c69e404..a064abc 100644
+--- a/ptmcmc.cc
++++ b/ptmcmc.cc
+@@ -319,7 +319,7 @@ void ptmcmc_sampler::addOptions(Options &opt,const string &prefix){
+   addOption("pt","Number of parallel tempering chains. Default off.","0");
+   addOption("pt_swap_rate","Frequency of parallel tempering swap_trials. Default 0.10","0.10");
+   addOption("pt_Tmax","Max temp of parallel tempering chains. Default 1e9","1e9");
+-  addOption("pt_evolve_rate","Rate at which parallel tempering temps should be allowed to evolve. Default none.","0.02");
++  addOption("pt_evolve_rate","Rate at which parallel tempering temps should be allowed to evolve. Default none.","0.01");
+   addOption("pt_evolve_lpost_cut","Tolerance limit for disordered log-posterior values in temperature evolution. Default no limit.","-1");
+   addOption("pt_reboot_rate","Max frequency of rebooting poorly performing parallel tempering chains. Default 0","0");
+   addOption("pt_reboot_every","How often to test for rebooting poorly performing parallel tempering chains. Default 0","0");

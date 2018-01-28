@@ -321,7 +321,7 @@ public:
     addOption("max_r0","Max r0 impact parameter range. (linear prior only,set negative to force positve r0, default=6.0)","6.0");
     addOption("remap_r0","Use remapped r0 coordinate.");
     addOption("remap_r0_ref_val","Cutoff scale for remap of r0.","2.0");
-    addOption("tE_max","Uniform prior max in tE. Default=100.0/","100.0");
+    addOption("tE_max","Uniform prior max in tE. Default=150.0/","150.0");
     addOption("ref_time","Interpret tpass parameter as offset from this time. (Default 0.0","0.0");
   };
 
