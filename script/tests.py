@@ -84,9 +84,10 @@ args = parser.parse_args()
 #    exit()
 #testfname = sys.argv[1]
 testfname=args.testlist
-outdir =testfname+args.tag+"-tests/"
-reportfile =testfname+args.tag+"-report.dat"
-print "testfname=",testfname
+basename=testfname.replace(".dat","")
+outdir =basename+"-"+args.tag+"-tests/"
+reportfile =basename+"-"+args.tag+"-report.dat"
+print "basename=",testfname
 print "outdir=",outdir
 
 #prec=10**-float(sys.argv[2])
@@ -126,6 +127,12 @@ start = time.time()
 poly4files,lines=make_runs(testfname,command,outdir+tag,postprocess_only)
 timeP4=time.time()-start;
 
+command= execname+" "+args.exarg+" -magmap -poly=true -precision=16 -GLB_rWide=4.5 "
+tag="poly_r7.5"
+start = time.time()
+poly7files,lines=make_runs(testfname,command,outdir+tag,postprocess_only)
+timeP7=time.time()-start;
+
 if(args.do_quad):
     command= execname+"_quad "+args.exarg+" -magmap -poly=true -precision=16 -GLB_rWide=5 "
     tag="qpoly_r5.0"
@@ -156,9 +163,15 @@ timeI5=time.time()-start;
 good=goodr=True
 
 with open(reportfile,'w') as report:
-    print" Comparing WideBinary versus WittMao."
+    print" Comparing WideBinary versus WittMao (4.5/5)"
     report.write("\n# Comparing WideBinary versus WittMao.\n")
     resultWBWM=compare_runs(poly5files,poly4files,lines)
+    for l,r in zip(lines,resultWBWM):
+        ls=l.split()
+        report.write(ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[0])+" "+str(r[1])+"\n")
+    print" Comparing WideBinary versus WittMao 7.5/5)"
+    report.write("\n# Comparing WideBinary versus WittMao.\n")
+    resultWBWM=compare_runs(poly5files,poly7files,lines)
     for l,r in zip(lines,resultWBWM):
         ls=l.split()
         report.write(ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[0])+" "+str(r[1])+"\n")
@@ -191,6 +204,7 @@ with open(reportfile,'w') as report:
 
 if( not postprocess_only):
     print "\nTiming summary:"
+    print "         Poly 7.5 - ",timeP7
     print "         Poly 5.0 - ",timeP5
     print "         Poly 4.5 - ",timeP4
     if(args.do_quad):
@@ -203,7 +217,12 @@ if( not postprocess_only):
 
 
 print "\nTest summary at relative prec="+str(prec)+":"
-print "         WB vs WM: "+("OK "+str(max(np.array(resultWBWM)[:,1])) if max(np.array(resultWBWM)[:,1])<=prec else "FAIL")
+print " WB vs WM (7.5/5): "+("OK "+str(max(np.array(resultWBWM)[:,1])) if max(np.array(resultWBWM)[:,1])<=prec else "FAIL")
+for l,r in zip(lines,resultWBWM):
+    ls=l.split()
+    if(r[1]>prec):
+        print ls[0]+" "+ls[1]+" "+ls[2]+" "+ls[3]+" "+str(r[1])
+print " WB vs WM (4.5/5): "+("OK "+str(max(np.array(resultWBWM)[:,1])) if max(np.array(resultWBWM)[:,1])<=prec else "FAIL")
 for l,r in zip(lines,resultWBWM):
     ls=l.split()
     if(r[1]>prec):

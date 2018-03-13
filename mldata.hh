@@ -24,12 +24,13 @@ protected:
   int idx_Mn;
   bool have_time0;
   bayes_frame *time_frame;
-  bool have_time_frame;
+  bool have_time_frame, do_extra_noise;
 public:
   ///We relabel the generic bayes_data names as times/mags/etc...
   ML_photometry_data():bayes_data(),times(labels),mags(values),dmags(dvalues),time0(label0){
     have_time0=false;
     have_time_frame=false;
+    do_extra_noise=false;//Soon to change to false
   };
   //int size()const{return times.size();};
   /*
@@ -73,18 +74,21 @@ public:
     checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
     assertData(LABELS|VALUES|DVALUES);
     checkSetup();//Call this assert whenever we need options to have been processed.
-    double extra_noise_mag=st.get_param(idx_Mn);
+    double extra_noise_mag;
+    if(do_extra_noise)extra_noise_mag=st.get_param(idx_Mn);
     static const double logfactor=2.0*log10(2.5/log(10));
     vector<double>var(size());
     for(int i=0;i<size();i++){
-      var[i] = dmags[i]*dmags[i] + pow(10.0,logfactor+0.8*(-extra_noise_mag+mags[i]));
+      var[i] = dmags[i]*dmags[i];
+      if(do_extra_noise)      
+	var[i] += pow(10.0,logfactor+0.8*(-extra_noise_mag+mags[i]));
     }
     return var;
   };
   ///from stateSpaceInterface
   virtual void defWorkingStateSpace(const stateSpace &sp){
     checkSetup();//Call this assert whenever we need options to have been processed.
-    idx_Mn=sp.requireIndex("Mn");
+    if(do_extra_noise)idx_Mn=sp.requireIndex("Mn");
     haveWorkingStateSpace();
   };
 
@@ -93,7 +97,8 @@ public:
     Optioned::addOptions(opt,prefix);
     addTypeOptions(opt);
     addOption("tcut","Cut times before tcut (relative to tmax). Default=-1e20","-1e20");
-    opt.add(Option("Fn_max","Uniform prior max (min for additive) in Fn. Default=1.0 (18.0 additive)/","1"));
+    opt.add(Option("model_extra_noise","Assume a data model with a parameter for extra noise, beyond that estimated in the data files."));
+    opt.add(Option("Fn_max","Uniform prior magnitude limit in (optional) added noise param. Default=1.0 (18.0 additive)/","1"));
   };
   ///Here provide options for the known types of ML_photometry_data...
   ///This is provided statically to allow options to select one or more types of data before specifying the 
@@ -124,24 +129,29 @@ public:
   };
   virtual void setup(){
     ///Set up the output stateSpace for this object
-    stateSpace space(1);
-    string names[]={"Mn"};
-    double Fn_max;
-    *optValue("Fn_max")>>Fn_max;
-    //set stateSpace
-    space.set_names(names);  
-    nativeSpace=space;
-    //set prior
-    const double MaxAdditiveNoiseMag=22;
-    const int uni=mixed_dist_product::uniform;
-    valarray<double>    centers(1),halfwidths(1);
-    valarray<int>         types(1);
-    if(Fn_max<=1)Fn_max=18.0;
-    double hw=(MaxAdditiveNoiseMag-Fn_max)/2.0;
-    centers[0]=MaxAdditiveNoiseMag-hw;
-    halfwidths[0]=hw;
-    types[0]=uni;
-    setPrior(new mixed_dist_product(&nativeSpace,types,centers,halfwidths));
+    if(optSet("model_extra_noise"))do_extra_noise=true;
+    if(do_extra_noise){
+      stateSpace space(1);
+      string names[]={"Mn"};
+      double Fn_max;
+      *optValue("Fn_max")>>Fn_max;
+      //set stateSpace
+      space.set_names(names);  
+      nativeSpace=space;
+      //set prior
+      const double MaxAdditiveNoiseMag=22;
+      const int uni=mixed_dist_product::uniform;
+      valarray<double>    centers(1),halfwidths(1);
+      valarray<int>         types(1);
+      if(Fn_max<=1)Fn_max=18.0;
+      double hw=(MaxAdditiveNoiseMag-Fn_max)/2.0;
+      centers[0]=MaxAdditiveNoiseMag-hw;
+      halfwidths[0]=hw;
+      types[0]=uni;
+      setPrior(new mixed_dist_product(&nativeSpace,types,centers,halfwidths));
+    }else {
+      setNoParams();
+    }
   };
 
 private:
