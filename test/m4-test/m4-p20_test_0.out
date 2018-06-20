@@ -1,0 +1,575 @@
+flags=
+ BinaryLens:(not set)
+ EarthTraj:(not set)
+ Fn_max:(not set)
+ GLB_gauss_q:(not set)
+ GLB_rWide:(not set)
+ GL_finite_source:(not set)
+ GL_finite_source_Npoly_max:(not set)
+ GL_finite_source_decimate_dtmin:(not set)
+ GL_finite_source_log_rho_max:(not set)
+ GL_finite_source_log_rho_min:(not set)
+ GL_finite_source_refine_limit:(not set)
+ GL_finite_source_var:(not set)
+ GL_int_kappa:(not set)
+ GL_int_mag_limit:(not set)
+ GL_int_tol:(not set)
+ GL_poly:(not set)
+ LinearTraj:(not set)
+ MLPsig_dtsm_range:(not set)
+ MLPsig_dtsmear:(not set)
+ MLPsig_nsmear:(not set)
+ MLPsig_smear_unk:(not set)
+ OGLE_data:(not set)
+ SingleLens:(not set)
+ burn_frac:(not set)
+ chain_ess_stop:2000
+ chain_init_file:(not set)
+ checkp_at_step:10000
+ checkp_at_time:(not set)
+ cov_draw_frac:(not set)
+ covariance_file:(not set)
+ de_Tmix:(not set)
+ de_eps:(not set)
+ de_mixing:(not set)
+ de_ni:(not set)
+ de_reduce_gamma:(not set)
+ gauss_1d_frac:(not set)
+ gauss_draw_frac:(not set)
+ gauss_temp_scaled:(not set)
+ gen_data:m4.dat
+ gen_data_col:2
+ gen_data_err_col:4
+ gen_data_err_lev:(not set)
+ gen_data_time_col:(not set)
+ gen_data_time_off:(not set)
+ log_tE:true
+ magmap:(not set)
+ max_r0:(not set)
+ mm_center:(not set)
+ mm_d0x:(not set)
+ mm_d0y:(not set)
+ mm_log_L:(not set)
+ mm_log_q:(not set)
+ mm_nimage:(not set)
+ mm_samples:(not set)
+ mm_width:(not set)
+ mock_data:(not set)
+ model_extra_noise:(not set)
+ nchains:(not set)
+ nevery:(not set)
+ nskip:(not set)
+ nsteps:(not set)
+ poly:(not set)
+ precision:(not set)
+ prop:7
+ pt:20
+ pt_Tmax:(not set)
+ pt_dump_n:(not set)
+ pt_evolve_lpost_cut:(not set)
+ pt_evolve_rate:0.01
+ pt_reboot_blindly:(not set)
+ pt_reboot_cut:(not set)
+ pt_reboot_every:(not set)
+ pt_reboot_grace:(not set)
+ pt_reboot_grad:(not set)
+ pt_reboot_rate:(not set)
+ pt_reboot_thermal:(not set)
+ pt_stop_evid_err:0.05
+ pt_swap_rate:(not set)
+ q0:(not set)
+ ref_time:(not set)
+ remap_q:(not set)
+ remap_r0:(not set)
+ remap_r0_ref_val:(not set)
+ restart_dir:(not set)
+ save_every:40
+ seed:0.012556
+ stateFile:(not set)
+ tE_max:(not set)
+ tcut:(not set)
+ view:(not set)
+
+
+outname = 'm4-p6_test_0'
+seed=0.012556
+Running on 1 thread.
+generic data file='m4.dat'
+gen_data: reading data as:
+tcol,col=0,2 err=-1
+ML_generic_data: After initial read of data first datum time is times[0]=-599.9922154711
+ML_photometry::processData: Defining frame based on data, time0=26.15894087072
+bayes_frame[JDtime] registered at: ( 26.15894087072 )
+ML_photometry data offset by 26.15894087072 -> 0
+...first data point is recorded at t[0]= -626.15115634182
+GLens set up with:
+	integrate=true
+	GL_int_tol=1e-10
+	kappa=0.1
+bayesian_likelihood:Setting like0=6080.53774215114
+Ndata=1792
+like.nativeSpace=
+StateSpace:(dim=8)
+  I0 in (-inf,inf)
+  Fs in (-inf,inf)
+  logq in (-inf,inf)
+  logL in (-inf,inf)
+  phi0 in w[0,6.28319)w
+  r0 in (-inf,inf)
+  log(tE) in (-inf,inf)
+  tpass in (-inf,inf)
+
+Prior is:
+IndependentDistProduct(
+  I0 from Gaussian(18+/-5)
+  Fs from [0,1]
+  logq from [-4,4]
+  logL from Gaussian(0+/-1)
+  phi0 from [0,6.28319]
+  r0 from [0,6]
+  log(tE) from Gaussian(1.08805+/-1.08805)
+  tpass from Gaussian(0+/-300)
+)
+
+Npar=8
+argc=2 Nlead_args=1
+haveParfile=0
+Input parameters:(
+  I0 = 14.304
+  Fs = 0.685454
+  logq = 1.40153
+  logL = 0.568002
+  phi0 = 1.13655
+  r0 = 5.88795
+  log(tE) = 0.618718
+  tpass = 246.604
+)
+
+Selected differential evolution with snooker updates proposal option including gaussian draws
+Selected set of Gaussian proposals option
+  gauss_draw_frac=0.2
+  cov_draw_frac=0
+  sigmas[0]=0.025, weight=0.00317460317460317
+  sigmas[0]=0.0125, weight=0.00634920634920635
+  sigmas[0]=0.00625, weight=0.0126984126984127
+  sigmas[0]=0.003125, weight=0.0253968253968254
+  sigmas[0]=0.0015625, weight=0.0507936507936508
+  sigmas[0]=0.00078125, weight=0.101587301587302
+ Option 7 prop: set[0] = DifferentialEvolution(snooker=0.1, gamma_one_frac=0.3, b_small=0.0001, ignore_frac=0)
+
+ Option 7 prop: set[1] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.025)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.02)
+  [???] from Gaussian(0+/-0.005)
+  [???] from Gaussian(0+/-0.015708)
+  [???] from Gaussian(0+/-0.015)
+  [???] from Gaussian(0+/-0.00544023)
+  [???] from Gaussian(0+/-1.5)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[2] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.0125)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.01)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.00785398)
+  [???] from Gaussian(0+/-0.0075)
+  [???] from Gaussian(0+/-0.00272011)
+  [???] from Gaussian(0+/-0.75)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[3] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.00625)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.005)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.00392699)
+  [???] from Gaussian(0+/-0.00375)
+  [???] from Gaussian(0+/-0.00136006)
+  [???] from Gaussian(0+/-0.375)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[4] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.003125)
+  [???] from Gaussian(0+/-0.0003125)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.0019635)
+  [???] from Gaussian(0+/-0.001875)
+  [???] from Gaussian(0+/-0.000680029)
+  [???] from Gaussian(0+/-0.1875)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[5] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.0015625)
+  [???] from Gaussian(0+/-0.00015625)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.0003125)
+  [???] from Gaussian(0+/-0.000981748)
+  [???] from Gaussian(0+/-0.0009375)
+  [???] from Gaussian(0+/-0.000340014)
+  [???] from Gaussian(0+/-0.09375)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[6] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.00078125)
+  [???] from Gaussian(0+/-7.8125e-05)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.00015625)
+  [???] from Gaussian(0+/-0.000490874)
+  [???] from Gaussian(0+/-0.00046875)
+  [???] from Gaussian(0+/-0.000170007)
+  [???] from Gaussian(0+/-0.046875)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+Proposal distribution is:
+ChooseFrom(  80% : DifferentialEvolution(snooker=0.1, gamma_one_frac=0.3, b_small=0.0001, ignore_frac=0)
+
+  0.31746% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.025)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.02)
+  [???] from Gaussian(0+/-0.005)
+  [???] from Gaussian(0+/-0.015708)
+  [???] from Gaussian(0+/-0.015)
+  [???] from Gaussian(0+/-0.00544023)
+  [???] from Gaussian(0+/-1.5)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  0.634921% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.0125)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.01)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.00785398)
+  [???] from Gaussian(0+/-0.0075)
+  [???] from Gaussian(0+/-0.00272011)
+  [???] from Gaussian(0+/-0.75)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  1.26984% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.00625)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.005)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.00392699)
+  [???] from Gaussian(0+/-0.00375)
+  [???] from Gaussian(0+/-0.00136006)
+  [???] from Gaussian(0+/-0.375)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  2.53968% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.003125)
+  [???] from Gaussian(0+/-0.0003125)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.0019635)
+  [???] from Gaussian(0+/-0.001875)
+  [???] from Gaussian(0+/-0.000680029)
+  [???] from Gaussian(0+/-0.1875)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  5.07937% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.0015625)
+  [???] from Gaussian(0+/-0.00015625)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.0003125)
+  [???] from Gaussian(0+/-0.000981748)
+  [???] from Gaussian(0+/-0.0009375)
+  [???] from Gaussian(0+/-0.000340014)
+  [???] from Gaussian(0+/-0.09375)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  10.1587% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.00078125)
+  [???] from Gaussian(0+/-7.8125e-05)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.00015625)
+  [???] from Gaussian(0+/-0.000490874)
+  [???] from Gaussian(0+/-0.00046875)
+  [???] from Gaussian(0+/-0.000170007)
+  [???] from Gaussian(0+/-0.046875)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+)
+
+haveParfile=0
+Selected differential evolution with snooker updates proposal option including gaussian draws
+Selected set of Gaussian proposals option
+  gauss_draw_frac=0.2
+  cov_draw_frac=0
+  sigmas[0]=0.025, weight=0.00317460317460317
+  sigmas[0]=0.0125, weight=0.00634920634920635
+  sigmas[0]=0.00625, weight=0.0126984126984127
+  sigmas[0]=0.003125, weight=0.0253968253968254
+  sigmas[0]=0.0015625, weight=0.0507936507936508
+  sigmas[0]=0.00078125, weight=0.101587301587302
+ Option 7 prop: set[0] = DifferentialEvolution(snooker=0.1, gamma_one_frac=0.3, b_small=0.0001, ignore_frac=0)
+
+ Option 7 prop: set[1] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.025)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.02)
+  [???] from Gaussian(0+/-0.005)
+  [???] from Gaussian(0+/-0.015708)
+  [???] from Gaussian(0+/-0.015)
+  [???] from Gaussian(0+/-0.00544023)
+  [???] from Gaussian(0+/-1.5)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[2] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.0125)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.01)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.00785398)
+  [???] from Gaussian(0+/-0.0075)
+  [???] from Gaussian(0+/-0.00272011)
+  [???] from Gaussian(0+/-0.75)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[3] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.00625)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.005)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.00392699)
+  [???] from Gaussian(0+/-0.00375)
+  [???] from Gaussian(0+/-0.00136006)
+  [???] from Gaussian(0+/-0.375)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[4] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.003125)
+  [???] from Gaussian(0+/-0.0003125)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.0019635)
+  [???] from Gaussian(0+/-0.001875)
+  [???] from Gaussian(0+/-0.000680029)
+  [???] from Gaussian(0+/-0.1875)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[5] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.0015625)
+  [???] from Gaussian(0+/-0.00015625)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.0003125)
+  [???] from Gaussian(0+/-0.000981748)
+  [???] from Gaussian(0+/-0.0009375)
+  [???] from Gaussian(0+/-0.000340014)
+  [???] from Gaussian(0+/-0.09375)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+ Option 7 prop: set[6] = StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.00078125)
+  [???] from Gaussian(0+/-7.8125e-05)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.00015625)
+  [???] from Gaussian(0+/-0.000490874)
+  [???] from Gaussian(0+/-0.00046875)
+  [???] from Gaussian(0+/-0.000170007)
+  [???] from Gaussian(0+/-0.046875)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+Proposal distribution is:
+ChooseFrom(  80% : DifferentialEvolution(snooker=0.1, gamma_one_frac=0.3, b_small=0.0001, ignore_frac=0)
+
+  0.31746% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.025)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.02)
+  [???] from Gaussian(0+/-0.005)
+  [???] from Gaussian(0+/-0.015708)
+  [???] from Gaussian(0+/-0.015)
+  [???] from Gaussian(0+/-0.00544023)
+  [???] from Gaussian(0+/-1.5)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  0.634921% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.0125)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.01)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.00785398)
+  [???] from Gaussian(0+/-0.0075)
+  [???] from Gaussian(0+/-0.00272011)
+  [???] from Gaussian(0+/-0.75)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  1.26984% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.00625)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.005)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.00392699)
+  [???] from Gaussian(0+/-0.00375)
+  [???] from Gaussian(0+/-0.00136006)
+  [???] from Gaussian(0+/-0.375)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  2.53968% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.003125)
+  [???] from Gaussian(0+/-0.0003125)
+  [???] from Gaussian(0+/-0.0025)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.0019635)
+  [???] from Gaussian(0+/-0.001875)
+  [???] from Gaussian(0+/-0.000680029)
+  [???] from Gaussian(0+/-0.1875)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  5.07937% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.0015625)
+  [???] from Gaussian(0+/-0.00015625)
+  [???] from Gaussian(0+/-0.00125)
+  [???] from Gaussian(0+/-0.0003125)
+  [???] from Gaussian(0+/-0.000981748)
+  [???] from Gaussian(0+/-0.0009375)
+  [???] from Gaussian(0+/-0.000340014)
+  [???] from Gaussian(0+/-0.09375)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+  10.1587% : StepBy[SampleableDistProduct(
+  [???] from Gaussian(0+/-0.00078125)
+  [???] from Gaussian(0+/-7.8125e-05)
+  [???] from Gaussian(0+/-0.000625)
+  [???] from Gaussian(0+/-0.00015625)
+  [???] from Gaussian(0+/-0.000490874)
+  [???] from Gaussian(0+/-0.00046875)
+  [???] from Gaussian(0+/-0.000170007)
+  [???] from Gaussian(0+/-0.046875)
+)
+](1Dfrac=0.5,scaleWithTemp=0)
+)
+
+prior is:IndependentDistProduct(
+  I0 from Gaussian(18+/-5)
+  Fs from [0,1]
+  logq from [-4,4]
+  logL from Gaussian(0+/-1)
+  phi0 from [0,6.28319]
+  r0 from [0,6]
+  log(tE) from Gaussian(1.08805+/-1.08805)
+  tpass from Gaussian(0+/-300)
+)
+
+PTchain: initializing chain 0
+PTchain: initializing chain 1
+PTchain: initializing chain 2
+PTchain: initializing chain 3
+PTchain: initializing chain 4
+PTchain: initializing chain 5
+PTchain: initializing chain 6
+PTchain: initializing chain 7
+PTchain: initializing chain 8
+PTchain: initializing chain 9
+PTchain: initializing chain 10
+PTchain: initializing chain 11
+PTchain: initializing chain 12
+PTchain: initializing chain 13
+PTchain: initializing chain 14
+PTchain: initializing chain 15
+PTchain: initializing chain 16
+PTchain: initializing chain 17
+PTchain: initializing chain 18
+PTchain: initializing chain 19
+
+Running chain 0 for up to 5000 steps.
+Evidence bin size = 50000
+chain 0 step 0
+   MaxPosterior=-1154904.95465203
+chain(id=0, Ntemps=20):
+instance [1;31m0[0m[1](- , 0):                     chain(id=1, N=401, T=1):-6.69261e+06, -6.69259e+06 : 14.9684, 0.825415, 1.07592, -0.323898, 1.4338, 2.94591, -0.327881, 445.552
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m1[0m[1](- , 0):                     chain(id=2, N=401, T=2.9763):-706305, -2.10212e+06 : 16.2123, 0.902109, 1.06424, -1.48815, 2.22403, 1.07748, 0.505649, -242.233
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m2[0m[1](- , 0):                     chain(id=3, N=401, T=8.858):-1.22795e+06, -1.0877e+07 : 14.1955, 0.2277, -0.256784, 1.14204, 4.98125, 2.39786, 0.354882, -250.994
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m3[0m[1](- , 0):                     chain(id=4, N=401, T=26.3601):-9474.77, -249293 : 17.2895, 0.675026, 3.30943, 1.01821, 4.5281, 4.22334, 1.8275, 67.459
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m4[0m[1](- , 0):                     chain(id=5, N=401, T=78.4177):-31601, -2.47665e+06 : 19.4434, 0.940777, 2.76241, -1.60811, 2.59233, 2.82085, 1.17253, -138.214
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m5[0m[1](- , 0):                     chain(id=6, N=401, T=233.052):-284795, -6.63676e+07 : 26.5785, 0.120367, -1.01132, -1.07912, 3.51885, 5.96686, 2.03119, -275.473
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m7[0m[1](- , 0):                     chain(id=7, N=401, T=690.594):-215.585, -136388 : 18.0555, 0.306839, 1.55252, 0.512711, 1.59312, 5.61235, 2.50313, -244.509
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m6[0m[1](- , 0):                     chain(id=8, N=401, T=2068.98):-8904.52, -1.83806e+07 : 13.1227, 0.434024, 1.08895, 1.88749, 4.62549, 3.64436, 1.07466, -537.598
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m8[0m[1](- , 0):                     chain(id=9, N=401, T=6156.99):-973.896, -5.88393e+06 : 15.1441, 0.324958, -1.28641, 0.321687, 0.908218, 3.65403, 0.703931, -461.989
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m9[0m[1](- , 0):                     chain(id=10, N=401, T=18316.3):-2531.02, -4.59743e+07 : 10.4181, 0.335462, -0.744647, 2.21666, 5.08561, 4.6746, -0.0369207, 113.899
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m10[0m[1](- , 0):                     chain(id=11, N=401, T=54435):-25.2035, -410334 : 18.4048, 0.972535, 3.24964, -0.231917, 0.857898, 2.26256, 1.75307, -346.247
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m12[0m[1](- , 0):                     chain(id=12, N=401, T=161308):-32.4682, -2.41686e+06 : 16.0955, 0.860867, 2.52316, 0.64493, 1.81394, 3.36795, 0.229286, -141.305
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m11[0m[1](- , 0):                     chain(id=13, N=401, T=483298):-24.7054, -3.36834e+06 : 19.7278, 0.0268054, 3.01248, -1.3207, 3.367, 3.20351, 1.14524, -60.3298
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m13[0m[1](- , 0):                     chain(id=14, N=401, T=1.43846e+06):-31.2529, -1.35445e+07 : 21.7354, 0.812597, 0.047978, 1.44715, 0.166576, 5.97416, 0.165079, -778.679
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m14[0m[1](- , 0):                     chain(id=15, N=401, T=4.28137e+06):-19.2016, -6.48249e+06 : 15.0137, 0.0371524, 0.0369021, 0.0971349, 4.81455, 2.61684, 2.37148, 68.7613
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m15[0m[1](- , 0):                     chain(id=16, N=401, T=1.27429e+07):-20.1353, -2.47121e+06 : 19.4395, 0.71948, 1.59047, 1.12216, 3.60438, 1.179, 0.36463, 638.776
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m16[0m[1](- , 0):                     chain(id=17, N=401, T=3.79273e+07):-17.9822, -1.15489e+06 : 18.8922, 0.614119, -2.5739, -0.317128, 5.57577, 3.26639, 2.03283, 361.528
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m17[0m[1](- , 0):                     chain(id=18, N=401, T=1.12885e+08):-17.569, -2.20441e+06 : 19.3437, 0.00265968, 2.30856, -0.321903, 5.73512, 4.19116, 2.29888, 103.838
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m18[0m[1](- , 0):                     chain(id=19, N=401, T=3.35984e+08):-16.9416, -2.04325e+06 : 16.233, 0.231435, 2.94386, -0.390916, 1.66262, 5.88475, 1.2717, -2.18274
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m19[0m[1](+ , 0):                     chain(id=20, N=401, T=1e+09):-19.637, -3.95341e+07 : 10.9523, 0.261108, -3.13381, -0.456603, 5.32668, 3.26684, 0.112916, 486.654
+Best evidence stderr=1e+100
+
+Effective sample size test
+len=0*40000:  0 0 0 0 0 0 0 0
+     means =  0 0 0 0 0 0 0 0
+Over 8 pars: ess=0  useful chain length is: 0 autocorrlen=nan
+chain 0 step 5000
+   MaxPosterior=-6310.68240833102
+chain(id=0, Ntemps=20):
+instance [1;31m7[0m[126](+ , 0):                     chain(id=1, N=526, T=1):-6311.61, -6294.53 : 17.93, 0.99319, 3.95256, -0.607058, 1.78768, 0.541797, 1.60339, -14.2783
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m3[0m[126](- , 0):                     chain(id=2, N=526, T=2.79571):-2394.71, -6643.77 : 17.924, 0.668725, 1.46166, 1.657, 4.18386, 1.71663, 1.66881, 21.1013
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m15[0m[126](- , 0):                     chain(id=3, N=526, T=7.15675):-1004.72, -7068.19 : 17.9443, 0.401202, 0.334858, -0.385458, 5.67652, 0.290334, 1.8435, -15.6507
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m6[0m[126](- , 0):                     chain(id=4, N=526, T=15.9334):-536.545, -8266.06 : 17.9029, 0.973636, -0.64341, 1.28234, 2.48216, 2.6338, 1.53615, -109.858
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m14[0m[126](- , 0):                     chain(id=5, N=526, T=38.8165):-309.313, -11306.4 : 17.9757, 0.512419, 3.84831, 1.39792, 0.505957, 0.423238, 1.89021, -19.7757
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m1[0m[126](+ , 0):                     chain(id=6, N=526, T=73.0093):-187.222, -12265.6 : 17.9461, 0.960737, -0.787598, -2.09611, 1.08909, 0.606266, 1.84166, -18.9409
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m2[0m[126](+ , 0):                     chain(id=7, N=526, T=113.643):-180.674, -18531.6 : 17.8687, 0.399862, 0.747572, 1.22116, 4.33119, 2.61484, 1.51263, 9.68368
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m12[0m[126](- , 0):                     chain(id=8, N=526, T=171.237):-309.739, -49385.5 : 18.6984, 0.117442, -2.7583, 1.30073, 4.07476, 0.0433558, 4.01423, -119.471
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m5[0m[126](- , 0):                     chain(id=9, N=526, T=335.035):-202.638, -61322.9 : 17.7694, 0.8744, 1.01194, 2.27699, 4.99724, 4.04889, 1.77398, 72.4845
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m19[0m[126](- , 0):                     chain(id=10, N=526, T=979.372):-79.9986, -61483.9 : 17.7399, 0.00947688, 1.37887, 0.606678, 1.17815, 4.82101, 1.79301, 86.941
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m17[0m[126](- , 0):                     chain(id=11, N=526, T=2626.76):-41.8514, -65234.9 : 17.8266, 0.843193, -0.737023, 0.183088, 2.20317, 2.55987, 0.786142, 179.161
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m10[0m[126](- , 0):                     chain(id=12, N=526, T=7496.98):-25.7923, -61416.5 : 17.7641, 0.420803, -0.61828, 1.22151, 0.855061, 1.0017, 0.766431, -69.5832
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m8[0m[126](- , 0):                     chain(id=13, N=526, T=21712.4):-21.2969, -63664.2 : 17.7057, 0.417242, 1.08691, 1.69505, 4.25542, 4.09796, 0.7844, 137.474
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m0[0m[126](- , 0):                     chain(id=14, N=526, T=48115.2):-20.4982, -61613.5 : 17.7795, 0.615813, 0.137873, 2.1195, 0.786666, 4.11606, 0.420998, 5.3603
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m9[0m[126](- , 0):                     chain(id=15, N=526, T=135810):-17.6001, -61310 : 17.7448, 0.417978, 2.86263, 0.0550816, 3.11419, 4.6443, 0.169947, -36.5283
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m16[0m[126](- , 0):                     chain(id=16, N=526, T=438129):-19.6137, -1.02466e+06 : 16.6946, 0.756523, 2.59416, -0.271438, 5.18335, 2.17932, 0.224576, 138.615
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m4[0m[126](- , 0):                     chain(id=17, N=526, T=1.30292e+06):-18.4616, -790818 : 18.6831, 0.302966, -1.88783, -0.0974472, 3.81978, 0.282168, -0.159412, 268.613
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m11[0m[126](- , 0):                     chain(id=18, N=526, T=3.65645e+06):-18.5925, -4.4074e+06 : 20.0166, 0.522863, -2.17399, -0.939473, 6.08438, 2.34795, 0.713071, 63.8878
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m13[0m[126](- , 0):                     chain(id=19, N=526, T=1.3001e+07):-19.4434, -1.48675e+07 : 13.7011, 0.652516, 2.30587, -0.604766, 6.23322, 1.25191, 2.53901, -116.793
+-><-(0 of 0): log eratio:(0,0)
+instance [1;31m18[0m[126](- , 0):                     chain(id=20, N=526, T=1e+09):-20.7258, -5.54153e+07 : 25.8171, 0.765471, 2.69018, 1.53179, 1.01967, 2.40105, -0.260116, 361.256
+Best evidence stderr=1e+100
+
+Finished running chain 0.
+best_post -6310.68240833102, state=17.9301, 0.993157, 3.95215, -0.60766, 1.78679, 0.541991, 1.60368, -14.37
+170.340u 0.136s 2:50.57 99.9%	0+0k 0+0io 0pf+0w
