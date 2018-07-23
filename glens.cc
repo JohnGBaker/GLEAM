@@ -104,7 +104,7 @@ void GLens::inv_map_curve(const vector<Point> &curve, vector<vector<Point> > &cu
   //vector<vector<int>> & mag         -signed magnification for that image, or zero for no image
   //
   //
-  
+
   //internal
   ///clear the outputs
   curve_images.clear();
@@ -225,6 +225,7 @@ vector<int> assign_points(const vector<Point> model, const vector<Point> subject
   //For now we do these in order.  It might be better to do a global fit...
   maxnorm=0;
   if(model.size()<subject.size()){
+    cout<<"sizes: model="<<model.size()<<" subject="<<subject.size()<<endl;
     cout<<"(glens.cc)assign_points: model must include at least as many points as subject!"<<endl;
     exit(1);
   }
@@ -288,7 +289,7 @@ bool jointOrder(const joint &j1, const joint &j2) {
 ///depend on the choice of origin, the overall area will not.  Note that when the origin is outside the image, the extra area
 ///will be compensated by negative area somewhere else.  The edges of the segments are must be sewn together by finding pairs
 ///or opposing-parity curves with an edge at the same vertex.  These curves are, in effect, stiched together by adding area
-///contributions as would arise if the curve was connected dA=p1_pos X p2_neg.  The magnification is computed by dividing the
+///contributions as would arise if the curve was connected \f$dA = p1_pos \times p2_neg$\f.  The magnification is computed by dividing the
 ///summed image area by the similarly computed polygon area.
 ///
 ///The function returns an estimate for the 'variance' over the surface.
@@ -299,6 +300,16 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   //p      : input  -observer position, relative source center
   //       : output -returns centroid shift
   //radius : input  -source radius
+  //N      : input  -Number of polygon points
+  //       : output -Number of sampled points
+  //magnification   : output magnification result
+  //var    : output estimated variance result
+  //out    : input  : optional output stream for dumping curve results
+
+  //save these for debugging reference 
+  Point p0=p;
+  int N0=N;
+
   double const twopi=2*M_PI;
 
   //Controls
@@ -563,10 +574,9 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	  }
 	  cout<<"last points:"<<endl;
 	  cout<<" ilast="<<ilast<<" < "<<image_points.size()<<endl;
-	  b=curve[ithis];
 	  cout<<"b="<<b.x<<" "<<b.y<<endl;
 	  for(int j=0;j<image_points[ilast].size();j++){
-	    Point db=map(image_points[ithis][j])-b;
+	    Point db=map(image_points[ilast][j])-b;
 	    cout<<" "<<image_points[ilast][j].x<<" "<<image_points[ilast][j].y<<" "<<image_point_mags[ilast][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
 	  }
 	  cout<<"  ...trying to fail gracefully by neglecting this point..."<<endl;
@@ -605,6 +615,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	//idea: loop over all images at new point, and assign each to an old point then make those empty
 	//First we connect the even curves
 	if(debug_area_mag)cout<<"case1a"<<endl;
+	if(last_evens.size()<evens.size())cout<<"Case 1a: last_evens<evens"<<endl;
 	imap=assign_points(last_evens,evens,leftevens,ileftevens,maxnorm);
 	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1a="<<maxnorm<<endl;
 	  break;}
@@ -617,6 +628,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	}
 	//Then the odd curves
 	if(debug_area_mag)cout<<"case1b"<<endl;
+	if(last_odds.size()<odds.size())cout<<"Case 1b: last_odds<odds"<<endl;
 	imap=assign_points(last_odds,odds,leftodds,ileftodds,maxnorm);
 	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1b="<<maxnorm<<endl;
 	  break;}
@@ -629,6 +641,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	}	  
 	//Now mate the terminating ends
 	if(debug_area_mag)cout<<"case1c"<<endl;
+	if(leftodds.size()<leftevens.size())cout<<"Case 1c: model<subject"<<endl;
 	imap=assign_points(leftodds,leftevens,leftover,ileftover,maxnorm);
 	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1c="<<maxnorm<<endl;
 	  break;}
@@ -650,6 +663,33 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	// Cases 2/3: same number of images or new images have appeared;
 	//cout<<"Assign:"<<endl;
 	if(debug_area_mag)cout<<"case2a"<<endl;
+	if(evens.size()<last_evens.size()){
+	  cout<<"Case 2a: model<subject"<<endl;
+	  cout<<" pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
+	  cout<<print_info()<<endl;
+	  cout<<"centers=";for(int k=1;k<NimageMin;k++)cout<<"  "<<getCenter(k).x<<" "<<getCenter(k).y;
+	  cout<<"\npoints:"<<endl;
+	  Point b=curve[ithis];
+	  cout<<"b="<<b.x<<" "<<b.y<<endl;
+	  for(int j=0;j<image_points[ithis].size();j++){
+	    Point db=map(image_points[ithis][j])-b;
+	    cout<<" "<<image_points[ithis][j].x<<" "<<image_points[ithis][j].y<<" "<<image_point_mags[ithis][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	  }
+	  cout<<"evens"<<endl;for(int j=0;j<evens.size();j++)cout<<evens[j].x<<" "<<evens[j].y<<" "<<mag(evens[j])<<endl;
+	  cout<<"odds"<<endl;for(int j=0;j<odds.size();j++)cout<<odds[j].x<<" "<<odds[j].y<<" "<<mag(odds[j])<<endl;
+	  cout<<"last points:"<<endl;
+	  cout<<"i="<<i<<" ilast="<<ilast<<" < "<<image_points.size()<<endl;
+	  //b=curve[ilast];
+	  cout<<"b="<<b.x<<" "<<b.y<<endl;
+	  for(int j=0;j<image_points[ilast].size();j++){
+	    Point db=map(image_points[ilast][j])-b;
+	    cout<<" "<<image_points[ilast][j].x<<" "<<image_points[ilast][j].y<<" "<<image_point_mags[ilast][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	  }
+	  cout<<"last_evens"<<endl;for(int j=0;j<last_evens.size();j++)cout<<last_evens[j].x<<" "<<last_evens[j].y<<" "<<mag(last_evens[j])<<endl;
+	  cout<<"last_odds"<<endl;for(int j=0;j<last_odds.size();j++)cout<<last_odds[j].x<<" "<<last_odds[j].y<<" "<<mag(last_odds[j])<<endl;
+	  cout<<print_info()<<endl;
+	  cout<<"Entered image_area_mag with: p0=("<<p0.x<<","<<p0.y<<") radius="<<radius<<" N0="<<N0<<endl;
+	}
 	imap=assign_points(evens,last_evens,leftevens,ileftevens,maxnorm);
 	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 2a="<<maxnorm<<endl;
 	  break;}
@@ -661,6 +701,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	  evens_ind[imap[k]]=ic;
 	}
 	if(debug_area_mag)cout<<"case2b"<<endl;
+	if(odds.size()<last_odds.size())cout<<"Case 2b: model<subject"<<endl;
 	imap=assign_points(odds,last_odds,leftodds,ileftodds,maxnorm);
 	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 2b="<<maxnorm<<endl;
 	  break;}
@@ -684,6 +725,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	  //cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
 	  //cout<<" last_evens_ind("<<last_evens.size()<<"):  ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
 	  if(debug_area_mag)cout<<"case3"<<endl;
+	  if(leftodds.size()<leftevens.size())cout<<"Case 3: model<subject"<<endl;
 	  imap=assign_points(leftodds,leftevens,leftover,ileftover,maxnorm);
 	  if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 3="<<maxnorm<<endl;
 	    break;}
@@ -869,6 +911,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   }
   //cout<<"end:";for(int i=0;i<end.size();i++)cout<<"  "<<end[i].x<<" "<<end[i].y;cout<<endl;
   //cout<<"start:";for(int i=0;i<start.size();i++)cout<<"  "<<start[i].x<<" "<<start[i].y;cout<<endl;
+  if(start.size()<end.size())cout<<"start<end"<<endl;
   imap=assign_points(start,end,leftover,ileftover,maxnorm);
   if(maxnorm>maxnorm_limit){
     cout<<"We should be adding a point!"<<endl;
@@ -1839,9 +1882,9 @@ void GLensBinary::setup(){
   //cout<<"GLens set up with:\n\tintegrate=";
   //if(use_integrate)cout<<"true\n\tGL_int_tol="<<GL_int_tol<<"\n\tkappa="<<kappa<<endl;
   //else cout<<"false"<<endl;
+  double q0_val;
+  *optValue("q0")>>q0_val;
   if(optSet("remap_q")){
-    double q0_val;
-    *optValue("q0")>>q0_val;
     remap_q(q0_val);
   }
   GLens::setup();
@@ -1850,7 +1893,7 @@ void GLensBinary::setup(){
   string names[] =                                      {"logq","logL","phi0"};
   const int uni=mixed_dist_product::uniform, gauss=mixed_dist_product::gaussian, pol=mixed_dist_product::polar; 
   valarray<double>    centers((initializer_list<double>){   0.0,   0.0,  M_PI});
-  valarray<double> halfwidths((initializer_list<double>){   4.0,   1.0,  M_PI});
+  valarray<double> halfwidths((initializer_list<double>){   log10(q0_val),   1.0,  M_PI});
   valarray<int>         types((initializer_list<int>)   {   uni, gauss,   uni});
   if(do_remap_q)names[3]="s(1+q)";
   space.set_bound(2,boundary(boundary::wrap,boundary::wrap,0,2*M_PI));//set 2-pi-wrapped space for phi0.
@@ -1970,7 +2013,7 @@ vector<Point> GLensBinary::invmap(const Point &p){
 /// \f[
 ///    |z|\approx\frac{|\zeta+\epsilon|}2\left(\sqrt{1+\frac{4\nu_{near}}{|\zeta+\epsilon|^2}}\pm1\right)
 /// \f]
-/// with the complex argument given such that \f$(\zeta+\epsilon)z^*\f$ is real.
+/// with the complex argument given such that \f$ (\zeta+\epsilon)z^*\f$ is real.
 /// As usual for a single lens there two image solutions, inside and outside the Einstein ring. 
 /// These are selected above by the indicated choice of sign.  We iterate
 /// separately a series of approximate solutions with either sign.
