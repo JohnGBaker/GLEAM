@@ -277,18 +277,18 @@ bool jointOrder(const joint &j1, const joint &j2) {
 ///organize these points into curves.  There are a couple general principles to this.  First, each image has a parity
 ///sign, which should be the same as the sign of each of its component point infinitessimal magnifications.  Second,
 ///though there should always be an even number of image points beyond NimageMin, when the polygon spans a caustic, some
-///images may not exist for all ///polygon points.  If the latter is not true then we try to infill a missing point or
+///images may not exist for all polygon points.  If the latter is not true then we try to infill a missing point or
 ///remove a spurious image point. When there is a jump in the number of images then the added or subtracted images must
 ///be paired.  The association of curves into points is realized by a minimum-area principle with the constraint that
 ///parities must align.
 ///
 ///The Gould-Goucherel method recognizes the image curves as either closed curves, or paired segments.  The points are
 ///regarded as vectors from some origin. For each edge within a closed curve or interior section of segment p2-p1 , the area
-///contribution is computed by dA=p1Xp2 (or dA=p2Xp1 for negative parity).  Though the individual segments contributions will
+///contribution is computed by \f$dA=p1*p2\f$ (or \f$dA=p2*p1\f$ for negative parity).  Though the individual segments contributions will
 ///depend on the choice of origin, the overall area will not.  Note that when the origin is outside the image, the extra area
 ///will be compensated by negative area somewhere else.  The edges of the segments are must be sewn together by finding pairs
 ///or opposing-parity curves with an edge at the same vertex.  These curves are, in effect, stiched together by adding area
-///contributions as would arise if the curve was connected dA=p1_pos X p2_neg.  The magnification is computed by dividing the
+///contributions as would arise if the curve was connected \f$dA=p1_{pos} \times p2_{neg}\f$.  The magnification is computed by dividing the
 ///summed image area by the similarly computed polygon area.
 ///
 ///The function returns an estimate for the 'variance' over the surface.
@@ -296,13 +296,13 @@ bool jointOrder(const joint &j1, const joint &j2) {
 ///wrt the area magnification.
 ///
 void GLens::image_area_mag(Point &p, double radius, int & N, double &magnification, double &var, ostream *out){
-  //p      : input  -observer position, relative source center
-  //       : output -returns centroid shift
-  //radius : input  -source radius
+  ///p      : input  -observer position, relative source center
+  ///       : output -returns centroid shift
+  ///radius : input  -source radius
   double const twopi=2*M_PI;
 
-  //Controls
-  //const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
+  ///Controls
+  ///const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
   const bool refine_sphere=false;
@@ -323,8 +323,10 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   vector<double> vertex_mags;  //Used only for variance estimate at end.
   //inv_map_curve(curve,image_points,image_point_mags);
   
-  //Step 1: Preliminary loop over the polygon vertices.
-  //This will be the most computationally intensive step unless we need to do a lot of refinement near caustics 
+  ///Step 1: Preliminary loop over the polygon vertices.
+  ///This will be the most computationally intensive step unless we need to do a lot of refinement near caustics. For each source polygon vertex we compute a set of image points.
+  ///
+  ///Then (unless fix_vertex_image==false) we check for errors in the image set and try to fix them. In particular, if there are fewer than NimageMin (eg 3 for binarly lens) image points, then we try to recover one.  We are most likely to have missed a negative parity image point which is extremely close to one of the lens centers.  If so, the sum of parities will be zero.  If it is, then we determine which lens center is farthest from any of the image points, and add one there. (How often does this occur?)
   for(int i=0; i<N;i++){
     Point beta=curve[i];
     vector<Point> thetas;
@@ -389,8 +391,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   }
   */
     
-  //Step 2: We find a vertex to serve as a suitable starting place
-  //        Based on that starting place, we set/assign the parities for the image_curves to be assembled
+  ///Step 2: We select a vertex to serve as a suitable starting place.
+  ///        We need a starting vertex free from basic pathologies in its set of images.  In particular the number of images should be in the range between the minimum NimageMin and maximum NimageMax allowed values.  Images added beyond the minimum number should come in pairs (with opposite parities), so we require then n-NimageMin is even, and that the sum of parities has the expected value.  The set of image points from the selected vertex will provide the seeds from which we will construct (by tracing around the set of polygon vertices) a set of open image curves.  
   vector<vector<Point>>image_curves(NimageMax,vector<Point>(N+1));
   vector<vector<bool>>empty(NimageMax,vector<bool>(N+1,true));
   vector<vector<int>>mate(NimageMax,vector<int>(N+1,-1));
@@ -454,8 +456,23 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   //cout<<" parities: "<<parities[0]<<" "<<parities[1]<<" "<<parities[2]<<" "<<parities[3]<<" "<<parities[4]<<endl;
 
   
-  //Step 3: Check image sets, assign them to curves, and refine as needed
-
+  ///Step 3: Construct open image curves.
+  ///We step along the polygon vertices, checking the image sets, assigning them to open curves, refining the polygon edges as we go, as needed.
+  ///
+  ///As we step around the polygon, as long as the number of image points does not change, then the set of image points from the initial vertex should extend continuously into a set of image curves.  Each curve will be assembled consistently from either even or odd parity image points.
+  ///
+  ///As we consider each new vertex point, we first check whether the number of images has increased, decreased or remained the same. If it has remained the same, then we need only assign the unordered set of vertex images to the existing set of curves. We identify each new image point by even or odd parity, then, assign them one-by-one to the closest curve with the same parity.
+  ///
+  ///If the number of images increases, then, after assigning the closest points, there should be a matching number of points left over of each parity.  These will become the beginning of a additional new open image curves.
+  ///
+  ///If the number of images decreases, then there should be two of the image curves of opposite parity with ends very close together.  We terminate the two closest opposite-parity open image curves, and match the remaining points as in the other cases.  [Actually we haven't implemented it this way (though this way might be better.  Instead we proceed as before, associating points with nearest like-parity curves, and terminating those which are left over. We identify "mates" closest opposite-parity pairs among the terminating ends for reference later.]
+  ///
+  ///The actual process proceeds as follows: Begin with two sets, last_evens and last_odds, containing the images from the last sample point along the polygon.  Then find the images of the next polygon sample point and assign them to groups of even and odd parity.  Next perform basic sanity checks testing for the same conditions as require of the initial vertex images.  If an image point seems to be missing, then we try to add one, as done for the initial vertex, otherwise we try to fail gracefully by skipping ahead to the next polygon edge point.
+  ///
+  ///When attaching points to curves, we check that the distance of the jump from one image curve point to the next along that curve is not greater than expansion_limit (2 times the arclength of the source-edge arc segment represented by each polygon edge). If the image jump is larger, then we stop processing and instead refine the edge of the polygon by an integer factor as needed so that we linearly expect the condition to be met (unless this would exceed a refinment limit that we still need to explain.).
+  ///
+  ///The next step (3D) is to identify the mates of ends of image curve segments to beginnings of other image curve segments, where we understand the odd parity segments to run backward.  Need to elaborate...
+  
   //initialization
   double norefine=false;
   double maxnorm;
@@ -510,7 +527,6 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	odds_ind.push_back(j);
       }
     }
-
 
     //Step 3C: Basic sanity check on the next points image set
     if(debug_area_mag)cout<<"i="<<i<<" ilast="<<ilast<<" ithis="<<ithis<<" i0="<<i0<<" norefine="<<norefine<<endl;
@@ -592,8 +608,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     //cout<<" odds("<<odds.size()<<"):  ";for(int j=0;j<odds.size();j++)cout<<"  "<<odds[j].x<<" "<<odds[j].y;cout<<endl;
     //cout<<" last_odds("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds.size();j++)cout<<"  "<<last_odds[j].x<<" "<<last_odds[j].y;cout<<endl;
 
-    //Step 3D: Assign new set of points to curves and check if refinement is needed 
-    //         We must handle connectivity given a variety of cases for the number of images.
+    ///Step 3D: Assign new set of points to curves and check if refinement is needed 
+    ///         We must handle connectivity given a variety of cases for the number of images.
     //         { same # of images, number increased, number decreased }
     //cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
     //cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
