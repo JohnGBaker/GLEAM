@@ -1,17 +1,17 @@
 all: test cp-test example
 
 test:
-	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.01203453 -nskip=20 -nevery=100 -nsteps=5000 -prop=4 -de_ni=100 -de_reduce_gamma=16 -pt=6 -pt_evolve_rate=0.02 -remap_r0 -log_tE -model_extra_noise -Fn_max=20.5 -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 m4-p6_test_1 ) > m4-p6_test_1.out
+	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.01203453 -nskip=20 -nevery=100 -nsteps=5000 -prop=4 -de_ni=100 -de_reduce_gamma=16 -pt=6 -pt_evolve_rate=0.02 -remap_r0 -log_tE -model_extra_noise -Fn_max=20.5 -q0=1e4 -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 m4-p6_test_1 ) > m4-p6_test_1.out
 	@diff m4-p6_test_[01]_t0.dat ; if [ $$? -ne 0 ] ; then  echo $@ FAIL ; else echo $@ PASS ;fi
 
 example:
-	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.012556 -save_every=40 -prop=7 -pt=20 -pt_evolve_rate=0.01 -pt_stop_evid_err=0.05 -chain_ess_stop=2000 -log_tE -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 -checkp_at_step=10000 m4-p20_test_1 ) > m4-p20_test_1.out
+	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.012556 -save_every=40 -prop=7 -pt=20 -pt_evolve_rate=0.01 -pt_stop_evid_err=0.05 -chain_ess_stop=2000 -log_tE -q0=1e4 -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 -checkp_at_step=10000 m4-p20_test_1 ) > m4-p20_test_1.out
 	@diff m4-p20_test_[01]_t0.dat ; if [ $$? -ne 0 ] ; then  echo $@ FAIL ; else echo $@ PASS ;fi
 
 cp-test:
-	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.01203453 -nskip=20 -nevery=100 -nsteps=5000 -prop=4 -de_ni=100 -de_reduce_gamma=16 -pt=6 -pt_evolve_rate=0.02 -remap_r0 -log_tE -model_extra_noise -Fn_max=20.5 -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 -checkp_at_step=2000 m4-p6_test_2 ) > m4-p6_test_2.p1.out
-	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.01203453 -nskip=20 -nevery=100 -nsteps=5000 -prop=4 -de_ni=100 -de_reduce_gamma=16 -pt=6 -pt_evolve_rate=0.02 -remap_r0 -log_tE -model_extra_noise -Fn_max=20.5 -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 -checkp_at_step=4000  -restart_dir=step_2000-cp m4-p6_test_2 ) > m4-p6_test_2.p2.out
-	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.01203453 -nskip=20 -nevery=100 -nsteps=5000 -prop=4 -de_ni=100 -de_reduce_gamma=16 -pt=6 -pt_evolve_rate=0.02 -remap_r0 -log_tE -model_extra_noise -Fn_max=20.5 -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 -restart_dir=step_4000-cp m4-p6_test_2 ) > m4-p6_test_2.p3.out
+	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.01203453 -nskip=20 -nevery=100 -nsteps=5000 -prop=4 -de_ni=100 -de_reduce_gamma=16 -pt=6 -pt_evolve_rate=0.02 -remap_r0 -log_tE -model_extra_noise -Fn_max=20.5 -q0=1e4 -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 -checkp_at_step=2000 m4-p6_test_2 ) > m4-p6_test_2.p1.out
+	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.01203453 -nskip=20 -nevery=100 -nsteps=5000 -prop=4 -de_ni=100 -de_reduce_gamma=16 -pt=6 -pt_evolve_rate=0.02 -remap_r0 -log_tE -model_extra_noise -Fn_max=20.5 -q0=1e4 -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 -checkp_at_step=4000  -restart_dir=step_2000-cp m4-p6_test_2 ) > m4-p6_test_2.p2.out
+	(export OMP_NUM_THREADS=4 ; time ../../gleam -seed=0.01203453 -nskip=20 -nevery=100 -nsteps=5000 -prop=4 -de_ni=100 -de_reduce_gamma=16 -pt=6 -pt_evolve_rate=0.02 -remap_r0 -log_tE -model_extra_noise -Fn_max=20.5 -q0=1e4 -gen_data=m4.dat -gen_data_col=2 -gen_data_err_col=4 -restart_dir=step_4000-cp m4-p6_test_2 ) > m4-p6_test_2.p3.out
 	@diff m4-p6_test_[02]_t0.dat ; if [ $$? -ne 0 ] ; then  echo $@ FAIL ; else echo $@ PASS ;fi
 
 

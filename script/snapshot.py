@@ -18,12 +18,12 @@ nparmax=12
 #read step params from 
 def get_step_pars(fname,stop_size=-1):
     fsize = os.stat(fname).st_size
-    print "fsize=",fsize
+    print( "fsize=",fsize)
     if(stop_size>=0):#sample from some specifed point in the middle of the file, instead of the end
         fsize=stop_size
     #print "fsize=",fsize
     bufsize = 15*(nparmax+5)
-    with open(fname,'rb') as f:
+    with open(fname,'r') as f:
         #print "bufsize=",bufsize
         if bufsize > fsize:
             bufsize = fsize-1
@@ -33,7 +33,7 @@ def get_step_pars(fname,stop_size=-1):
         f.seek(fsize-bufsize)
         data.extend(f.readlines(bufsize))
         line=data[len(data)-3]
-        print "line is:",line 
+        print( "line is:",line )
         step= int(line.split()[0])
         pars= np.array(line.split()[5:])
         post= float(line.split()[1])
@@ -49,7 +49,7 @@ def count_chains(fname):
     pos=0
     with open(fname,'rb') as f:
         for line in f:
-            if(line.startswith("\n")):
+            if(line.startswith(b"\n")):
                 #print "line:",line
                 chain_ends.append(pos)
                 #print "set: chain_ends["+str(int(nblank/2))+"]=",pos
@@ -62,7 +62,7 @@ def count_chains(fname):
         #f.seek(chain_ends[0]-bufsize)
         #data.extend(f.readlines(bufsize))        
         #print "testline is:",data[len(data)-3] 
-    print "chain_ends=",chain_ends
+    print( "chain_ends=",chain_ends)
     return nblank/2+1,chain_ends; #two blanks after completed chain.
 #count_chains
 
@@ -72,7 +72,7 @@ def get_flags(fname):
     with open(fname) as f:
         line=f.readline()
         if(not line.count("flags=")):
-           print "I can't find the flags in the .out file: '",fname,"'"
+           print( "I can't find the flags in the .out file: '",fname,"'")
            sys.exit()
         lines=f.readlines(2000)
         for line in lines:
@@ -83,7 +83,7 @@ def get_flags(fname):
             vals=entry.split(":")
             if(not vals[1].count("not")>0):
                 d[vals[0]]=vals[1]
-                print vals[0],"->",vals[1]
+                print( vals[0],"->",vals[1])
     return d
 # get_flags
   
@@ -119,11 +119,11 @@ def plot_lightcurve(basename,caption="",centerfrac=-1.0):
         xtop=np.append(xtop,np.array([l[1] for l in model if l[2]>ycut]))
         xcent=xtop.mean()
         xwid=xtop.std()
-        print "xcent=",xcent,"xwid=",xwid
+        print( "xcent=",xcent,"xwid=",xwid)
         xmin=xcent-centerfrac*xwid
         xmax= xcent+centerfrac*xwid
-        print "ycut=",ycut
-        print xmin,"< x <",xmax
+        print( "ycut=",ycut)
+        print( xmin,"< x <",xmax)
         xd=np.ma.masked_where(np.any([xd < xmin , xd > xmax], axis=0), xd)
         xm=np.ma.masked_where(np.any([xm < xmin , xm > xmax], axis=0), xm)
     #plt.clf()
@@ -170,18 +170,18 @@ def plot_magmap(basename,caption="",var=""):
     tol=1e-8;
     magmax=10.0;
     mdata=np.loadtxt(basename+var+"_mmap.dat")
-    print mdata.shape
+    print( mdata.shape)
     x=np.unique(mdata[:,0])
     x=x[np.append([True],x[1:]-x[:-1]>tol)]
     dx=x[1:]-x[:-1]
-    print "dx limits=",max(dx),min(dx)
+    print( "dx limits=",max(dx),min(dx))
     y=np.unique(mdata[:,1])
     y=y[np.append([True],y[1:]-y[:-1]>tol)]
     dx=y[1:]-y[:-1]
-    print "dy limits=",max(dx),min(dx)
+    print( "dy limits=",max(dx),min(dx))
     nx=x.size
     ny=y.size
-    print "nx,ny,nx*ny,ndata",nx,ny,nx*ny,mdata[:,2].size
+    print( "nx,ny,nx*ny,ndata",nx,ny,nx*ny,mdata[:,2].size)
     z=mdata[:,2]
     #z=(mdata[:,0]-min(x))/(max(x)-min(x))
     #z=(mdata[:,1]-min(y))/(max(y)-min(y))
@@ -268,7 +268,7 @@ elif(fname.endswith(".dat")):
     #basename=fname.replace("gle_","")
     basename=fname
     basename=basename.replace("_t0.dat","")
-print "basename="+basename
+print( "basename="+basename)
 
 #get execname
 #if(len(sys.argv)>2):
@@ -278,7 +278,7 @@ print "basename="+basename
 execname=""
 if(len(args.execname)>0):execname=args.execname[0]
 if(execname==""):execname=os.path.dirname(os.path.realpath(__file__))+"/../gleam"
-print "execname=",execname
+print( "execname=",execname)
 
 #get datafile
 #if(len(sys.argv)>3):
@@ -287,7 +287,7 @@ print "execname=",execname
 #    print "Need a method for automatically identifying the datafile, or provide it as third argument."
 #    sys.exit()
 datafile=args.datafile
-print "datafile=",datafile
+print( "datafile=",datafile)
 
 #get optional specification of which chain to take
 #if(len(sys.argv)>4):
@@ -296,10 +296,10 @@ print "datafile=",datafile
 #    ichain=-1
 
 ichain=args.ichain
-print "ichain="+str(ichain)
+print( "ichain="+str(ichain))
 
 npoints=args.points
-print "npoints=",npoints
+print( "npoints=",npoints)
 
 #get gnuplot script path
 gpscript=sys.argv[0].replace(".py",".gp")
@@ -309,38 +309,39 @@ d=get_flags(basename+".out")
 eargs=""
 for key in d.keys():
     eargs+=" -"+key+"="+d[key]
-print "eargs=",eargs
+print( "eargs=",eargs)
 
 #get pars and other info from .dat file
 cc,cends=count_chains(fname)
-print "cends=",cends," cc=",cc
+print( "cends=",cends," cc=",cc)
 iend=-1
 if(ichain>=0 and cc>ichain):
     iend=cends[ichain]-args.offset
     cc=ichain
-print "iend=",iend," cc=",cc
+print( "iend=",iend," cc=",cc)
 
 step,pars,post = get_step_pars(fname,iend)
 resultname=basename+"_c"+str(cc)+"_"+str(int(math.floor(step/1000)))+"k"
 parstr=""
 for val in pars:
     parstr+=" "+str(val)
+print(parstr)
 parfile=resultname+".pars"
 with open(parfile,"w") as f:f.write(parstr+"\n")
 
-print "step 0"
+print( "step 0")
 
 command= execname+" -view -mm_samples="+str(npoints)+" -stateFile="+parfile+" "+eargs+" "+datafile+" "+resultname
-print command
-print command.split()
+print( command)
+print( command.split())
 sys.stdout.flush()
 subprocess.call(command.split())
-print "step 1"
+print( "step 1")
 
 make_plots(resultname,post)
 
 command="gs "+resultname+".pdf"
-print command
-print command.split()
+print( command)
+print( command.split())
 sys.stdout.flush()
 subprocess.call(command.split())
