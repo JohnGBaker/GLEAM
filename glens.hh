@@ -139,7 +139,7 @@ public:
     addOption("binary_lens","Apply a binary lens model.");
     };*/  
   virtual void setup();
-  virtual string print_info()const{ostringstream s;s<<"GLens()"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
+  virtual string print_info(int prec=-1)const{ostringstream s;if(prec>0)s.precision(prec);s<<"GLens()"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
   //For stateSpaceInterface
   virtual void defWorkingStateSpace(const stateSpace &sp){
     if(do_finite_source)idx_log_rho_star=sp.requireIndex("log_rho_star");
@@ -255,7 +255,7 @@ public:
   double get_q(){return q;};
   double get_L(){return L;};
   double set_WideBinaryR(double r){rWide=r;};
-  virtual string print_info()const{ostringstream s;s<<"GLensBinary(q="<<q<<",L="<<L<<")"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
+  virtual string print_info(int prec=-1)const{ostringstream s;if(prec>0)s.precision(prec);s<<"GLensBinary(q="<<q<<",L="<<L<<")"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
   //virtual string print_info()const{ostringstream s;s<<"GLensBinary(q="<<q<<",L="<<L<<")"<<endl;return s.str();};
 
   ///From StateSpaceInterface (via bayes_component)

@@ -323,6 +323,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   bool debug_area_mag=false;
   bool super_debug=false;
   bool fix_vertex_images=true;
+
   //Construct polygon
   double dphi=twopi/N;
   vector<Point> curve(N);
@@ -570,7 +571,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	  cout<<"b="<<b.x<<" "<<b.y<<endl;
 	  for(int j=0;j<image_points[ithis].size();j++){
 	    Point db=map(image_points[ithis][j])-b;
-	    cout<<" "<<image_points[ithis][j].x<<" "<<image_points[j][ithis].y<<" "<<image_point_mags[ithis][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	    cout<<" "<<image_points[ithis][j].x<<" "<<image_points[ithis][j].y<<" "<<image_point_mags[ithis][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
 	  }
 	  cout<<"last points:"<<endl;
 	  cout<<" ilast="<<ilast<<" < "<<image_points.size()<<endl;
@@ -605,10 +606,12 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     //Step 3D: Assign new set of points to curves and check if refinement is needed 
     //         We must handle connectivity given a variety of cases for the number of images.
     //         { same # of images, number increased, number decreased }
-    //cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
-    //cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
-    //cout<<" last_evens_ind("<<last_evens.size()<<"): ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
-    //cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
+    if(debug_area_mag){
+      cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
+      cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
+      cout<<" last_evens_ind("<<last_evens.size()<<"): ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
+      cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
+    }
     for(int idummy=0;idummy<1;idummy++){//this is a dummy loop to enable conveniently break-ing out of the analysis if we need to refine
       if(ni<last_ni){
 	//Case 1: number of images decreased.  First have to figure which to drop;
@@ -659,7 +662,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	  //odds_ind[ileftodds[k]]=jodd;
 	}
 	
-      } else {
+       } else {
 	// Cases 2/3: same number of images or new images have appeared;
 	//cout<<"Assign:"<<endl;
 	if(debug_area_mag)cout<<"case2a"<<endl;
@@ -687,7 +690,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	  }
 	  cout<<"last_evens"<<endl;for(int j=0;j<last_evens.size();j++)cout<<last_evens[j].x<<" "<<last_evens[j].y<<" "<<mag(last_evens[j])<<endl;
 	  cout<<"last_odds"<<endl;for(int j=0;j<last_odds.size();j++)cout<<last_odds[j].x<<" "<<last_odds[j].y<<" "<<mag(last_odds[j])<<endl;
-	  cout<<print_info()<<endl;
+	  cout<<print_info(20)<<endl;
+	  cout.precision(20);
 	  cout<<"Entered image_area_mag with: p0=("<<p0.x<<","<<p0.y<<") radius="<<radius<<" N0="<<N0<<endl;
 	}
 	imap=assign_points(evens,last_evens,leftevens,ileftevens,maxnorm);
@@ -777,6 +781,11 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	
 	cout<<"p(last)=("<<curve[ilast].x<<","<<curve[ilast].y<<")"<<endl;
 	cout<<"p(this)=("<<curve[ithis].x<<","<<curve[ithis].y<<")"<<endl;
+	cout<<"Before:"<<endl;
+	cout<<"evens"<<endl;for(int j=0;j<evens.size();j++)cout<<evens[j].x<<" "<<evens[j].y<<" "<<mag(evens[j])<<endl;
+	cout<<"odds"<<endl;for(int j=0;j<odds.size();j++)cout<<odds[j].x<<" "<<odds[j].y<<" "<<mag(odds[j])<<endl;
+	cout<<"last_evens"<<endl;for(int j=0;j<last_evens.size();j++)cout<<last_evens[j].x<<" "<<last_evens[j].y<<" "<<mag(last_evens[j])<<endl;
+	cout<<"last_odds"<<endl;for(int j=0;j<last_odds.size();j++)cout<<last_odds[j].x<<" "<<last_odds[j].y<<" "<<mag(last_odds[j])<<endl;
       }
       double phi0=0,dphi=0;
       if(refine_sphere){
@@ -827,10 +836,15 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	empty[j].resize(N+nadd+1,true);
 	mate[j].resize(N+nadd+1,-1);
       }
-      if(i0>=i)i0+=nadd;
+      if(i0>=iinsert)i0+=nadd;
       
       if(debug_area_mag){
 	cout<<"inserted "<<nadd<<" points. i0="<<i0<<" len(image_points)="<<image_points.size()<<endl;
+	cout<<"After:"<<endl;
+	cout<<"evens"<<endl;for(int j=0;j<evens.size();j++)cout<<evens[j].x<<" "<<evens[j].y<<" "<<mag(evens[j])<<endl;
+	cout<<"odds"<<endl;for(int j=0;j<odds.size();j++)cout<<odds[j].x<<" "<<odds[j].y<<" "<<mag(odds[j])<<endl;
+	cout<<"last_evens"<<endl;for(int j=0;j<last_evens.size();j++)cout<<last_evens[j].x<<" "<<last_evens[j].y<<" "<<mag(last_evens[j])<<endl;
+	cout<<"last_odds"<<endl;for(int j=0;j<last_odds.size();j++)cout<<last_odds[j].x<<" "<<last_odds[j].y<<" "<<mag(last_odds[j])<<endl;
 	/*
 	cout<<"after inserting:"<<endl;
 	for(int j=0;j<N+nadd;j++){

@@ -5,9 +5,22 @@ Changes not staged for commit:
   (use "git add <file>..." to update what will be committed)
   (use "git checkout -- <file>..." to discard changes in working directory)
 
+	modified:   python/view_process.py
 	modified:   python/view_projection.py
 
 no changes added to commit (use "git add" and/or "git commit -a")
+diff --git a/python/view_process.py b/python/view_process.py
+index 5d2b86e..9e91474 100644
+--- a/python/view_process.py
++++ b/python/view_process.py
+@@ -48,6 +48,7 @@ def get_par_names(fname):
+ 
+ def get_xydata(data,i,j,dens,samps):
+     d=data[data[:,0]>samps]
++    #d=d[d[:,6]>4]
+     Nd=len(d)
+     #print("Reduced data len =",Nd)
+     every=int(Nd/dens)
 diff --git a/python/view_projection.py b/python/view_projection.py
 index f24bd46..a607344 100644
 --- a/python/view_projection.py
