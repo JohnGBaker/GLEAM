@@ -131,8 +131,8 @@ def reduceDataPass(data,chunksize,tol,segwid=3):
             dt=target[k+1,0]-target[k,0]
             if(dt<dtmin):dtmin=dt
             if(dt>dtmax):dtmax=dt
-        if(dtmax/dtmin > 5):
-            #times not grouped
+        if(len(target)<2 or dtmax/dtmin > 5):
+            #target too short or times not grouped
             replacement=target.copy()
         else: #passed test so continue
             #print("  target=",target)
