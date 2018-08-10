@@ -271,6 +271,125 @@ bool jointOrder(const joint &j1, const joint &j2) {
   return j1.second < j2.second;
 };
 
+///Brute force integration finite size magnification around 1-D circle
+///
+///This is used below in computing the 2D integral over the image plane.
+void GLens::brute_force_circle_mag(const Point &p, const double radius, double &magnification){
+  const double tol=1e-7;
+  const double dphimin=6*tol;
+  int nphi=3;
+  int nrefine=2;
+
+  //set up the initial grid in rho
+  vector<double> mags(nphi,0);
+  vector<double> phis(nphi);
+  for( int i=0;i<nphi;i++)phis[i]=i*2.0*M_PI/(nphi-1);
+
+  double oldnphi=0;
+  //main loop of refinement passes over the set of radii
+  while(oldnphi<nphi){
+    oldnphi=nphi;
+    //compute necessary circle magnifications
+    for( int i=0;i<nphi;i++){
+      if(mags[i]==0){
+	double x=cos(phis[i])*radius;
+	double y=sin(phis[i])*radius;
+	Point beta=p+Point(x,y);
+	vector<Point> thetas=invmap(beta);
+	double intens=1.0;//can make this a function of r,phi for general intensity profile
+	mags[i]=mag(thetas)*intens;
+      }
+    }
+    
+    //now construct the new grid (inelegant, but safe...)
+    vector<double> newmags(1,mags[0]);
+    vector<double> newphis(1,phis[0]);
+    for(int i=1;i<nphi;i++){
+      //test magnitude variation tolerance
+      //idea is that tolerance is related to the tolerance in the final mag
+      //Will compute mean mag = sum( r*dr*m(r) )/4pi 
+      //so want tol> D mean ~ max(r*dr*Dm)
+      if(mags[i]-mags[i-1] > tol*(phis[i]-phis[i-1]) and (phis[i]-phis[i-1]) >= dphimin ){//fail
+	for(int j=0;j<nrefine;j++){
+	  newphis.push_back(phis[i-1]+(phis[i]-phis[i-1])*(j+1.0)/(nrefine+1.0));
+	  newmags.push_back(0);
+	}
+      }
+      newphis.push_back(phis[i]);
+      newmags.push_back(mags[i]);
+    }
+    phis=newphis;
+    mags=newmags;
+    nphi=phis.size();
+  }
+  //Now compute the mean mag
+  double msum=0;
+  msum+=(mags[0]+mags[nphi-1])*(2*M_PI-phis[nphi-1])/2.0;
+  for(int i=1;i<nphi;i++){
+    msum+=(mags[i]+mags[i-1])*(phis[i]-phis[i-1])/2.0;
+  }
+  magnification=msum;
+}
+
+///Brute force integration finite size magnification
+///
+///The idea here is that we perform a 2D integral over the image plane
+void GLens::brute_force_area_mag(const Point &p, const double radius, double &magnification){
+  const double tol=1e-7;
+  const double drhomin=tol*radius;
+  int nrho=3;
+  int nrefine=2;
+
+  //set up the initial grid in rho
+  vector<double> mags(nrho,0);
+  vector<double> rhos(nrho);
+  for( int i=0;i<nrho;i++)rhos[i]=i*1.0/(nrho-1);
+
+  double oldnrho=0;
+  //main loop of refinement passes over the set of radii
+  while(oldnrho<nrho){
+    oldnrho=nrho;
+    //compute necessary circle magnifications
+    for( int i=0;i<nrho;i++){
+      if(mags[i]==0){
+	double mag=0;
+	brute_force_circle_mag(p, rhos[i]*radius, mag);
+	double intens=1.0;//can make this a function of r for radial intensity profile
+	mags[i]=mag*intens;
+      }
+    }
+    
+    //now construct the new grid (inelegant, but safe...)
+    vector<double> newmags(1,mags[0]);
+    vector<double> newrhos(1,rhos[0]);
+    for(int i=1;i<nrho;i++){
+      //test magnitude variation tolerance
+      //idea is that tolerance is related to the tolerance in the final mag
+      //Will compute mean mag = sum( r*dr*m(r) )/4pi 
+      //so want tol> D mean ~ max(r*dr*Dm)
+      if(mags[i]-mags[i-1] > tol*rhos[i]*(rhos[i]-rhos[i-1]) and (rhos[i]-rhos[i-1]) >= drhomin ){//fail
+	for(int j=0;j<nrefine;j++){
+	  rhos.push_back(rhos[i-1]+(rhos[i]-rhos[i-1])*(j+1.0)/(nrefine+1.0));
+	  mags.push_back(0);
+	}
+      }
+      rhos.push_back(rhos[i]);
+      mags.push_back(mags[i]);
+      nrho=rhos.size();
+    }
+  }
+  //Now compute the mean mag
+  double asum=0,msum=0;
+  for(int i=1;i<nrho;i++){
+    double a=(rhos[i]-rhos[i-1])*(rhos[i]+rhos[i-1])/2;
+    asum+=a;
+    msum+=a*(mags[i]+mags[i-1])/2;
+  }
+  magnification=msum/asum;
+}
+  
+  
+
 ///Compute magnification of a finite N-sided polygon by finding the area of images based on the method Gould-Gaucherel
 ///
 ///The method requires the following steps: First make a list of points defining the polygon, an apply inv_map_curve to
@@ -324,6 +443,15 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   bool super_debug=false;
   bool fix_vertex_images=true;
 
+  ///special debugging
+  double dq=9192.172787-dynamic_cast<GLensBinary*>(this)->get_q();
+  double dL=0.3196962-dynamic_cast<GLensBinary*>(this)->get_L();
+  //double px0=1.36179711562218;
+  double px0=2.96771236012588;
+  if(false and abs(dq)<.001 and abs(dL) and abs(p.x-px0)<.001){
+    cout<<"Special debugging"<<endl;
+    debug_area_mag=true;}
+  
   //Construct polygon
   double dphi=twopi/N;
   vector<Point> curve(N);
@@ -486,7 +614,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   ///The next step (3D) is to identify the mates of ends of image curve segments to beginnings of other image curve segments, where we understand the odd parity segments to run backward.  Need to elaborate...
   
   //initialization
-  double norefine=false;
+  double norefine=false,refine_end=false;
   double maxnorm;
   vector<joint>segment_ends,segment_begins;
   vector<Point>leftover;
@@ -510,15 +638,18 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     }
   }
   //Loop
-  for(int i=1;i<=(image_points.size());i++){
+  int ilast=0,ithis=0;
+  for(int i=1;i<=(image_points.size()) or refine_end;i++){
     //Step 3A: Initialization of loop interior
     //Note: By the end we will have gone through the loop once for each point that ends up in image_points
     //We may insert points into image_points
     //The starting point is i0 (Note we need to increment i0 if we insert points at/before i0;
     N=image_points.size();
-    int ithis=(i+i0)%N;
-    int ilast=(i+i0-1)%N;
-    int last_ni=image_points[ilast].size();
+    ilast=ithis;
+    if( i==1 )ilast=(i+i0-1)%N;//FIXME Why doesn't this work???
+    ithis=(i+i0)%N;
+    //int last_ni=image_points[ilast].size();
+    int last_ni=evens.size()+odds.size();//Unlike image_points[ilast].size() this is correct when the image checks fail for the last point.
     int ni=image_points[ithis].size();
     int netp=0;
     bool refine=false;
@@ -538,6 +669,11 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	odds.push_back(image_points[ithis][j]);
 	odds_ind.push_back(j);
       }
+    }
+    
+    //special case: if we need to refine the end
+    if(refine_end){
+      refine_end=false;
     }
 
     //Step 3C: Basic sanity check on the next points image set
@@ -574,7 +710,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	odds_ind.push_back(ni);
 	ni++;
 	netp=-1;
-      } else {
+      } else { //Did not pass check and did not manage an easy fix.
 	if(debug_area_mag){
 	  cout<<"GLens::image_area_mag: Point did not pass need to add handling of unexpected patterns of images."<<endl;
 	  cout<<"N="<<N<<endl;
@@ -596,187 +732,187 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	    Point db=map(image_points[ilast][j])-b;
 	    cout<<" "<<image_points[ilast][j].x<<" "<<image_points[ilast][j].y<<" "<<image_point_mags[ilast][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
 	  }
+	  cout<<"last_evens"<<endl;for(int j=0;j<last_evens.size();j++)cout<<last_evens[j].x<<" "<<last_evens[j].y<<" "<<mag(last_evens[j])<<endl;
+	  cout<<"last_odds"<<endl;for(int j=0;j<last_odds.size();j++)cout<<last_odds[j].x<<" "<<last_odds[j].y<<" "<<mag(last_odds[j])<<endl;
 	  cout<<"  ...trying to fail gracefully by neglecting this point..."<<endl;
 	}
 	//debug_area_mag=true;
-	//Copy forward the last image point, and hope for the best...
-	for(int k=0;k<NimageMax;k++)image_curves[k][ithis]=image_curves[k][ilast];
-	evens=last_evens;evens_ind=last_evens_ind;
-	odds=last_odds;odds_ind=last_odds_ind;
-	norefine=false;
-	continue;
+	//Mitigation:
+	//We will have to skip this point, but to minimize the damage, we first try to refine the previous edge (this will necessarily continue until max refinement is reached)
+	if(not norefine){//can refine more
+	  refine=true;
+	}else{
+	  //Can't refine more. Copy forward the last image point, and hope for the best...
+	  for(int k=0;k<NimageMax;k++)image_curves[k][ithis]=image_curves[k][ilast];
+	  evens=last_evens;evens_ind=last_evens_ind;
+	  odds=last_odds;odds_ind=last_odds_ind;
+	  norefine=false;
+	  continue;
+	}
       }
     }
 
-    //cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
-    //cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
-    //cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
-    //cout<<" last_evens_ind("<<last_evens.size()<<"):  ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
-    //cout<<" odds_ind("<<odds.size()<<"):  ";for(int j=0;j<odds_ind.size();j++)cout<<" "<<odds_ind[j];cout<<endl;
-    //cout<<" evens_ind("<<evens.size()<<"):  ";for(int j=0;j<evens_ind.size();j++)cout<<" "<<evens_ind[j];cout<<endl;
-    //cout<<" evens("<<evens.size()<<"):  ";for(int j=0;j<evens.size();j++)cout<<"  "<<evens[j].x<<" "<<evens[j].y;cout<<endl;
-    //cout<<" last_evens("<<last_evens.size()<<"):  ";for(int j=0;j<last_evens.size();j++)cout<<"  "<<last_evens[j].x<<" "<<last_evens[j].y;cout<<endl;
-    //cout<<" odds("<<odds.size()<<"):  ";for(int j=0;j<odds.size();j++)cout<<"  "<<odds[j].x<<" "<<odds[j].y;cout<<endl;
-    //cout<<" last_odds("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds.size();j++)cout<<"  "<<last_odds[j].x<<" "<<last_odds[j].y;cout<<endl;
-
-    ///Step 3D: Assign new set of points to curves and check if refinement is needed 
-    ///         We must handle connectivity given a variety of cases for the number of images.
-    //         { same # of images, number increased, number decreased }
-    if(debug_area_mag){
-      cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
-      cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
-      cout<<" last_evens_ind("<<last_evens.size()<<"): ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
-      cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
-    }
-    for(int idummy=0;idummy<1;idummy++){//this is a dummy loop to enable conveniently break-ing out of the analysis if we need to refine
-      if(ni<last_ni){
-	//Case 1: number of images decreased.  First have to figure which to drop;
-	//idea: loop over all images at new point, and assign each to an old point then make those empty
-	//First we connect the even curves
-	if(debug_area_mag)cout<<"case1a"<<endl;
-	if(last_evens.size()<evens.size())cout<<"Case 1a: last_evens<evens"<<endl;
-	imap=assign_points(last_evens,evens,leftevens,ileftevens,maxnorm);
-	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1a="<<maxnorm<<endl;
-	  break;}
-	for(int k=0;k<evens.size();k++){
-	  int ic=last_evens_ind[imap[k]];
-	  //cout<<"evens["<<k<<"] -> image_curves["<<ic<<"]"<<endl;
-	  image_curves[ic][i]=evens[k]; // add image to selected curve
-	  empty[ic][i]=false;
-	  evens_ind[k]=ic;
-	}
-	//Then the odd curves
-	if(debug_area_mag)cout<<"case1b"<<endl;
-	if(last_odds.size()<odds.size())cout<<"Case 1b: last_odds<odds"<<endl;
-	imap=assign_points(last_odds,odds,leftodds,ileftodds,maxnorm);
-	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1b="<<maxnorm<<endl;
-	  break;}
-	for(int k=0;k<odds.size();k++){
-	  int ic=last_odds_ind[imap[k]];
-	  //cout<<"odds["<<k<<"] -> image_curves["<<ic<<"]"<<endl;
-	  image_curves[ic][i]=odds[k]; // add image to selected curve
-	  empty[ic][i]=false;
-	  odds_ind[k]=ic;
-	}	  
-	//Now mate the terminating ends
-	if(debug_area_mag)cout<<"case1c"<<endl;
-	if(leftodds.size()<leftevens.size())cout<<"Case 1c: model<subject"<<endl;
-	imap=assign_points(leftodds,leftevens,leftover,ileftover,maxnorm);
-	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1c="<<maxnorm<<endl;
-	  break;}
-	for(int k=0;k<leftevens.size();k++){
-	  int jeven=last_evens_ind[ileftevens[k]];
-	  int jodd=last_odds_ind[ileftodds[imap[k]]];
-	  //cout<<"leftevens["<<k<<"] -> image_curves["<<jeven<<"]"<<endl;
-	  //cout<<"leftodds["<<k<<"] -> image_curves["<<jodd<<"]"<<endl;
-	  mate[jeven][ilast]=jodd;
-	  segment_ends.push_back(joint(jeven,(i-1)%N));
-	  mate[jodd][ilast]=jeven;
-	  segment_begins.push_back(joint(jodd,(i-1)%N));
-	  ////this is wrong...
-	  //evens_ind[ileftevens[k]]=jeven;
-	  //odds_ind[ileftodds[k]]=jodd;
-	}
-	
-       } else {
-	// Cases 2/3: same number of images or new images have appeared;
-	//cout<<"Assign:"<<endl;
-	if(debug_area_mag)cout<<"case2a"<<endl;
-	if(evens.size()<last_evens.size()){
-	  cout<<"Case 2a: model<subject"<<endl;
-	  cout<<" pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
-	  cout<<print_info()<<endl;
-	  cout<<"centers=";for(int k=1;k<NimageMin;k++)cout<<"  "<<getCenter(k).x<<" "<<getCenter(k).y;
-	  cout<<"\npoints:"<<endl;
-	  Point b=curve[ithis];
-	  cout<<"b="<<b.x<<" "<<b.y<<endl;
-	  for(int j=0;j<image_points[ithis].size();j++){
-	    Point db=map(image_points[ithis][j])-b;
-	    cout<<" "<<image_points[ithis][j].x<<" "<<image_points[ithis][j].y<<" "<<image_point_mags[ithis][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
-	  }
-	  cout<<"evens"<<endl;for(int j=0;j<evens.size();j++)cout<<evens[j].x<<" "<<evens[j].y<<" "<<mag(evens[j])<<endl;
-	  cout<<"odds"<<endl;for(int j=0;j<odds.size();j++)cout<<odds[j].x<<" "<<odds[j].y<<" "<<mag(odds[j])<<endl;
-	  cout<<"last points:"<<endl;
-	  cout<<"i="<<i<<" ilast="<<ilast<<" < "<<image_points.size()<<endl;
-	  //b=curve[ilast];
-	  cout<<"b="<<b.x<<" "<<b.y<<endl;
-	  for(int j=0;j<image_points[ilast].size();j++){
-	    Point db=map(image_points[ilast][j])-b;
-	    cout<<" "<<image_points[ilast][j].x<<" "<<image_points[ilast][j].y<<" "<<image_point_mags[ilast][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
-	  }
-	  cout<<"last_evens"<<endl;for(int j=0;j<last_evens.size();j++)cout<<last_evens[j].x<<" "<<last_evens[j].y<<" "<<mag(last_evens[j])<<endl;
-	  cout<<"last_odds"<<endl;for(int j=0;j<last_odds.size();j++)cout<<last_odds[j].x<<" "<<last_odds[j].y<<" "<<mag(last_odds[j])<<endl;
-	  cout<<print_info(20)<<endl;
-	  cout.precision(20);
-	  cout<<"Entered image_area_mag with: p0=("<<p0.x<<","<<p0.y<<") radius="<<radius<<" N0="<<N0<<endl;
-	}
-	imap=assign_points(evens,last_evens,leftevens,ileftevens,maxnorm);
-	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 2a="<<maxnorm<<endl;
-	  break;}
-	for(int k=0;k<last_evens.size();k++){
-	  int ic=last_evens_ind[k];
-	  //cout<<"evens["<<imap[k]<<"] -> image_curves["<<ic<<"]"<<endl;
-	  image_curves[ic][i]=evens[imap[k]]; // add image to selected curve
-	  empty[ic][i]=false;
-	  evens_ind[imap[k]]=ic;
-	}
-	if(debug_area_mag)cout<<"case2b"<<endl;
-	if(odds.size()<last_odds.size())cout<<"Case 2b: model<subject"<<endl;
-	imap=assign_points(odds,last_odds,leftodds,ileftodds,maxnorm);
-	if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 2b="<<maxnorm<<endl;
-	  break;}
-	for(int k=0;k<last_odds.size();k++){
-	  int ic=last_odds_ind[k];
-	  //cout<<"odds["<<imap[k]<<"] -> image_curves["<<ic<<"]"<<endl;
-	  image_curves[ic][i]=odds[imap[k]]; // add image to selected curve
-	  empty[ic][i]=false;
-	  odds_ind[imap[k]]=ic;
-	}
-	//now mate the terminating ends  (Note: at this point it should be true that leftevens and leftodds are equal-length
-	if(leftodds.size()!=leftevens.size()){
-	  cout<<"This shouldn't happen. New odds not equal to new evens!"<<endl;
-	  exit(1);
-	}
-	if(leftodds.size()>0){
-	  //Case 3: New images have appeared
-	  //cout<<"New!"<<endl;
-	  //cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
-	  //cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
-	  //cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
-	  //cout<<" last_evens_ind("<<last_evens.size()<<"):  ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
-	  if(debug_area_mag)cout<<"case3"<<endl;
-	  if(leftodds.size()<leftevens.size())cout<<"Case 3: model<subject"<<endl;
-	  imap=assign_points(leftodds,leftevens,leftover,ileftover,maxnorm);
-	  if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 3="<<maxnorm<<endl;
+    if(not refine){
+      ///Step 3D: Assign new set of points to curves and check if refinement is needed 
+      ///         We must handle connectivity given a variety of cases for the number of images.
+      //         { same # of images, number increased, number decreased }
+      if(debug_area_mag){
+	cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
+	cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
+	cout<<" last_evens_ind("<<last_evens.size()<<"): ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
+	cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
+      }
+      for(int idummy=0;idummy<1;idummy++){//this is a dummy loop to enable conveniently break-ing out of the analysis if we need to refine
+	if(ni<last_ni){
+	  //Case 1: number of images decreased.  First have to figure which to drop;
+	  //idea: loop over all images at new point, and assign each to an old point then make those empty
+	  //First we connect the even curves
+	  if(debug_area_mag)cout<<"case1a"<<endl;
+	  if(last_evens.size()<evens.size())cout<<"Case 1a: last_evens<evens"<<endl;
+	  imap=assign_points(last_evens,evens,leftevens,ileftevens,maxnorm);
+	  if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1a="<<maxnorm<<endl;
 	    break;}
-	  int jeven=0,jodd=0;
+	  for(int k=0;k<evens.size();k++){
+	    int ic=last_evens_ind[imap[k]];
+	    //cout<<"evens["<<k<<"] -> image_curves["<<ic<<"]"<<endl;
+	    image_curves[ic][i]=evens[k]; // add image to selected curve
+	    empty[ic][i]=false;
+	    evens_ind[k]=ic;
+	  }
+	  //Then the odd curves
+	  if(debug_area_mag)cout<<"case1b"<<endl;
+	  if(last_odds.size()<odds.size())cout<<"Case 1b: last_odds<odds"<<endl;
+	  imap=assign_points(last_odds,odds,leftodds,ileftodds,maxnorm);
+	  if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1b="<<maxnorm<<endl;
+	    break;}
+	  for(int k=0;k<odds.size();k++){
+	    int ic=last_odds_ind[imap[k]];
+	    //cout<<"odds["<<k<<"] -> image_curves["<<ic<<"]"<<endl;
+	    image_curves[ic][i]=odds[k]; // add image to selected curve
+	    empty[ic][i]=false;
+	    odds_ind[k]=ic;
+	  }	  
+	  //Now mate the terminating ends
+	  if(debug_area_mag)cout<<"case1c"<<endl;
+	  if(leftodds.size()<leftevens.size())cout<<"Case 1c: model<subject"<<endl;
+	  imap=assign_points(leftodds,leftevens,leftover,ileftover,maxnorm);
+	  if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 1c="<<maxnorm<<endl;
+	    break;}
 	  for(int k=0;k<leftevens.size();k++){
-	    for(int j=jeven;j<NimageMax;j++){
-	      jeven=j;
-	      if(empty[j][i] and parities[j]>0)break;
-	    }
+	    int jeven=last_evens_ind[ileftevens[k]];
+	    int jodd=last_odds_ind[ileftodds[imap[k]]];
 	    //cout<<"leftevens["<<k<<"] -> image_curves["<<jeven<<"]"<<endl;
-	    image_curves[jeven][i]=leftevens[k];
-	    empty[jeven][i]=false;
-	    for(int j=jodd;j<NimageMax;j++){
-	      jodd=j;
-	      if(empty[j][i] and parities[j]<0)break;
-	    }
 	    //cout<<"leftodds["<<k<<"] -> image_curves["<<jodd<<"]"<<endl;
-	    image_curves[jodd][i]=leftodds[k];
-	    empty[jodd][i]=false;
-	    mate[jeven][i]=jodd;
-	    segment_begins.push_back(joint(jeven,i));
-	    mate[jodd][i]=jeven;
-	    segment_ends.push_back(joint(jodd,i));
-	    evens_ind[ileftevens[k]]=jeven;
-	    odds_ind[ileftodds[k]]=jodd;
+	    mate[jeven][ilast]=jodd;
+	    segment_ends.push_back(joint(jeven,(i-1)%N));
+	    mate[jodd][ilast]=jeven;
+	    segment_begins.push_back(joint(jodd,(i-1)%N));
+	    ////this is wrong...
+	    //evens_ind[ileftevens[k]]=jeven;
+	    //odds_ind[ileftodds[k]]=jodd;
+	  }
+	  
+	} else {
+	  // Cases 2/3: same number of images or new images have appeared;
+	  //cout<<"Assign:"<<endl;
+	  if(debug_area_mag)cout<<"case2a"<<endl;
+	  if(evens.size()<last_evens.size()){
+	    cout<<"Case 2a: model<subject"<<endl;
+	    cout<<"p.x="<<p.x<<endl;
+	    cout<<" pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
+	    cout<<print_info()<<endl;
+	    cout<<"centers=";for(int k=1;k<NimageMin;k++)cout<<"  "<<getCenter(k).x<<" "<<getCenter(k).y;
+	    cout<<"\npoints:"<<endl;
+	    Point b=curve[ithis];
+	    cout<<"b="<<b.x<<" "<<b.y<<endl;
+	    for(int j=0;j<image_points[ithis].size();j++){
+	      Point db=map(image_points[ithis][j])-b;
+	      cout<<" "<<image_points[ithis][j].x<<" "<<image_points[ithis][j].y<<" "<<image_point_mags[ithis][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	    }
+	    cout<<"evens"<<endl;for(int j=0;j<evens.size();j++)cout<<evens[j].x<<" "<<evens[j].y<<" "<<mag(evens[j])<<endl;
+	    cout<<"odds"<<endl;for(int j=0;j<odds.size();j++)cout<<odds[j].x<<" "<<odds[j].y<<" "<<mag(odds[j])<<endl;
+	    cout<<"last points:"<<endl;
+	    cout<<"i="<<i<<" ilast="<<ilast<<" < "<<image_points.size()<<endl;
+	    //b=curve[ilast];
+	    cout<<"b="<<b.x<<" "<<b.y<<endl;
+	    for(int j=0;j<image_points[ilast].size();j++){
+	      Point db=map(image_points[ilast][j])-b;
+	      cout<<" "<<image_points[ilast][j].x<<" "<<image_points[ilast][j].y<<" "<<image_point_mags[ilast][j]<<" delta= "<<db.x<<" "<<db.y<<endl;
+	    }
+	    cout<<"last_evens"<<endl;for(int j=0;j<last_evens.size();j++)cout<<last_evens[j].x<<" "<<last_evens[j].y<<" "<<mag(last_evens[j])<<endl;
+	    cout<<"last_odds"<<endl;for(int j=0;j<last_odds.size();j++)cout<<last_odds[j].x<<" "<<last_odds[j].y<<" "<<mag(last_odds[j])<<endl;
+	    cout<<print_info(20)<<endl;
+	    cout.precision(20);
+	    cout<<"Entered image_area_mag with: p0=("<<p0.x<<","<<p0.y<<") radius="<<radius<<" N0="<<N0<<endl;
+	  }
+	  imap=assign_points(evens,last_evens,leftevens,ileftevens,maxnorm);
+	  if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 2a="<<maxnorm<<endl;
+	    break;}
+	  for(int k=0;k<last_evens.size();k++){
+	    int ic=last_evens_ind[k];
+	    //cout<<"evens["<<imap[k]<<"] -> image_curves["<<ic<<"]"<<endl;
+	    image_curves[ic][i]=evens[imap[k]]; // add image to selected curve
+	    empty[ic][i]=false;
+	    evens_ind[imap[k]]=ic;
+	  }
+	  if(debug_area_mag)cout<<"case2b"<<endl;
+	  if(odds.size()<last_odds.size())cout<<"Case 2b: model<subject"<<endl;
+	  imap=assign_points(odds,last_odds,leftodds,ileftodds,maxnorm);
+	  if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 2b="<<maxnorm<<endl;
+	    break;}
+	  for(int k=0;k<last_odds.size();k++){
+	    int ic=last_odds_ind[k];
+	    //cout<<"odds["<<imap[k]<<"] -> image_curves["<<ic<<"]"<<endl;
+	    image_curves[ic][i]=odds[imap[k]]; // add image to selected curve
+	    empty[ic][i]=false;
+	    odds_ind[imap[k]]=ic;
+	  }
+	  //now mate the terminating ends  (Note: at this point it should be true that leftevens and leftodds are equal-length
+	  if(leftodds.size()!=leftevens.size()){
+	    cout<<"This shouldn't happen. New odds not equal to new evens!"<<endl;
+	    exit(1);
+	  }
+	  if(leftodds.size()>0){
+	    //Case 3: New images have appeared
+	    //cout<<"New!"<<endl;
+	    //cout<<"#odds/even sizes: "<<odds.size()<<"/"<<evens.size()<<"   images="<<image_points[ithis].size();
+	    //cout<<"  "<<empty[0][ilast]<<empty[1][ilast]<<empty[2][ilast]<<empty[3][ilast]<<empty[4][ilast]<<endl;
+	    //cout<<" last_odds_ind("<<last_odds.size()<<"):  ";for(int j=0;j<last_odds_ind.size();j++)cout<<" "<<last_odds_ind[j];cout<<endl;
+	    //cout<<" last_evens_ind("<<last_evens.size()<<"):  ";for(int j=0;j<last_evens_ind.size();j++)cout<<" "<<last_evens_ind[j];cout<<endl;
+	    if(debug_area_mag)cout<<"case3"<<endl;
+	    if(leftodds.size()<leftevens.size())cout<<"Case 3: model<subject"<<endl;
+	    imap=assign_points(leftodds,leftevens,leftover,ileftover,maxnorm);
+	    if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 3="<<maxnorm<<endl;
+	      break;}
+	    int jeven=0,jodd=0;
+	    for(int k=0;k<leftevens.size();k++){
+	      for(int j=jeven;j<NimageMax;j++){
+		jeven=j;
+		if(empty[j][i] and parities[j]>0)break;
+	      }
+	      //cout<<"leftevens["<<k<<"] -> image_curves["<<jeven<<"]"<<endl;
+	      image_curves[jeven][i]=leftevens[k];
+	      empty[jeven][i]=false;
+	      for(int j=jodd;j<NimageMax;j++){
+		jodd=j;
+		if(empty[j][i] and parities[j]<0)break;
+	      }
+	      //cout<<"leftodds["<<k<<"] -> image_curves["<<jodd<<"]"<<endl;
+	      image_curves[jodd][i]=leftodds[k];
+	      empty[jodd][i]=false;
+	      mate[jeven][i]=jodd;
+	      segment_begins.push_back(joint(jeven,i));
+	      mate[jodd][i]=jeven;
+	      segment_ends.push_back(joint(jodd,i));
+	      evens_ind[ileftevens[k]]=jeven;
+	      odds_ind[ileftodds[k]]=jodd;
+	    }
 	  }
 	}
       }
     }
-      
-      //Step 3E: Refine if called for
+
+    //Step 3E: Refine if called for
     if(refine){
       //We refine by integer an integer factor
       //After refinement want: maxnorm -> maxnorm/factor^2 < maxnorm_limit
@@ -846,7 +982,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
       curve.insert(curve.begin()+iinsert,new_curve_points.begin(),new_curve_points.end());
       image_points.insert(image_points.begin()+iinsert,new_image_points.begin(),new_image_points.end());
       image_point_mags.insert(image_point_mags.begin()+iinsert,new_image_point_mags.begin(),new_image_point_mags.end());
-      //also need to add space in the image curfves for the new points.
+      //also need to add space in the image curves for the new points.
       for(int j=0;j<NimageMax;j++){
 	image_curves[j].resize(N+nadd+1);
 	empty[j].resize(N+nadd+1,true);
@@ -877,6 +1013,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
       i--;
       evens=last_evens;evens_ind=last_evens_ind;
       odds=last_odds;odds_ind=last_odds_ind;
+      ithis=ilast;
     }
     else norefine=false;  //reset after each step
     if(debug_area_mag){
@@ -893,8 +1030,37 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
       }
       */
     }
-  }
+
+    //Step 3F 
+    //(This is an experimental effort to address the "should be adding a point" message issue
+    //but it needs work, causes immediate crash now.)
+    //This is an early start on the preparation for step 4, which requires
+    //tieing the starts and ends together.  
+    if(false and i==(image_points.size())){ //We only need to do this if we have reached the loop end.
+      vector<Point>end,start;
+      vector<int>iend,istart;
+      for(int j=0;j<NimageMax;j++){
+	if(not empty[j][0]){
+	  start.push_back(image_curves[j][0]);
+	  istart.push_back(j);
+	}
+	if(not empty[j][N]){
+	  end.push_back(image_curves[j][N]);
+	  iend.push_back(j);
+	}
+      }
+      if(start.size()<end.size())cout<<"start<end"<<endl;
+      imap=assign_points(start,end,leftover,ileftover,maxnorm);
+      if(maxnorm>maxnorm_limit){
+	cout<<"We *are* adding a point!"<<endl;
+	//we need to add it in the next loop cycle when the start point is seen as the "next" one
+	debug_area_mag=true;
+	if(not norefine)refine_end=true;
+      }
+    }
+  }//end of step 3 loop constructing image curves
   N=image_points.size();
+
   if(super_debug){
     cout<<" N --> "<<N<<endl;
     cout<<"final image points:"<<endl;
@@ -1199,7 +1365,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
 
   //cout<<"decimate_dtmin="<<decimate_dtmin<<endl;
   //diagnostics
-  bool diagnose=true;
+  bool diagnose=false;
   static int d_count=0,d_N=0,d_every=5000;
   static double d_time=0,d_rho,t_rho,t_N;
   double tstart=omp_get_wtime();
