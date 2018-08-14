@@ -129,9 +129,13 @@ def reduceDataPass(data,chunksize,tol,segwid=3):
         dtmax=0;dtmin=target[-1,0]-target[0,0]
         for k in range(len(target)-1):
             dt=target[k+1,0]-target[k,0]
-            if(dt<dtmin):dtmin=dt
             if(dt>dtmax):dtmax=dt
-        if(len(target)<2 or dtmax/dtmin > 5):
+        #for the time grouping test dtmin we expand to the nearest neighbor points (if any)
+        for k in range(max(0,itargleft-1),min(ndata-1,itargright+1)):
+            dt=data[k+1,0]-data[k,0]
+            if(dt<dtmin):dtmin=dt
+
+        if(len(target)<2 or dtmax/dtmin > 30):
             #target too short or times not grouped
             replacement=target.copy()
         else: #passed test so continue
