@@ -444,13 +444,19 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   bool fix_vertex_images=true;
 
   ///special debugging
-  double dq=9192.172787-dynamic_cast<GLensBinary*>(this)->get_q();
-  double dL=0.3196962-dynamic_cast<GLensBinary*>(this)->get_L();
+
+  //double dq=183261.3878-dynamic_cast<GLensBinary*>(this)->get_q();
+  //double dL=3.48323-dynamic_cast<GLensBinary*>(this)->get_L();
   //double px0=1.36179711562218;
-  double px0=2.96771236012588;
-  if(false and abs(dq)<.001 and abs(dL) and abs(p.x-px0)<.001){
-    cout<<"Special debugging"<<endl;
-    debug_area_mag=true;}
+  //double px0=-1.454926;
+  //#pragma omp critical	
+  //{
+  //cout<<"p.x="<<p.x<<" "<<print_info()<<endl;
+  //cout<<"px0="<<px0<<" dq="<<dq<<" dL="<<dL<<endl;
+  //}
+  //if(false and abs(dq)<.001 and abs(dL) and abs(p.x-px0)<.001){
+  //cout<<"Special debugging"<<endl;
+  //debug_area_mag=true;}
   
   //Construct polygon
   double dphi=twopi/N;
@@ -572,6 +578,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   if(i0<0){//Fail if not found
     magnification=INFINITY;
     var=0;
+    cout<<"finite_area_mag: Failing. No suitable starting point."<<endl;
     if(false){//Dump details for debugging
       cout<<"GLens::image_area_mag: Found no vertex with acceptable number of images."<<endl;
       cout<<"GLens::image_area_mag: Details:"<<endl;
@@ -638,6 +645,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     }
   }
   //Loop
+  //Note: ithis labels the current index point in the image_points (or curves) 
+  //      i labels the current index point in the image_curves
   int ilast=0,ithis=0;
   for(int i=1;i<=(image_points.size()) or refine_end;i++){
     //Step 3A: Initialization of loop interior
@@ -647,7 +656,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     N=image_points.size();
     ilast=ithis;
     if( i==1 )ilast=(i+i0-1)%N;//FIXME Why doesn't this work???
-    ithis=(i+i0)%N;
+    //ithis=(i+i0)%N;
     //int last_ni=image_points[ilast].size();
     int last_ni=evens.size()+odds.size();//Unlike image_points[ilast].size() this is correct when the image checks fail for the last point.
     int ni=image_points[ithis].size();
@@ -743,7 +752,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	  refine=true;
 	}else{
 	  //Can't refine more. Copy forward the last image point, and hope for the best...
-	  for(int k=0;k<NimageMax;k++)image_curves[k][ithis]=image_curves[k][ilast];
+	  //for(int k=0;k<NimageMax;k++)image_curves[k][ithis]=image_curves[k][ilast];
+	  for(int k=0;k<NimageMax;k++)image_curves[k][i]=image_curves[k][i-1];
 	  evens=last_evens;evens_ind=last_evens_ind;
 	  odds=last_odds;odds_ind=last_odds_ind;
 	  norefine=false;
@@ -1111,6 +1121,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   imap=assign_points(start,end,leftover,ileftover,maxnorm);
   if(maxnorm>maxnorm_limit){
     cout<<"We should be adding a point!"<<endl;
+    debug_area_mag=true;
   }
   for(int j=0;j<end.size();j++){
     int jend=iend[j];
@@ -1188,6 +1199,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 #pragma omp critical	
 	  {
 	    cout<<"Failed to find next segment. Something is wrong!:"<<endl;
+	    cout<<"p.x="<<p.x<<" "<<print_info()<<endl;
 	    for(int k=0;k<segment_ends.size();k++){
 	      cout<<k<<"b=("<<segment_ends[k].first<<","<<segment_ends[k].second<<")"<<endl;
 	      cout<<k<<"e=("<<segment_begins[k].first<<","<<segment_begins[k].second<<")"<<endl;
