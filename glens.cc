@@ -271,125 +271,6 @@ bool jointOrder(const joint &j1, const joint &j2) {
   return j1.second < j2.second;
 };
 
-///Brute force integration finite size magnification around 1-D circle
-///
-///This is used below in computing the 2D integral over the image plane.
-void GLens::brute_force_circle_mag(const Point &p, const double radius, double &magnification){
-  const double tol=1e-7;
-  const double dphimin=6*tol;
-  int nphi=3;
-  int nrefine=2;
-
-  //set up the initial grid in rho
-  vector<double> mags(nphi,0);
-  vector<double> phis(nphi);
-  for( int i=0;i<nphi;i++)phis[i]=i*2.0*M_PI/(nphi-1);
-
-  double oldnphi=0;
-  //main loop of refinement passes over the set of radii
-  while(oldnphi<nphi){
-    oldnphi=nphi;
-    //compute necessary circle magnifications
-    for( int i=0;i<nphi;i++){
-      if(mags[i]==0){
-	double x=cos(phis[i])*radius;
-	double y=sin(phis[i])*radius;
-	Point beta=p+Point(x,y);
-	vector<Point> thetas=invmap(beta);
-	double intens=1.0;//can make this a function of r,phi for general intensity profile
-	mags[i]=mag(thetas)*intens;
-      }
-    }
-    
-    //now construct the new grid (inelegant, but safe...)
-    vector<double> newmags(1,mags[0]);
-    vector<double> newphis(1,phis[0]);
-    for(int i=1;i<nphi;i++){
-      //test magnitude variation tolerance
-      //idea is that tolerance is related to the tolerance in the final mag
-      //Will compute mean mag = sum( r*dr*m(r) )/4pi 
-      //so want tol> D mean ~ max(r*dr*Dm)
-      if(mags[i]-mags[i-1] > tol*(phis[i]-phis[i-1]) and (phis[i]-phis[i-1]) >= dphimin ){//fail
-	for(int j=0;j<nrefine;j++){
-	  newphis.push_back(phis[i-1]+(phis[i]-phis[i-1])*(j+1.0)/(nrefine+1.0));
-	  newmags.push_back(0);
-	}
-      }
-      newphis.push_back(phis[i]);
-      newmags.push_back(mags[i]);
-    }
-    phis=newphis;
-    mags=newmags;
-    nphi=phis.size();
-  }
-  //Now compute the mean mag
-  double msum=0;
-  msum+=(mags[0]+mags[nphi-1])*(2*M_PI-phis[nphi-1])/2.0;
-  for(int i=1;i<nphi;i++){
-    msum+=(mags[i]+mags[i-1])*(phis[i]-phis[i-1])/2.0;
-  }
-  magnification=msum;
-}
-
-///Brute force integration finite size magnification
-///
-///The idea here is that we perform a 2D integral over the image plane
-void GLens::brute_force_area_mag(const Point &p, const double radius, double &magnification){
-  const double tol=1e-7;
-  const double drhomin=tol*radius;
-  int nrho=3;
-  int nrefine=2;
-
-  //set up the initial grid in rho
-  vector<double> mags(nrho,0);
-  vector<double> rhos(nrho);
-  for( int i=0;i<nrho;i++)rhos[i]=i*1.0/(nrho-1);
-
-  double oldnrho=0;
-  //main loop of refinement passes over the set of radii
-  while(oldnrho<nrho){
-    oldnrho=nrho;
-    //compute necessary circle magnifications
-    for( int i=0;i<nrho;i++){
-      if(mags[i]==0){
-	double mag=0;
-	brute_force_circle_mag(p, rhos[i]*radius, mag);
-	double intens=1.0;//can make this a function of r for radial intensity profile
-	mags[i]=mag*intens;
-      }
-    }
-    
-    //now construct the new grid (inelegant, but safe...)
-    vector<double> newmags(1,mags[0]);
-    vector<double> newrhos(1,rhos[0]);
-    for(int i=1;i<nrho;i++){
-      //test magnitude variation tolerance
-      //idea is that tolerance is related to the tolerance in the final mag
-      //Will compute mean mag = sum( r*dr*m(r) )/4pi 
-      //so want tol> D mean ~ max(r*dr*Dm)
-      if(mags[i]-mags[i-1] > tol*rhos[i]*(rhos[i]-rhos[i-1]) and (rhos[i]-rhos[i-1]) >= drhomin ){//fail
-	for(int j=0;j<nrefine;j++){
-	  rhos.push_back(rhos[i-1]+(rhos[i]-rhos[i-1])*(j+1.0)/(nrefine+1.0));
-	  mags.push_back(0);
-	}
-      }
-      rhos.push_back(rhos[i]);
-      mags.push_back(mags[i]);
-      nrho=rhos.size();
-    }
-  }
-  //Now compute the mean mag
-  double asum=0,msum=0;
-  for(int i=1;i<nrho;i++){
-    double a=(rhos[i]-rhos[i-1])*(rhos[i]+rhos[i-1])/2;
-    asum+=a;
-    msum+=a*(mags[i]+mags[i-1])/2;
-  }
-  magnification=msum/asum;
-}
-  
-  
-
 ///Compute magnification of a finite N-sided polygon by finding the area of images based on the method Gould-Gaucherel
 ///
 ///The method requires the following steps: First make a list of points defining the polygon, an apply inv_map_curve to
@@ -1351,19 +1232,276 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   
 }
 
+
+///Brute force integration finite size magnification around 1-D circle
+///
+///This is used below in computing the 2D integral over the image plane.
+void GLens::brute_force_circle_mag(const Point &p, const double radius, const double toll,double &magnification){
+  const double tol=finite_source_tol;
+  const double dphimin=6*tol;
+  const double twopi=2*M_PI;
+  int nphi=3;
+  int nrefine=2;
+
+  //cout<<"circle r="<<radius<<endl;
+
+  //set up the initial grid in rho
+  vector<double> mags(nphi,0);
+  vector<double> phis(nphi);
+  for( int i=0;i<nphi;i++)phis[i]=i*2.0*M_PI/nphi;
+
+  double oldnphi=0;
+  //main loop of refinement passes over the set of radii
+  magnification=1;
+  while(oldnphi<nphi){
+    oldnphi=nphi;
+    //compute necessary circle magnifications
+    for( int i=0;i<nphi;i++){
+      if(mags[i]==0){
+	double x=cos(phis[i])*radius;
+	double y=sin(phis[i])*radius;
+	Point beta=p+Point(x,y);
+	vector<Point> thetas=invmap(beta);
+	double intens=1.0;//can make this a function of r,phi for general intensity profile
+	mags[i]=mag(thetas)*intens;
+      }
+    }
+
+    if(1){
+      //Now compute the mean mag
+      //cout<<"PHIS ";
+      //for(auto ph : phis)cout<<ph<<" ";
+      //cout<<endl;
+      double msum=0,psum=0;
+      for(int i=0;i<nphi;i++){
+	int il=((i-1) % nphi + nphi) % nphi;
+	double dphi=phis[i]-phis[il];
+	if(dphi<0)dphi+=twopi;
+	if(dphi>twopi)dphi-=twopi;
+	psum+=dphi;
+	//cout<<il<<" "<<i<<" "<<dphi<<" "<<mags[i]<<" "<<mags[il]<<endl;
+	msum+=(mags[i]+mags[il])*dphi/2.0;
+      }
+      //cout<<"psum="<<psum<<endl;
+      msum/=twopi;
+      //cout<<"    mag "<<msum<<" dmag="<<msum-magnification<<endl;    
+      if(msum-magnification>1){//diagnostic
+	//cout<<"JUMP: phis= ";
+	//for(auto ph : phis)cout<<ph<<" ";
+	//cout<<endl;
+      }
+      if(fabs(msum-magnification)<tol)break;
+      magnification=msum;
+    }
+    
+    vector<double> newmags;
+    vector<double> newphis;
+    double tolcut=tol*twopi/nphi;
+
+    //initialize
+    int i0=nphi-2;if(i0<0)i0+=nphi;
+    double mlast=mags[i0],phlast=phis[i0];
+    double mthis=mags[nphi-1],phthis=phis[nphi-1];
+    bool norefine=false;
+    bool norefinelast=false;
+    
+    for(int i=0;i<nphi;i++){
+      if(i+1>=nphi){if(norefinelast)norefine=true;}
+      //For the error estimate, Dm, the integral will be exact if the magnitude trends linearly
+      //so the estimate Dm is equal to difference from the the linear interpolant
+      //The contribution to the total is also ultimately proportional to dphi [how we improve near a discont.]
+      double mnext=mags[i],phnext=phis[i];
+      if(phthis>phnext)phthis-=twopi;
+      if(phlast>phthis)phlast-=twopi;
+      double dphi=phnext-phlast;
+      double Dm=mthis-(-phlast*mnext+phnext*mlast + phthis*(mnext-mlast))/dphi;
+      //cout<<i<<" "<<phlast<<" "<<phthis<<" "<<phnext<<"  dphi="<<dphi<<endl; 
+      //cout<<"m,m',m'':"<<mthis<<" "<<mlast<<" "<<(-phlast*mnext+phnext*mlast + phthis*(mnext-mlast))/dphi<<endl;
+      //dphi=phthis-phlast;
+      //cout<<i<<" m ,Dm', Dm "<<mthis<<" "<<mthis-mlast<<" "<<Dm<<" ?>? "<<tolcut/dphi<<endl;
+      //cout<<"  dphi="<< dphi<< endl;
+      int i0=((i-1)%nphi+nphi)%nphi;
+      //cout<<"i="<<i<<" i0="<<i0<<"  norefine="<<norefine<<endl;
+      if((not norefine) and fabs(Dm*dphi) > tolcut and dphi >= 2*dphimin ){//fail test
+	//cout<<"refine circle"<<endl;
+	double dphidj=(phthis-phlast)/(nrefine+1.0);
+	for(int j=-nrefine;j<0;j++){
+	  double phi=phis[i0]+j*dphidj;
+	  if(phi<0)phi+=twopi;
+	  if(phi>=twopi)phi-=twopi;
+	  newphis.push_back(phi);
+	  newmags.push_back(0);
+	}
+	newphis.push_back(phis[i0]);
+	newmags.push_back(mthis);
+	dphidj=(phnext-phthis)/(nrefine+1.0);
+	for(int j=1;j<=nrefine;j++){
+	  double phi=phis[i0]+j*dphidj;
+	  if(phi<0)phi+=twopi;
+	  if(phi>=twopi)phi-=twopi;
+	  newphis.push_back(phi);
+	  newmags.push_back(0);
+	}
+	//cout<<i<<" "<<phlast<<" "<<phthis<<" "<<phnext<<"  dphi="<<dphi<<endl; 
+	//cout<<"-->";
+	//for(auto ph : newphis)cout<<ph<<" ";
+	//cout<<endl<<"   ";
+	//for(auto a : newmags)cout<<a<<" ";
+	//cout<<endl;
+	norefine=true; //Because we refine forward and backward of the current point.  It doesn't make sense to refine two points consecutively
+	if(i==0)norefinelast=true;//If refining the first, then can't refine the last;
+      } else {
+	//cout<<"phthis/phi0:"<<phthis<<"/"<<phis[i0]<<endl;
+	//cout<<"mthis/m0:"<<mthis<<"/"<<mags[i0]<<endl;
+	newphis.push_back(phis[i0]);
+	newmags.push_back(mthis);
+	norefine=false;
+      }
+      mlast=mthis;
+      mthis=mnext;
+      phlast=phthis;
+      phthis=phnext;
+      //cout<<endl;
+    }
+    phis=newphis;
+    mags=newmags;
+    nphi=phis.size();
+    //cout<<"Phis ";
+    //for(auto ph : phis)cout<<ph<<" ";
+    //cout<<endl<<"Mags ";
+    //for(auto ph : mags)cout<<ph<<" ";
+    //cout<<endl;
+    //cout<<"circle: nphi="<<nphi<<"\n"<<endl;
+  }
+  //Now compute the mean mag
+  double msum=0;
+  for(int i=0;i<nphi;i++){
+    int il=((i-1) % nphi + nphi) % nphi;
+    double dphi=phis[i]-phis[il];
+    if(dphi<0)dphi+=twopi;
+    if(dphi>twopi)dphi-=twopi;
+    msum+=(mags[i]+mags[il])*dphi/2.0;
+  }
+  magnification=msum/twopi;
+  //cout<<"circle r="<<radius<<" mag="<<magnification<<"-----------\n"<<endl;
+}
+
+///Brute force integration finite size magnification
+///
+///The idea here is that we perform a 2D integral over the image plane
+void GLens::brute_force_area_mag(const Point &p, const double radius, double &magnification){
+  const double tol=1e-5;
+  const double drhomin=tol*radius;
+  int nrho=3;
+  int nrefine=2;
+
+  //set up the initial grid in rho
+  vector<double> mags(nrho,0);
+  vector<double> rhos(nrho);
+  for( int i=0;i<nrho;i++)rhos[i]=i*1.0/(nrho-1);
+
+  //cout<<"\narea  radius="<<radius<<"  p="<<p.x<<" "<<p.y<<endl;
+  double oldnrho=0;
+  //main loop of refinement passes over the set of radii
+  magnification=1;
+  while(oldnrho<nrho){
+    oldnrho=nrho;
+    
+    //compute necessary circle magnifications
+    for( int i=0;i<nrho;i++){
+      //cout<<"nrho,oldnrho,i: "<<nrho<<" "<<oldnrho<<" "<<i<<endl;
+      if(mags[i]==0){
+	double mag=0;
+	brute_force_circle_mag(p, rhos[i]*radius, tol, mag);
+	double intens=1.0;//can make this a function of r for radial intensity profile
+	mags[i]=mag*intens;
+      }
+    }
+
+    if(1){
+      //Now compute the mean mag (for debugging)
+      double msum=0;
+      for(int i=1;i<nrho;i++){
+	double da=(rhos[i]-rhos[i-1])*(rhos[i]+rhos[i-1]);//note area fraction adds identically to 1
+	msum+=da*(mags[i]+mags[i-1])/2;
+      }
+      //cout<<"msum , msum-last :"<<msum<<" "<<msum-magnification<<endl;
+      if(fabs(msum-magnification)<tol)break;
+      magnification=msum;
+    }
+    
+    double tolcut=tol/nrho/10.0;//idea is that tolerance is related to the tolerance in the final mag
+
+    //now test and construct the new grid (inelegant, but safe...)
+    vector<double> newmags;
+    vector<double> newrhos;
+    double mll=0,ml=0,rl=0,rll=0;
+    for(int i=0;i<nrho;i++){
+      //cout<<"mags["<<i<<"]="<<mags[i]<<endl;
+      double m0=mags[i];
+      double r0=rhos[i];
+      if(i>0){
+	double dM;
+	if(i==1){//err estimated from linear-m cubic-drho
+	  double drho=r0-rl;
+	  dM=(m0-ml)*drho*drho/6;
+	} else {//err est from quad-m cubic-rho
+	  //cout<<"rll-r0: "<<rll<<" "<<rl<<" "<<r0<<endl;
+	  //cout<<"mll-m0: "<<mll<<" "<<ml<<" "<<m0<<endl;
+	  dM=((m0-ml)/(r0-rl)-(ml-mll)/(rl-rll))*r0*r0*r0;
+	}
+	//cout<<i<<" DM = "<<dM<<endl; 
+	//test magnitude variation tolerance
+	if(fabs(dM)*(r0-rl) > tolcut and (r0-rl) >= drhomin ){//fail test -> refine
+	  //cout<<"refine disk"<<endl;
+	  for(int j=0;j<nrefine;j++){
+	    //cout<<"j="<<j<<"<"<<nrefine<<endl;
+	    newrhos.push_back(rhos[i-1]+(rhos[i]-rhos[i-1])*(j+1.0)/(nrefine+1.0));
+	    //cout<<"new rho="<<rhos[rhos.size()-1]<<endl;
+	    newmags.push_back(0);
+	  }
+	}
+      }
+      rll=rl;mll=ml;
+      rl=r0;ml=m0;	     
+      newrhos.push_back(rhos[i]);
+      newmags.push_back(mags[i]);
+    }
+    rhos=newrhos;
+    mags=newmags;
+    nrho=rhos.size();
+  }
+  //Now compute the mean mag
+  double msum=0;
+  for(int i=1;i<nrho;i++){
+    double da=(rhos[i]-rhos[i-1])*(rhos[i]+rhos[i-1]);//note area fraction adds identically to 1
+    msum+=da*(mags[i]+mags[i-1])/2;
+  }
+  magnification=msum;
+  //cout<<"area  mag="<<magnification<<endl;
+  //cout<<"******"<<endl;
+}
+  
+  
+
 vector<double> GLens::_compute_trajectory_dummy_dmag;//dummy argument
 
 void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<double>&mag_series, vector<double>&dmag_series, ostream *out){
   //Can optionally provide out stream to which to write image curves.
+
   //Controls
   const bool debug=false;
   //const int Npoly_max=finite_source_Npoly_max;        //Part of magnification-based estimate for polygon order.
-  const int Npoly_max=finite_source_Npoly_max*(1+16*(source_radius<1?source_radius:1));  //Empirical hank based on limited example
+  const int Npoly_max=finite_source_Npoly_max*(1+16*(source_radius<1?source_radius:1));  //Empirical hack based on limited example
   const double Npoly_Asat=2.0;   //Saturate at Npoly_max when image_area/pi = Npoly_Asat 
   bool dont_mix= false;
   bool do_laplacian = false;
   bool do_polygon = false;
+  bool do_brute = false;
+
   const double rho2=source_radius*source_radius;
+  //const double mtol=1e-5;
+  //const double ftol=1e-2*source_radius;
   const double mtol=1e-5;
   const double ftol=1e-2*source_radius;
   const double mag_lcut=mtol/rho2;
@@ -1390,7 +1528,8 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     do_polygon=true;
     do_laplacian=true;
   } else if(abs(finite_source_method)==2)do_laplacian=true;
-
+  else if(abs(finite_source_method)==4)do_brute=true;
+  
   if(debug){
     cout<<"source_radius="<<source_radius<<endl;
     cout<<"do_laplacian="<<do_laplacian<<endl;
@@ -1425,6 +1564,20 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     double variance=0;
 
     Nsum++;
+    
+    //Here begins a decision tree of various possible finite source treatments
+
+    //The first option is just to explicitly compute by brute force
+    //This option works independently without mixing (A mix version could also be implemented below if desired
+    //In this case,  we do not compute any variance or centroid information
+    if(do_brute){
+      brute_force_area_mag(b, source_radius, Amag);
+      //Pack up results
+      mag_series[i]=Amag;
+      dmag_series[i]=0;
+      //cout<<i<<" mg0="<<mg0<<" Amag="<<Amag<<endl;
+      continue; //finish the loop here. (Rest of this file is irrelevant in this case)
+    }
     
     //At first we just compute the ordinary magnification and a leading-order finite source term
     //This is probably relatively fast enough that we can do it without worry about the additional cost
@@ -1643,6 +1796,9 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   //bool integrate (false for direct polynomial evaluation rather than integration. 
   //  if use_integrate is set then the value it overrides integrate 
   //
+  //cout<<"lens="<<print_info()<<endl;
+  //cout<<"compute_trajectory for traj="<<traj.print_info()<<endl;
+
   if(do_finite_source&&source_radius>0){//For finite-sources, we use a different approach
     //ofstream out("curves.dat");
     //finite_source_compute_trajectory( traj, time_series, thetas_series, mag_series, dmag, &out);
@@ -1700,8 +1856,8 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   have_saved_soln=false;
 
   int Ngrid=traj.Nsamples();
-  double t_old;
-  for(int i=0; i<Ngrid;i++){
+  double t_old=-1e100;
+  for(int i=0; i<Ngrid;i++){    
     double tgrid=traj.get_obs_time(i);
     //entering main loop
 
@@ -1859,6 +2015,7 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 
 }
 
+
 //This version seems no longer used 04.02.2016..
 int GLens::GSL_integration_func (double t, const double theta[], double thetadot[], void *instance){
   //We make the following cast static, thinking that that should realize faster integration
@@ -1933,7 +2090,7 @@ void GLens::addOptions(Options &opt,const string &prefix){
   Optioned::addOptions(opt,prefix);
   //addTypeOptions(opt);
   opt.add(Option("GL_poly","Don't use integration method for lens magnification, use only the polynomial method."));
-  opt.add(Option("poly","Same as GL_poly for backward compatibility.  (Deprecated)"));
+  //opt.add(Option("poly","Same as GL_poly for backward compatibility.  (Deprecated)"));
   opt.add(Option("GL_int_tol","Tolerance for GLens inversion integration. (1e-10)","1e-10"));
   opt.add(Option("GL_int_mag_limit","Magnitude where GLens inversion integration reverts to poly. (1.5)","1.5"));
   opt.add(Option("GL_int_kappa","Strength of driving term for GLens inversion. (0.1)","0.1"));
@@ -1943,6 +2100,7 @@ void GLens::addOptions(Options &opt,const string &prefix){
   opt.add(Option("GL_finite_source_log_rho_max","Set max uniform prior range for log_rho. (-100->gaussian prior default)","-100"));
   opt.add(Option("GL_finite_source_log_rho_min","Set min if uniform prior for log_rho. (-6.0 default)","-6"));
   opt.add(Option("GL_finite_source_refine_limit","Maximum refinement factor. (100.0 default)","100.0"));
+  opt.add(Option("GL_finite_source_tol","Magnitude tolerance target (brute). (1e-5 default)","1e-5"));
   opt.add(Option("GL_finite_source_decimate_dtmin","Interpolate time-steps closer than this fraction of source size. (0.05 default)","0.05"));
 };
 
@@ -1964,6 +2122,7 @@ void GLens::setup(){
     else if(method=="leading")finite_source_method=3;
     else if(method=="strict_polygon")finite_source_method=-1;
     else if(method=="strict_laplacian")finite_source_method=-2;
+    else if(method=="strict_brute")finite_source_method=-4;
     else{
       cout<<"GLens::setup: Finite source method '"<<method<<"' not recognized."<<endl;
       exit(1);
@@ -1974,6 +2133,7 @@ void GLens::setup(){
     *optValue("GL_finite_source_log_rho_min")>>finite_source_log_rho_min;
     *optValue("GL_finite_source_refine_limit")>>finite_source_refine_limit;
     *optValue("GL_finite_source_decimate_dtmin")>>finite_source_decimate_dtmin;
+    *optValue("GL_finite_source_tol")>>finite_source_tol;
   }
   haveSetup();
   cout<<"GLens set up with:\n\tintegrate=";
