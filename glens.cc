@@ -1744,7 +1744,8 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
   const double dphimin=twopi*tolcutmin;
   //const double tolcutmin=1e-12;
   //const double dphimin=twopi*tol;
-  int nphi=3;
+  int nphi=4*(2+1/sqrt(tol));
+  //int nphi=3;
   int nrefine=2;
 
   //cout<<"circle r="<<radius<<endl;
@@ -1904,8 +1905,9 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
   const double tol=finite_source_tol*10;
   const double drhomin=tol*radius;
   const double tolcutmin=1e-9;
-  const double maxctol=1e-3;
-  int nrho=3;
+  const double maxctol=1e-4;
+  int nrho=4*(2+1/sqrt(tol));
+  //int nrho=3;
   int nrefine=2;
 
   //set up the initial grid in rho
@@ -2085,7 +2087,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   double tlast=-INFINITY;
   for(int i=0; i<Ngrid;i++){
     double t=full_time_series[i]=traj.get_obs_time(i);
-    if(i+1>=Ngrid or traj.get_obs_time(i+1)-tlast>=decimate_dtmin){
+    if(i+2>=Ngrid or traj.get_obs_time(i+1)-tlast>=decimate_dtmin){
       time_series.push_back(t);
       time_series_map.push_back(i); 
       tlast=t;
@@ -2116,6 +2118,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       //Pack up results
       mag_series[i]=Amag;
       dmag_series[i]=0;
+      thetas_series[i]=vector<Point>(1,CoM-b);//TBD Except for the brute case, return the centriod. We haven't computed the centroid yet for brute.
       cout<<Npoly<<" "<<tgrid<<" "<<Amag<<endl;
       Nsum+=Npoly;
       //cout<<i<<" mg0="<<mg0<<" Amag="<<Amag<<endl;
@@ -2256,6 +2259,8 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   }
     
   if(Neval<Ngrid){//Need to reconstitute full grid by interpolation.
+    //cout<<"Neval<Ngrid: "<<Neval<<"<"<<Ngrid<<endl;
+    //cout<<"len(thetas)="<<thetas_series.size()<<endl;
     int imap=0;
     double t0,t1,m0,m1,v0,v1;
     Point c0,c1;
@@ -2264,6 +2269,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     vector<vector<Point> > full_thetas_series(Ngrid);
     for(int i=0; i<Ngrid;i++){
       if(imap==0 or ( imap+1<time_series_map.size() and time_series_map[imap]<=i ) ){
+	//cout<<"imap="<<imap<<endl;
 	t0=time_series[imap];
 	t1=time_series[imap+1];
 	m0=mag_series[imap];
