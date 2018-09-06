@@ -1747,14 +1747,14 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
   const double tol=ctol;
   const double tolcutmin=1e-12;
   //const double tolcutmin=1e-8;
-  const double dphimin=twopi*tolcutmin;
+  const double dphimin=twopi*tolcutmin/1e12;
   //const double tolcutmin=1e-12;
   //const double dphimin=twopi*tol;
   //int nphi=4*(2+1/sqrt(tol));
   int nphi=(2+1/sqrt(tol));
   //int nphi=3;
   int nrefine=2;
-  const double maxmag=1e9;
+  const double maxmag=1e15;
   
   //cout<<"circle r="<<radius<<endl;
 
@@ -1766,7 +1766,7 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
   double oldnphi=0;
   //main loop of refinement passes over the set of radii
   magnification=1;
-  bool met_tol_once=false;
+  int met_tol_count=0;
   while(oldnphi<nphi){
     oldnphi=nphi;
     //compute necessary circle magnifications
@@ -1807,9 +1807,9 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
       //cout<<endl;
       //}
       if(fabs(msum-magnification)<tol){
-	if(met_tol_once)break;
-	met_tol_once=true;
-      } else met_tol_once=false;
+	if(met_tol_count>1)break;
+	met_tol_count++;
+      } else met_tol_count=0;
       magnification=msum;
     }
     
@@ -1817,7 +1817,7 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
     vector<double> newphis;
     //double margin=sqrt(nphi);
     //double margin=nphi;
-    double margin=10;
+    double margin=3;
     double tolcut=tol*twopi/margin;
     if(tolcut<tolcutmin)tolcut=tolcutmin;
     //initialize
@@ -1919,14 +1919,15 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
   const double tol=finite_source_tol;
   const double drhomin=tol*radius;
   const double tolcutmin=1e-9;
-  //const double maxctol=tol; //extremely slow below 1e5
+  const double maxctol=tol/10; //extremely slow below 1e5
   //const double maxctol=1e-4;  //compromise
+  //const double maxctol=1e-3;
   //int nrho=4*(2+1/sqrt(tol));
-  const double maxctol=1e-3; //slightly faster
+  //const double maxctol=1e-3; //slightly faster
   //int nrho=(2+1/sqrt(tol));
   int nrho=3;
   int nrefine=2;
-  const double maxmag=1e6;//for debug only
+  const double maxmag=1e15;//for debug only
 
   //set up the initial grid in rho
   vector<double> mags(nrho,0);
@@ -1938,10 +1939,15 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
   //main loop of refinement passes over the set of radii
   magnification=1;
   int neval=0;
-  bool met_tol_once=false;
+  int met_tol_count=0;
+  int icyc=0;
   while(oldnrho<nrho){
+    //cout<<"p = "<<p.x<<" "<<p.y<<" "<<icyc<<endl;
+    icyc++;
     oldnrho=nrho;
-    double margin=5+pow(nrho,.5);
+    //double margin=5+pow(nrho,.5);
+    //double margin=5+pow(nrho,.5)/10;
+    double margin=5+pow(nrho,.5)/3;
     //double margin=5+pow(nrho,.6667);
     //double cmargin=5+pow(nrho,.5);
     double cmargin=20;
@@ -1952,6 +1958,8 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
     //cout<<"tolcut="<<tolcut<<endl;
     //compute necessary circle magnifications
     double ctolmin=1,ctolmax=0,ctolsum=0;//tuning diagnostics
+    double tolcutmin=1,tolcutmax=0,tolcutsum=0;//tuning diagnostics
+    double damin=1,damax=0,dasum=0;//tuning diagnostics
     int ctolcount=0;
     for( int i=0;i<nrho;i++){
       //cout<<"nrho,oldnrho,i: "<<nrho<<" "<<oldnrho<<" "<<i<<endl;
@@ -1964,26 +1972,38 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
 	  double da=rhos[i]*rhos[i]-rhos[i-1]*rhos[i-1];
 	  if(i<nrho-1)da=rhos[i+1]*rhos[i+1]-rhos[i-1]*rhos[i-1];
 	  //double ctol=tolcut/da/sqrt(margin);//add a safety margin.
-	  double ctol=tolcut/da/cmargin;//add a safety margin.
+	  //double ctol=tolcut/da/cmargin;//add a safety margin.
+	  double ctol=maxctol;
 	  if(ctol<tolcutmin)ctol=tolcutmin;
 	  if(ctol>maxctol)ctol=maxctol;
-	  if(1){//diagnostics
+	  int evals=brute_force_circle_mag(p, rhos[i]*radius, ctol, mag);
+	  neval+=evals;
+	  if(0){//diagnostics
 	    ctolcount++;
 	    ctolsum+=log10(ctol);
 	    if(ctol<ctolmin)ctolmin=ctol;
 	    if(ctol>ctolmax)ctolmax=ctol;
+	    cout<<rhos[i]<<" "<<mag<<" -- "<<evals<<" "<<log10(ctolmin)<<" < "<<log10(ctol)<<" , "<<ctolsum/ctolcount<<" < "<<log10(ctolmax)<<" < "<<log10(maxctol)<<endl;
+	    tolcutsum+=log10(tolcut);
+	    if(tolcut<tolcutmin)tolcutmin=tolcut;
+	    if(tolcut>tolcutmax)tolcutmax=tolcut;
+	    dasum+=log10(da);
+	    if(da<damin)damin=da;
+	    if(da>damax)damax=da;
 	  }
-	  //cout<<"ctol:"<<ctol<<" ";
-	  //cout<<"ctol="<<ctol<<endl;
-	  neval+=brute_force_circle_mag(p, rhos[i]*radius, ctol, mag);
 	}
 	//cout<<"i="<<i<<" mag="<<mag<<" p="<<p.x<<" "<<p.y<<" ->"<<this->mag(p)<<endl;
 	double intens=1.0;//can make this a function of r for radial intensity profile
 	mags[i]=mag*intens;
       }
     }
-    cout<<"log ctol: "<<log10(ctolmin)<<" < "<<ctolsum/ctolcount<<" < "<<log(ctolmax)<<endl;
-      
+    if(0){
+      int iprec = cout.precision();cout.precision(5);
+      cout<<"log ctol: "<<log10(ctolmin)<<" < "<<ctolsum/ctolcount<<" < "<<log10(ctolmax);
+      cout<<" log tolcut: "<<log10(tolcutmin)<<" < "<<tolcutsum/ctolcount<<" < "<<log10(tolcutmax)<<"  ";
+      cout<<" log da: "<<log10(damin)<<" < "<<dasum/ctolcount<<" < "<<log10(damax)<<endl;
+      cout.precision(iprec);
+    }
     //cout<<endl;
     if(1){
       //Now compute the mean mag (for debugging)
@@ -1994,9 +2014,9 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
       }
       //cout<<"msum , msum-last :"<<msum<<" "<<msum-magnification<<endl;
       if(fabs(msum-magnification)<tol){
-	if(met_tol_once)break;
-	met_tol_once=true;
-      } else met_tol_once=false;
+	if(met_tol_count>1)break;
+	met_tol_count++;
+      } else met_tol_count=0;
       magnification=msum;
     }
     
@@ -2079,7 +2099,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   const double rho2=source_radius*source_radius;
   //const double mtol=1e-5;
   //const double ftol=1e-2*source_radius;
-  const double mtol=1e-5;
+  const double mtol=1e-6;
   const double ftol=1e-2*source_radius;
   const double mag_lcut=mtol/rho2;
   double mag_pcut=mtol/rho2/rho2;
