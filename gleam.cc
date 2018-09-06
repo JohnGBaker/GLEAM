@@ -279,11 +279,23 @@ int main(int argc, char*argv[]){
     like->mock_data(instate);
     //cout<<"outname is:'"<<outname<<"'"<<endl;
     ss.str("");ss<<outname<<"_mock.dat";
+    cout<<"Writing mock data to file '"<<ss.str()<<"'"<<endl;
     ofstream outmock(ss.str().c_str());
     outmock.precision(output_precision);    
     outmock<<"#mock data\n#"<<instate.get_string()<<endl;
+    ofstream *outimagecurve=NULL;
+    if(true){
+      ss.str("");ss<<outname<<"_images.dat";
+      cout<<"Writing images to file '"<<ss.str()<<"'"<<endl;
+      outimagecurve = new ofstream(ss.str().c_str());
+      lens->set_finite_source_image_ofstream(outimagecurve);
+    }
     like->write(outmock,instate);
     outmock<<endl;
+    if(outimagecurve){
+      delete outimagecurve;
+      lens->set_finite_source_image_ofstream(NULL);
+    }
     cout<<"post "<<like->evaluate_log(instate)<<endl;
     if(!view)exit(0);
   }

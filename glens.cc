@@ -429,7 +429,7 @@ void GLens::compute_image_curves(const vector<Point> &polygon, const double maxl
     N=image_points.size();
     ilast=ithis;
     if( i==1 )ilast=(i+i0-1)%N;//FIXME Why doesn't this work???
-    //ithis=(i+i0)%N;
+    ithis=(i+i0)%N;
     //int last_ni=image_points[ilast].size();
     int last_ni=evens.size()+odds.size();//Unlike image_points[ilast].size() this is correct when the image checks fail for the last point.
     int ni=image_points[ithis].size();
@@ -583,7 +583,7 @@ void GLens::compute_image_curves(const vector<Point> &polygon, const double maxl
       Point p0=curve[ilast];
       Point dp=curve[ithis]-curve[ilast];
       double dp2=dp.x*dp.x+dp.y*dp.y;
-      while(nadd>0 and dp2<refine_limit*factor*factor)nadd--;//enforce an overall limit in how far we refine
+      while(nadd>0 and dp2<refine_limit*factor*factor){nadd--;factor--;}//enforce an overall limit in how far we refine
       if(nadd==0)norefine=true;//We will go through this step again with a flag set indicating not to refine more
       double phi0=0,dphi=0;
       //We assemble everthing we need into vectors, then insert these into the originals
@@ -637,7 +637,7 @@ void GLens::compute_image_curves(const vector<Point> &polygon, const double maxl
 	  end.push_back(image_curves[j][N]);
 	  iend.push_back(j);
 	}
-      }
+      } 
       if(start.size()<end.size())cout<<"start<end"<<endl;
       imap=assign_points(start,end,leftover,ileftover,maxnorm);
       if(maxnorm>maxnorm_limit){
@@ -815,11 +815,13 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
   const bool refine_sphere=false;
   const double refine_prec_limit=1e-12;
+  //const double refine_prec_limit=1e-15;
   const double refine_limit=pow(twopi*radius/N/finite_source_refine_limit,2.0)+(p.x*p.x+p.y*p.y)*refine_prec_limit*refine_prec_limit;
   const int nadd_max=3;
   bool debug_area_mag=false;
   bool super_debug=false;
   bool fix_vertex_images=true;
+  //N*=20;
 
   ///special debugging
 
@@ -1035,7 +1037,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     N=image_points.size();
     ilast=ithis;
     if( i==1 )ilast=(i+i0-1)%N;//FIXME Why doesn't this work???
-    //ithis=(i+i0)%N;
+    ithis=(i+i0)%N;
+    //cout<<"i ilast ithis:"<<i<<" "<<ilast<<" "<<ithis<<endl;
     //int last_ni=image_points[ilast].size();
     int last_ni=evens.size()+odds.size();//Unlike image_points[ilast].size() this is correct when the image checks fail for the last point.
     int ni=image_points[ithis].size();
@@ -1233,7 +1236,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	    cout<<"last_odds"<<endl;for(int j=0;j<last_odds.size();j++)cout<<last_odds[j].x<<" "<<last_odds[j].y<<" "<<mag(last_odds[j])<<endl;
 	    cout<<print_info(20)<<endl;
 	    cout.precision(20);
-	    cout<<"Entered image_area_mag with: p0=("<<p0.x<<","<<p0.y<<") radius="<<radius<<" N0="<<N0<<endl;
+	    cout<<"Entered image_area_mag with: p0=("<<p0.x<<","<<p0.y<<")\n radius="<<radius<<" N0="<<N0<<endl;
 	  }
 	  imap=assign_points(evens,last_evens,leftevens,ileftevens,maxnorm);
 	  if(maxnorm>maxnorm_limit and not norefine){refine=true;//cout<<"maxnorm 2a="<<maxnorm<<endl;
@@ -1309,11 +1312,11 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
       //So we need: factor^2 > maxnorm/maxnorm_limit
       int nadd=sqrt(maxnorm/maxnorm_limit);
       if(nadd>nadd_max)nadd=nadd_max;//enforce a maximum degree of refinement in one step
-      double factor=1+nadd;
       Point p0=curve[ilast];
       Point dp=curve[ithis]-curve[ilast];
       double dp2=dp.x*dp.x+dp.y*dp.y;
-      while(nadd>0 and dp2<refine_limit*factor*factor)nadd--;//enforce an overall limit in how far we refine
+      double factor=1+nadd;
+      while(nadd>0 and dp2<refine_limit*factor*factor){nadd--;factor--;}//enforce an overall limit in how far we refine
       if(nadd==0)norefine=true;//We will go through this step again with a flag set indicating not to refine more
       if(debug_area_mag){
 	cout<<(norefine?"NOT ":"")<<"Refining! N="<<N<<" -> "<<N+nadd<<" maxnorm="<<maxnorm<<" > "<<maxnorm_limit<<endl;
@@ -1654,6 +1657,8 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	reverse(curve.end()-istart+iend-1,curve.end());
       }
     }
+    //cout<<"curve "<<closed_curves.size()<<" is "<<endl;
+    //for(int k=0;k<curve.size();k++)cout<<k<<" "<<curve[k].x<<" "<<curve[k].y<<endl;
     closed_curves.push_back(curve);
   }  
   //cout<<"Assembled curves"<<endl;
@@ -1668,6 +1673,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
       }
       *out<<endl;
     }
+    *out<<endl;
   }
 
   
@@ -1744,10 +1750,12 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
   const double dphimin=twopi*tolcutmin;
   //const double tolcutmin=1e-12;
   //const double dphimin=twopi*tol;
-  int nphi=4*(2+1/sqrt(tol));
+  //int nphi=4*(2+1/sqrt(tol));
+  int nphi=(2+1/sqrt(tol));
   //int nphi=3;
   int nrefine=2;
-
+  const double maxmag=1e9;
+  
   //cout<<"circle r="<<radius<<endl;
 
   //set up the initial grid in rho
@@ -1758,6 +1766,7 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
   double oldnphi=0;
   //main loop of refinement passes over the set of radii
   magnification=1;
+  bool met_tol_once=false;
   while(oldnphi<nphi){
     oldnphi=nphi;
     //compute necessary circle magnifications
@@ -1768,7 +1777,9 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
 	Point beta=p+Point(x,y);
 	vector<Point> thetas=invmap(beta);
 	double intens=1.0;//can make this a function of r,phi for general intensity profile
-	mags[i]=mag(thetas)*intens;
+	double mg=mag(thetas);
+	if(not (mg<maxmag))mg=maxmag;
+	mags[i]=mg*intens;
       }
     }
 
@@ -1795,7 +1806,10 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
       //for(auto ph : phis)cout<<ph<<" ";
       //cout<<endl;
       //}
-      if(fabs(msum-magnification)<tol)break;
+      if(fabs(msum-magnification)<tol){
+	if(met_tol_once)break;
+	met_tol_once=true;
+      } else met_tol_once=false;
       magnification=msum;
     }
     
@@ -1902,13 +1916,17 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
 ///
 ///The idea here is that we perform a 2D integral over the image plane
 int GLens::brute_force_area_mag(const Point &p, const double radius, double &magnification){
-  const double tol=finite_source_tol*10;
+  const double tol=finite_source_tol;
   const double drhomin=tol*radius;
   const double tolcutmin=1e-9;
-  const double maxctol=1e-4;
-  int nrho=4*(2+1/sqrt(tol));
-  //int nrho=3;
+  //const double maxctol=tol; //extremely slow below 1e5
+  //const double maxctol=1e-4;  //compromise
+  //int nrho=4*(2+1/sqrt(tol));
+  const double maxctol=1e-3; //slightly faster
+  //int nrho=(2+1/sqrt(tol));
+  int nrho=3;
   int nrefine=2;
+  const double maxmag=1e6;//for debug only
 
   //set up the initial grid in rho
   vector<double> mags(nrho,0);
@@ -1920,6 +1938,7 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
   //main loop of refinement passes over the set of radii
   magnification=1;
   int neval=0;
+  bool met_tol_once=false;
   while(oldnrho<nrho){
     oldnrho=nrho;
     double margin=5+pow(nrho,.5);
@@ -1932,11 +1951,13 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
     if(tolcut<tolcutmin)tolcut=tolcutmin;
     //cout<<"tolcut="<<tolcut<<endl;
     //compute necessary circle magnifications
+    double ctolmin=1,ctolmax=0,ctolsum=0;//tuning diagnostics
+    int ctolcount=0;
     for( int i=0;i<nrho;i++){
       //cout<<"nrho,oldnrho,i: "<<nrho<<" "<<oldnrho<<" "<<i<<endl;
       if(mags[i]==0){
 	double mag=0;
-	if(i==0)mag=this->mag(p);
+	if(i==0)mag=this->mag(invmap(p));
 	else{
 	  //the weighting for the tolerance on the circle mag estimate is based on the
 	  //weighting farther below through which the circle mag estimate impact the area mag tolerance
@@ -1946,14 +1967,23 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
 	  double ctol=tolcut/da/cmargin;//add a safety margin.
 	  if(ctol<tolcutmin)ctol=tolcutmin;
 	  if(ctol>maxctol)ctol=maxctol;
+	  if(1){//diagnostics
+	    ctolcount++;
+	    ctolsum+=log10(ctol);
+	    if(ctol<ctolmin)ctolmin=ctol;
+	    if(ctol>ctolmax)ctolmax=ctol;
+	  }
 	  //cout<<"ctol:"<<ctol<<" ";
 	  //cout<<"ctol="<<ctol<<endl;
 	  neval+=brute_force_circle_mag(p, rhos[i]*radius, ctol, mag);
 	}
+	//cout<<"i="<<i<<" mag="<<mag<<" p="<<p.x<<" "<<p.y<<" ->"<<this->mag(p)<<endl;
 	double intens=1.0;//can make this a function of r for radial intensity profile
 	mags[i]=mag*intens;
       }
     }
+    cout<<"log ctol: "<<log10(ctolmin)<<" < "<<ctolsum/ctolcount<<" < "<<log(ctolmax)<<endl;
+      
     //cout<<endl;
     if(1){
       //Now compute the mean mag (for debugging)
@@ -1963,7 +1993,10 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
 	msum+=da*(mags[i]+mags[i-1])/2;
       }
       //cout<<"msum , msum-last :"<<msum<<" "<<msum-magnification<<endl;
-      if(fabs(msum-magnification)<tol)break;
+      if(fabs(msum-magnification)<tol){
+	if(met_tol_once)break;
+	met_tol_once=true;
+      } else met_tol_once=false;
       magnification=msum;
     }
     
@@ -2354,9 +2387,10 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
   //cout<<"compute_trajectory for traj="<<traj.print_info()<<endl;
 
   if(do_finite_source&&source_radius>0){//For finite-sources, we use a different approach
-    //ofstream out("curves.dat");
+    //ostringstream oss;oss<<"curves_"<<source_radius<<".dat";
+    //ofstream out(oss.str());
     //finite_source_compute_trajectory( traj, time_series, thetas_series, mag_series, dmag, &out);
-    finite_source_compute_trajectory( traj, time_series, thetas_series, mag_series, dmag, NULL);
+    finite_source_compute_trajectory( traj, time_series, thetas_series, mag_series, dmag, finite_source_image_ofstream);
     int n=time_series.size();
     index_series.resize(n);
     for(int i=0;i<n;i++)index_series[i]=i;
