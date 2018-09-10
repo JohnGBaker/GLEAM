@@ -812,12 +812,14 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   ///Controls
   //const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
-  const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
+  //const double expansion_limit=10.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
+  const double maxnorm_limit=finite_source_tol+pow(expansion_limit*2*M_PI*radius/N,2.0);
+  //const double maxnorm_limit=finite_source_tol;
+  const int nadd_max=3;
   const bool refine_sphere=false;
   const double refine_prec_limit=1e-12;
   //const double refine_prec_limit=1e-15;
   const double refine_limit=pow(twopi*radius/N/finite_source_refine_limit,2.0)+(p.x*p.x+p.y*p.y)*refine_prec_limit*refine_prec_limit;
-  const int nadd_max=3;
   bool debug_area_mag=false;
   bool super_debug=false;
   bool fix_vertex_images=true;
@@ -895,7 +897,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	    }
 	  }
 	  Point cmiss=getCenter(kmiss);
-	  //cout<<"VERTEX lens_center "<<kmiss<<" at ("<<cmiss.x<<","<<cmiss.y<<") seems to be missing its image; adding an image at this center!"<<endl;	
+	  cout<<"VERTEX lens_center "<<kmiss<<" at ("<<cmiss.x<<","<<cmiss.y<<") seems to be missing its image; adding an image at this center!"<<endl;	
 	  thetas.push_back(cmiss);
 	  mags.push_back(-1e-100);
 	}
@@ -2832,8 +2834,8 @@ void GLens::addOptions(Options &opt,const string &prefix){
   opt.add(Option("GL_finite_source_log_rho_max","Set max uniform prior range for log_rho. (-100->gaussian prior default)","-100"));
   opt.add(Option("GL_finite_source_log_rho_min","Set min if uniform prior for log_rho. (-6.0 default)","-6"));
   opt.add(Option("GL_finite_source_refine_limit","Maximum refinement factor. (100.0 default)","100.0"));
-  opt.add(Option("GL_finite_source_tol","Magnitude tolerance target (brute). (1e-5 default)","1e-5"));
-  opt.add(Option("GL_finite_source_decimate_dtmin","Interpolate time-steps closer than this fraction of source size. (0.05 default)","0.05"));
+  opt.add(Option("GL_finite_source_tol","Magnitude tolerance target. (1e-4 default)","1e-5"));
+  opt.add(Option("GL_finite_source_decimate_dtmin","Interpolate time-steps closer than this fraction of source size. (default sqrt(GL_finite_source_tol))","-1"));
 };
 
 void GLens::setup(){
@@ -2866,6 +2868,7 @@ void GLens::setup(){
     *optValue("GL_finite_source_refine_limit")>>finite_source_refine_limit;
     *optValue("GL_finite_source_decimate_dtmin")>>finite_source_decimate_dtmin;
     *optValue("GL_finite_source_tol")>>finite_source_tol;
+    if(finite_source_decimate_dtmin<0)finite_source_decimate_dtmin=sqrt(finite_source_tol);
   }
   haveSetup();
   cout<<"GLens set up with:\n\tintegrate=";
