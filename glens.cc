@@ -793,7 +793,7 @@ void GLens::compute_image_curves(const vector<Point> &polygon, const double maxl
 ///Presently, this is simply the varance of the point-magnifications around the polygon
 ///wrt the area magnification.
 ///
-void GLens::image_area_mag(Point &p, double radius, int & N, double &magnification, double &var, ostream *out){
+void GLens::image_area_mag(Point &p, double radius, int & N, double &magnification, double &var, ostream *out,vector<vector<Point> > *outcurves){
   ///p      : input  -observer position, relative source center
   ///       : output -returns centroid shift
   ///radius : input  -source radius
@@ -802,7 +802,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   ///magnification   : output magnification result
   ///var    : output estimated variance result
   ///out    : input  : optional output stream for dumping curve results
-
+  ///outcurves: output: optional return of the computed closed curve set.
   //save these for debugging reference 
   Point p0=p;
   int N0=N;
@@ -810,12 +810,12 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   double const twopi=2*M_PI;
 
   ///Controls
-  //const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
-  const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
+  const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
+  //const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
   const bool refine_sphere=false;
-  const double refine_prec_limit=1e-12;
-  //const double refine_prec_limit=1e-15;
+  //const double refine_prec_limit=1e-12;
+  const double refine_prec_limit=1e-15;
   const double refine_limit=pow(twopi*radius/N/finite_source_refine_limit,2.0)+(p.x*p.x+p.y*p.y)*refine_prec_limit*refine_prec_limit;
   const int nadd_max=3;
   bool debug_area_mag=false;
@@ -1660,7 +1660,11 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     //cout<<"curve "<<closed_curves.size()<<" is "<<endl;
     //for(int k=0;k<curve.size();k++)cout<<k<<" "<<curve[k].x<<" "<<curve[k].y<<endl;
     closed_curves.push_back(curve);
-  }  
+  }
+
+  //copy curves to output vector if provided
+  if(outcurves)*outcurves=closed_curves;
+  
   //cout<<"Assembled curves"<<endl;
   if(out){
     *out<<endl;
@@ -1747,11 +1751,12 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
   const double tol=ctol;
   const double tolcutmin=1e-12;
   //const double tolcutmin=1e-8;
-  const double dphimin=twopi*tolcutmin/1e12;
+  const double dphimin=twopi*tolcutmin/1e20;
   //const double tolcutmin=1e-12;
   //const double dphimin=twopi*tol;
   //int nphi=4*(2+1/sqrt(tol));
-  int nphi=(2+1/sqrt(tol));
+  int nphimin=20;
+  int nphi=(nphimin+1/sqrt(tol));
   //int nphi=3;
   int nrefine=2;
   const double maxmag=1e15;
@@ -1817,7 +1822,7 @@ int GLens::brute_force_circle_mag(const Point &p, const double radius, const dou
     vector<double> newphis;
     //double margin=sqrt(nphi);
     //double margin=nphi;
-    double margin=3;
+    double margin=30;
     double tolcut=tol*twopi/margin;
     if(tolcut<tolcutmin)tolcut=tolcutmin;
     //initialize
@@ -1919,13 +1924,13 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
   const double tol=finite_source_tol;
   const double drhomin=tol*radius;
   const double tolcutmin=1e-9;
-  const double maxctol=tol/10; //extremely slow below 1e5
+  const double maxctol=tol/30; //extremely slow below 1e5
   //const double maxctol=1e-4;  //compromise
   //const double maxctol=1e-3;
   //int nrho=4*(2+1/sqrt(tol));
   //const double maxctol=1e-3; //slightly faster
-  //int nrho=(2+1/sqrt(tol));
-  int nrho=3;
+  int nrho=(20+1/sqrt(tol));
+  //int nrho=3;
   int nrefine=2;
   const double maxmag=1e15;//for debug only
 
@@ -2079,7 +2084,125 @@ int GLens::brute_force_area_mag(const Point &p, const double radius, double &mag
   return neval;
 }
   
+///Brute mapping finite size magnification
+///
+///This method is intended only to be guarantedly correct, not fast. The idea is to map the relevant area of the image plane in a field of sample points, then to map these points back to the source plane to compute the magnification. This could also be a moderately efficient way to implement arbitrary source face intensity profiles.
+int GLens::brute_force_map_mag(const Point &p, const double radius, double &magnification){
+
+  //control parameters 
+  double tol=finite_source_tol;
+  double h=radius*sqrt(tol/M_PI);//assuming linear convergence in pixel area=h^2 
+  int Npoly=1/sqrt(tol);
+  const double box_expansion_fac=10;
   
+  Point b=p;
+  double Amag=0;
+  double variance;
+  const double radius2=radius*radius;
+  vector< vector <Point> > contours;
+  
+  //First we call image area mag, needed to provide a location for the contours
+  image_area_mag(b, radius, Npoly, Amag, variance, NULL, &contours);  
+  
+  //Make boxes around the computed image contours
+  struct box {int xmin,xmax,ymin,ymax;};
+  vector<box> boxes;
+  vector<Point> ths=this->invmap(p);int ic=0;//diagn.
+  for(auto curve:contours){
+    //Find bounding box
+    double xmin=1e100,ymin=1e100,xmax=-1e100,ymax=-1e100;
+    for(auto p:curve){
+      if(p.x<xmin)xmin=p.x;
+      if(p.y<ymin)ymin=p.y;
+      if(p.x>xmax)xmax=p.x;
+      if(p.y>ymax)ymax=p.y;
+    }
+    //cout<<"countour box:"<<xmin<<" "<<xmax<<" "<<ymin<<" "<<ymax<<endl;
+    //cout<<"point images:      "<<ths[ic].x<<"        "<<ths[ic].y<<endl;
+    //ic++;
+    //Expand boxes slightly, snapped to grid of resolution h    
+    int ixc=int(((xmin+xmax)/2-p.x)/h+0.5);
+    int iyc=int(((ymin+ymax)/2-p.y)/h+0.5);
+    int nx=int(box_expansion_fac*(xmax-xmin)/h/2);//one-sided count n
+    int ny=int(box_expansion_fac*(ymax-ymin)/h/2);//total points = 2*n+1
+    //cout<<"box:"<<ixc-nx<<" "<<ixc+nx<<" "<<iyc-ny<<" "<<iyc+ny<<endl;
+    boxes.push_back((box){ixc-nx,ixc+nx,iyc-ny,iyc+ny});
+  }
+
+  //Sum up weighted image area in grid units
+  double sum=0;
+  for(int k=0;k<boxes.size();k++){
+    auto box=boxes[k];
+    //cout<<"box "<<k<<endl;
+    for(int i=box.xmin;i<=box.xmax;i++){
+      double x=p.x+h*i;
+      //check which boxes may already have counted this row
+      int jcountedmin=box.ymax+1,jcountedmax=box.ymin-1;
+      for(int kk=0;kk<k;kk++)
+	if( i>=boxes[kk].xmin and i<=boxes[kk].xmax
+	    and box.ymax>=boxes[kk].ymin and box.ymin<=boxes[kk].ymax){//overlaps in x
+	  if(boxes[kk].ymax>=box.ymin and boxes[kk].ymin<jcountedmin)jcountedmin=boxes[kk].ymin;
+	  if(boxes[kk].ymin<=box.ymax and boxes[kk].ymax>jcountedmax)jcountedmax=boxes[kk].ymax;
+	  //cout<<"overlap range ["<<jcountedmin<<","<<jcountedmax<<"]"<<endl;
+	}
+      for(int j=box.ymin;j<=box.ymax;j++){
+	//check if this cell is already counted
+	if(j>=jcountedmin and j<=jcountedmax)continue;
+	//map back to source plane to compute pixel intensity (uniform disk implemented)
+	Point pgrid(x,p.y+h*j);
+	Point psource=this->map(pgrid);
+	//cout<<h<<": pgrid("<<pgrid.x<<","<<pgrid.y<<")"<<" psource("<<psource.x<<","<<psource.y<<")"<<" p("<<p.x<<","<<p.y<<")"<<endl;
+	//compute squared distance to source center
+	double dx=psource.x-p.x, dy=psource.y-p.y;
+	double d2=dx*dx+dy*dy;
+	//cout<<"  "<<j<<" "<<d2<<" "<<radius2<<endl;
+
+	double edgebuf=0;
+	if(0){//handle edges at higher orger
+	  //when is (d-radius)^2<2 -> |1-d2/radius2|/(1+d/radius)<sqrt2
+	  //                       ~> |1-d2/radius2|<2*sqrt(2)
+	  //                       ~> -2*sqrt2 < d2/radius2-1 <2sqrt2
+	  edgebuf=1.0-2.0*sqrt(2.0);
+	}
+	//linear inclusion in disk computation
+	double area=0;
+	if(d2/radius2<1-edgebuf)area=1.0;//inside source disk
+	else if(fabs(d2/radius2-1)<edgebuf){//handle fractional part of edge cell to O(h^4)
+	  if(dy==0){
+	    area=(radius-fabs(dx))/h+0.5;
+	  }else{//this has been though through only for d2>rho2 ... needs work.
+	    double z=(d2-sqrt(d2)*radius)/h;
+	    double yp=(-dx/2 + z)/dy, ym=(-dx/2 - z)/dy;
+	    double xp=0.5,xm=-0.5;
+	    if(yp>0.5){//out top to right
+	      yp=0.5;
+	      xp=(-dy/2 + z)/dx;
+	      if(xp>0.5)xp=0.5;
+	    } else if(yp<-0.5){//out bottom to right
+	      yp=-0.5;
+	      xp=(-dy/2 + z)/dx;
+	      if(xp>0.5)xp=0.5;
+	    }
+	    if(ym<-0.5){//in from bottom on left
+	      ym=-0.5;
+	      xm=(-dy/2 - z)/dx;
+	      if(xm<-0.5)xm=-0.5;
+	    }else if(ym>0.5){//in from top on left
+	      ym=0.5;
+	      xm=(-dy/2 + z)/dx;
+	      if(xm<-0.5)xm=-0.5;
+	    }
+	    area=0.5*(1-(0.5-yp)*(0.5-xp)-(ym+0.5)*(xm+0.5));
+	  }
+	}
+	sum+=area;
+      }
+    }
+  }
+  magnification=sum*h*h/radius2/M_PI;
+  double dmag=magnification-Amag;
+  cout<<"mag dmag:"<<magnification<<" "<<dmag<<endl;
+}
 
 vector<double> GLens::_compute_trajectory_dummy_dmag;//dummy argument
 
@@ -2167,7 +2290,9 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     //This option works independently without mixing (A mix version could also be implemented below if desired
     //In this case,  we do not compute any variance or centroid information
     if(do_brute){
-      Npoly=brute_force_area_mag(b, source_radius, Amag);
+      cout<<"t "<<tgrid<<endl;
+      Npoly=brute_force_map_mag(b, source_radius, Amag);
+      //Npoly=brute_force_area_mag(b, source_radius, Amag);
       //Pack up results
       mag_series[i]=Amag;
       dmag_series[i]=0;

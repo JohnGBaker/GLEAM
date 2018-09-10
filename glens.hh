@@ -129,9 +129,10 @@ public:
   //Note that the centroid is returned in p, and the variance is returned in var
   static double _image_area_mag_dummy_variance;
   int brute_force_circle_mag(const Point &p, const double radius, const double tol, double &magnification);
+  int brute_force_map_mag(const Point &p, const double radius, double &magnification);
   int brute_force_area_mag(const Point &p, const double radius, double &magnification);
   void compute_image_curves(const vector<Point> &polygon, const double maxlen, const double refine_limit, int & N, vector<vector<Point>> &closed_curves);
-  void image_area_mag(Point &p, double radius, int & N, double &magnification, double &var=_image_area_mag_dummy_variance, ostream *out=NULL);
+  void image_area_mag(Point &p, double radius, int & N, double &magnification, double &var=_image_area_mag_dummy_variance, ostream *out=NULL,vector<vector<Point> > *curves=NULL);
   void set_integrate(bool integrate_or_not){use_integrate=integrate_or_not;have_integrate=true;}
   //For the Optioned interface:
   virtual void addOptions(Options &opt,const string &prefix="");
