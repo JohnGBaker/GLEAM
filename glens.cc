@@ -810,12 +810,12 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   double const twopi=2*M_PI;
 
   ///Controls
-  const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
-  //const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
+  //const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
+  const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double maxnorm_limit=pow(expansion_limit*2*M_PI*radius/N,2.0);
   const bool refine_sphere=false;
-  //const double refine_prec_limit=1e-12;
-  const double refine_prec_limit=1e-15;
+  const double refine_prec_limit=1e-12;
+  //const double refine_prec_limit=1e-15;
   const double refine_limit=pow(twopi*radius/N/finite_source_refine_limit,2.0)+(p.x*p.x+p.y*p.y)*refine_prec_limit*refine_prec_limit;
   const int nadd_max=3;
   bool debug_area_mag=false;
@@ -2201,7 +2201,7 @@ int GLens::brute_force_map_mag(const Point &p, const double radius, double &magn
   }
   magnification=sum*h*h/radius2/M_PI;
   double dmag=magnification-Amag;
-  cout<<"mag dmag:"<<magnification<<" "<<dmag<<endl;
+  //cout<<"mag dmag:"<<magnification<<" "<<dmag<<endl;
 }
 
 vector<double> GLens::_compute_trajectory_dummy_dmag;//dummy argument
@@ -2233,7 +2233,6 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   //decimation
   double decimate_dtmin=source_radius*finite_source_decimate_dtmin;
 
-  cout<<"decimate_dtmin="<<decimate_dtmin<<endl;
   //diagnostics
   bool diagnose=false;
   static int d_count=0,d_N=0,d_every=5000;
@@ -2290,14 +2289,14 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     //This option works independently without mixing (A mix version could also be implemented below if desired
     //In this case,  we do not compute any variance or centroid information
     if(do_brute){
-      cout<<"t "<<tgrid<<endl;
+      //cout<<"t "<<tgrid<<endl;
       Npoly=brute_force_map_mag(b, source_radius, Amag);
       //Npoly=brute_force_area_mag(b, source_radius, Amag);
       //Pack up results
       mag_series[i]=Amag;
       dmag_series[i]=0;
       thetas_series[i]=vector<Point>(1,CoM-b);//TBD Except for the brute case, return the centriod. We haven't computed the centroid yet for brute.
-      cout<<Npoly<<" "<<tgrid<<" "<<Amag<<endl;
+      //cout<<Npoly<<" "<<tgrid<<" "<<Amag<<endl;
       Nsum+=Npoly;
       //cout<<i<<" mg0="<<mg0<<" Amag="<<Amag<<endl;
       continue; //finish the loop here. (Rest of this file is irrelevant in this case)
@@ -2403,7 +2402,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       if(debug)cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" N2scale="<<N2scale<<" extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
       //results go in Amag and CoM
       //cout<<" mu_i={ ";for(auto mui : mu0s)cout<<mui<<" ";cout<<"}"<<endl;
-      cout<<"source_radius="<<source_radius<<endl;
+      //cout<<"source_radius="<<source_radius<<endl;
       image_area_mag(b, source_radius, Npoly, Amag, variance, out);  
       //if(Npoly>Npoly_max*5)cout<<"Npoly="<<Npoly<<endl;
       CoM=b;
@@ -2423,7 +2422,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     dmag_series[i]=sqrt(variance)*source_var;
     //cout<<i<<" mg0="<<mg0<<" Amag="<<Amag<<endl;
 
-    cout<<Npoly<<" "<<tgrid<<" "<<Amag<<endl;
+    //cout<<Npoly<<" "<<tgrid<<" "<<Amag<<endl;
     
     if(debug and do_polygon_test){
 #pragma omp critical    
