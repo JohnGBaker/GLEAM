@@ -43,7 +43,9 @@ protected:
   double source_radius;
   double source_var;
   double finite_source_refine_limit;
+  double finite_source_tol;
   double finite_source_decimate_dtmin;
+  ofstream *finite_source_image_ofstream;
   //StateSpace and Prior
   stateSpace GLSpace;
 
@@ -74,7 +76,7 @@ protected:
   bool have_saved_soln;
 public:
   virtual ~GLens(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
-  GLens(){typestring="GLens";option_name="SingleLens";option_info="Single point-mass lens";have_integrate=false;do_verbose_write=false;have_saved_soln=false;NimageMax=2;NimageMin=2;do_finite_source=false;idx_log_rho_star=-1;source_var=0;};
+  GLens(){typestring="GLens";option_name="SingleLens";option_info="Single point-mass lens";have_integrate=false;do_verbose_write=false;have_saved_soln=false;NimageMax=2;NimageMin=2;do_finite_source=false;idx_log_rho_star=-1;source_var=0;finite_source_image_ofstream=NULL;};
   virtual GLens* clone(){return new GLens(*this);};
   ///Lens map: map returns a point in the observer plane from a point in the lens plane.
   virtual Point map(const Point &p){
@@ -122,12 +124,15 @@ public:
   static vector<double> _compute_trajectory_dummy_dmag;
   void compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<int> &index_series,vector<double>&mag_series, vector<double> &dmag=_compute_trajectory_dummy_dmag, bool integrate=false);
   virtual void finite_source_compute_trajectory (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<double>&mag_series, vector<double> &dmag=_compute_trajectory_dummy_dmag, ostream *out=NULL);
+  virtual void set_finite_source_image_ofstream(ofstream *out){finite_source_image_ofstream=out;};
   void inv_map_curve(const vector<Point> &curve, vector<vector<Point> > &curves_images, vector<vector<double>> &curve_mags);
   //Note that the centroid is returned in p, and the variance is returned in var
   static double _image_area_mag_dummy_variance;
-  void brute_force_circle_mag(const Point &p, const double radius, double &magnification);
-  void brute_force_area_mag(const Point &p, const double radius, double &magnification);
-  void image_area_mag(Point &p, double radius, int & N, double &magnification, double &var=_image_area_mag_dummy_variance, ostream *out=NULL);
+  int brute_force_circle_mag(const Point &p, const double radius, const double tol, double &magnification);
+  int brute_force_map_mag(const Point &p, const double radius, double &magnification);
+  int brute_force_area_mag(const Point &p, const double radius, double &magnification);
+  void compute_image_curves(const vector<Point> &polygon, const double maxlen, const double refine_limit, int & N, vector<vector<Point>> &closed_curves);
+  void image_area_mag(Point &p, double radius, int & N, double &magnification, double &var=_image_area_mag_dummy_variance, ostream *out=NULL,vector<vector<Point> > *curves=NULL);
   void set_integrate(bool integrate_or_not){use_integrate=integrate_or_not;have_integrate=true;}
   //For the Optioned interface:
   virtual void addOptions(Options &opt,const string &prefix="");

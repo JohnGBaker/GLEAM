@@ -74,7 +74,7 @@ public:
     checkWorkingStateSpace();//Call this assert whenever we need the parameter index mapping.
     assertData(LABELS|VALUES|DVALUES);
     checkSetup();//Call this assert whenever we need options to have been processed.
-    double extra_noise_mag;
+    double extra_noise_mag=0;
     if(do_extra_noise)extra_noise_mag=st.get_param(idx_Mn);
     static const double logfactor=2.0*log10(2.5/log(10));
     vector<double>var(size());
