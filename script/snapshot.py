@@ -11,6 +11,8 @@ import matplotlib
 import matplotlib.colors as colors
 from matplotlib.backends.backend_pdf import PdfPages
 
+noPDF=True
+
 nparmax=12
 
 #functions:
@@ -22,7 +24,7 @@ def get_step_pars(fname,stop_size=-1):
     if(stop_size>=0):#sample from some specifed point in the middle of the file, instead of the end
         fsize=stop_size
     #print "fsize=",fsize
-    bufsize = 40*(nparmax+5)
+    bufsize = 50*(nparmax+5)
     with open(fname,'r') as f:
         #print "bufsize=",bufsize
         if bufsize > fsize:
@@ -204,39 +206,39 @@ def plot_magmap(basename,caption="",var=""):
     if(not caption==""):fig.text(.1,.05,caption)
     
 def make_plots(resultname, post="unknown"):
-    pdf = PdfPages(resultname+'.pdf')
+    if(not noPDF):pdf = PdfPages(resultname+'.pdf')
     caption="Log-posterior is "+str(post)+" for parameters:\n"+get_param_text(resultname)
 
     #plot_lightcurve(resultname,caption)
-    #plt.show()
     plot_lightcurve(resultname,caption)
-    pdf.savefig()
+    #plt.show()
+    #pdf.savefig()
 
     #plot_residual(resultname,caption)
-    #plt.show()
     plot_residual(resultname,caption)
-    pdf.savefig()
+    #pdf.savefig()
 
     plot_lightcurve(resultname,caption,1.5)
-    pdf.savefig()
+    if(not noPDF):pdf.savefig()
 
     plot_lightcurve(resultname,caption,0.5)
-    pdf.savefig()
+    plt.show()
+    if(not noPDF):pdf.savefig()
 
     #plot_magmap(resultname,caption)
     #plt.show()
     plot_magmap(resultname,caption)
-    pdf.savefig()
+    if(not noPDF):pdf.savefig()
 
     plot_magmap(resultname,caption,"_z")
-    pdf.savefig()
+    if(not noPDF):pdf.savefig()
 
     plot_magmap(resultname,caption,"_zz")
     plt.show()
     plot_magmap(resultname,caption,"_zz")
-    pdf.savefig()
-
-    pdf.close()
+    if(not noPDF):pdf.savefig()
+    print("closing")
+    if(not noPDF):pdf.close()
 
 ##########
 # setup stuff
@@ -349,8 +351,9 @@ print( "step 1")
 
 make_plots(resultname,post)
 
-command="gs "+resultname+".pdf"
-print( command)
-print( command.split())
-sys.stdout.flush()
-subprocess.call(command.split())
+if(False):
+    command="gs "+resultname+".pdf"
+    print( command)
+    print( command.split())
+    sys.stdout.flush()
+    subprocess.call(command.split())

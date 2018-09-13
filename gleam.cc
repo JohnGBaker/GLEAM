@@ -413,14 +413,13 @@ void dump_view(const string &outname, bayes_data &data, ML_photometry_signal &si
       double t=tstart+i*delta_t;
       times.push_back(t);
     }
-    //dump_trajectory(ss.str(),odata,s,tstart,tend,nsamples*4);//use 4 times mm_samples   
     ofstream out(ss.str());
     signal.dump_trajectory(out, s, times, tref);
   }
 
   //light curve
   ss.str("");ss<<outname<<"_lcrv.dat";
-  dump_lightcurve(ss.str(),like,s,tstart,tend,nsamples*4);//use 4 times mm_samples     
+  dump_lightcurve(ss.str(),like,s,tstart,tend,nsamples*150);//use 150 times mm_samples     
 
   //data light curve
   ss.str("");ss<<outname<<"_d_lcrv.dat";
