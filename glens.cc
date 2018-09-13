@@ -2750,6 +2750,214 @@ void GLens::compute_trajectory (const Trajectory &traj, vector<double> &time_ser
 }
 
 
+
+/* Under development
+//Use GSL routine to integrate polynomial roots
+void GLens::compute_trajectory_integrate_roots (const Trajectory &traj, vector<double> &time_series, vector<vector<Point> > &thetas_series, vector<int> &index_series,vector<double>&mag_series,vector<double> &dmag)
+{
+  // Given a trajectory through the observer plane, and a list of observation times, integrate the Jacobian to yield the corresponding trajectory in the lens plane.
+  //
+  //Arguments:
+  //
+  //Trajectory traj       -provides information about the trajectory of early thorough the observer plane.
+  //traj->times  -provides a list of observation times to be included in the sample set 
+  //vector<double> theta  -yields the resulting thetas for all sample times
+  //vector<int> grid_idxs -has lenght of "times" and yield index values for the location of the corresponding results within the larger "theta" vector.
+  //bool integrate (false for direct polynomial evaluation rather than integration. 
+  //  if use_integrate is set then the value it overrides integrate 
+  //
+  //cout<<"lens="<<print_info()<<endl;
+  //cout<<"compute_trajectory for traj="<<traj.print_info()<<endl;
+
+  //control parameters:
+  double caustic_mag_poly_level = GL_int_mag_limit; //use direct polynomial eval near caustics.
+  const double intTOL = GL_int_tol;  //control integration error tolerance
+  const double test_result_tol = 1e-4;  //control integration error tolerance
+  if(have_integrate)integrate=use_integrate;
+  double prec=cout.precision();cout.precision(20);
+  const double rWide_int_fac=100.0;
+
+  cout.precision(prec);
+
+  ///clear the outputs
+  time_series.clear();
+  thetas_series.clear();
+  index_series.clear();
+  mag_series.clear();
+
+  trajectory=&traj;//a convenience for passing to the integrator
+  int NintSize=2*NimageMax;
+
+  //Set up for GSL integration routines
+  const gsl_odeiv2_step_type * stepType = gsl_odeiv2_step_rkf45;
+  gsl_odeiv2_step * step=nullptr;
+  gsl_odeiv2_control * control=nullptr;
+  gsl_odeiv2_evolve * evol=nullptr;
+  gsl_odeiv2_system sys = {GLens::GSL_integration_func_vec, NULL, (size_t)NintSize, this};
+  double h=1e-5;
+  step = gsl_odeiv2_step_alloc (stepType, NintSize);
+  control = gsl_odeiv2_control_y_new (intTOL, 0.0);
+  //control = gsl_odeiv2_control_standard_new (intTOL, 0.0,1.0,10.0);//Also apply limits on the derivative
+  evol = gsl_odeiv2_evolve_alloc (NintSize);
+  gsl_odeiv2_control_init(control,intTOL,0.0,1,0);//Do I need this?
+  gsl_odeiv2_evolve_reset(evol);//or this
+
+
+  //Main loop over observation times specified in the Trajectory object
+  //initialization
+  Point beta;
+  vector<Point> thetas;
+  bool evolving=false;
+  double mg;
+  have_saved_soln=false;
+
+  int Ngrid=traj.Nsamples();
+  double t_old=-1e100;
+  for(int i=0; i<Ngrid;i++){    
+    double tgrid=traj.get_obs_time(i);
+    //entering main loop
+    
+    //test whether to evolve based on how close to "real" root pairs are...TBD
+    //also test for wide binary (at target time) and test "have_roots"
+    if(evolve){
+      double t=t_old;
+      //The next loop steps (probably more finely) toward the next grid time point.      
+      while(t<tgrid){
+	//integrate each root
+	vector<Point>roots;
+	double theta[NintSize];
+	for(int iroot=0;iroot<roots.size();iroot++){
+	  theta[2*iroot]=thetas[iroot].x;
+	  theta[2*iroot+1]=thetas[iroot].y;
+	}
+	for(int k=2*thetas.size();k<NintSize;k++)theta[k]=0;
+	int status = gsl_odeiv2_evolve_apply (evol, control, step, &sys, &t, tgrid, &h, theta);
+	//Need some step-size control checking for near caustics?
+	if (status != GSL_SUCCESS) { 
+	  evolving=false;//switch to polynomial
+	  break;
+	}
+	//record results
+	for(int image=0;image<thetas.size();image++){
+	  thetas[image]=Point(theta[2*image],theta[2*image+1]);	    
+	}
+	
+	//Now test again if that there are not  near real root pairs
+	//if it is s real root, then we can also check that magnification
+	//has not changed sign.  Does that generalize to ghost roots??
+	if(fail test) evolve=false;
+	else{
+	  time_series.push_back(t);
+	  thetas_series.push_back(thetas);
+	  mag_series.push_back(mg);//need to compute mg??
+	  if(!isfinite(mg)){
+	    cout<<"integrate: mg is infinite!\n";
+	    for(int image=0;image<thetas.size();image++){
+	      cout<<theta[2*image]<<","<<theta[2*image+1]<<endl;
+	    }	    
+	  }
+	}
+      }
+      if(!evolving){
+	i--;//go back and try this step again with solving polynomial
+	continue;
+      }
+    } else { //not evolving, solve polynomial
+      beta=get_obs_pos(traj,tgrid);
+      //cout<<i<<" t="<<tgrid<<" b=("<<beta.x<<","<<beta.y<<")"<<endl;
+      //cout<<"Not evolving: beta=("<<beta.x<<","<<beta.y<<")"<<endl;
+      thetas.clear();
+      thetas=invmap(beta);//Want to use wittmag with nocheck directly instead to get all root
+      //record results?? First need to check roots tho...
+      mg=mag(thetas);
+      time_series.push_back(tgrid);
+      thetas_series.push_back(thetas);
+      mag_series.push_back(mg);
+      //cout<<"mg="<<mg<<", caustic_mag_poly_level="<<caustic_mag_poly_level<<endl;
+      if(integrate&&mg<caustic_mag_poly_level){
+	double r2=beta.x*beta.x+beta.y*beta.y;
+	evolving=true;
+	if(testWide(beta,rWide_int_fac))evolving=false;//Don't switch if in "wide" domain.
+	//if(!evolving)cout<<"not evol: testWide==true"<<endl;
+	if(!(thetas.size()==3||thetas.size()==5))evolving=false;//Don't switch to integrate if the number of images doesn't make sense
+	if(evolving)gsl_odeiv2_evolve_reset(evol);
+      };
+      if(!isfinite(mg)){
+	//We do some specific handling for GLensBinary here, could be cleaned up...
+	GLensBinary* gb;
+	bool squak=true;
+	if(gb=dynamic_cast< GLensBinary* > (this)){
+	  if(gb->get_q()<1e-14)squak=false;//we are going to fail with NAN, but not give a bunch of output, deal with it...
+	  else cout<<"q,L="<<gb->get_q()<<","<<gb->get_L()<<endl;
+	}
+	if(squak){
+	  cout<<"!integrate: mg is infinite! at beta="<<beta.x<<","<<beta.y<<endl;
+	  for(int image=0;image<thetas.size();image++){
+	    cout<<thetas[image].x<<","<<thetas[image].y<<" -> "<<mag(thetas[image])<<endl;
+	  }
+	  Trajectory::verbose=true;
+	  beta=get_obs_pos(traj,tgrid);
+	  alert();	 
+	  Trajectory::verbose=false;
+	}
+      }
+      if(debugint){
+	cout<<"polynomial calc at t="<<tgrid<<":"<<endl;
+	for(int image=0;image<thetas.size();image++)
+	  cout<<"   theta["<<image<<"] = ("<<thetas[image].x<<","<<thetas[image].y<<")"<<endl;
+      }
+    }//end of polynomial step
+    if(time_series.size()<1)cout<<"Time series empty i="<<i<<endl;
+    t_old=tgrid;
+    index_series.push_back(time_series.size()-1);
+  }//end of main observation times loop
+
+  if(integrate){
+    gsl_odeiv2_evolve_free (evol);
+    gsl_odeiv2_control_free (control);
+    gsl_odeiv2_step_free (step);
+  }
+
+  if(test_result){
+  //initialization
+    for(int i=0; i<Ngrid;i++){
+      double ttest=traj.get_obs_time(i);
+      int ires=index_series[i];
+      double tres=time_series[ires];
+      Point beta=get_obs_pos(traj,ttest);
+      vector<Point> thetas=invmap(beta);
+      int nimages=thetas.size();
+      double mgtest=mag(thetas);
+      double mgres=mag_series[ires];
+      double tminus,tplus,mgminus,mgplus;
+      if(ires>0&&ires<time_series.size()-1){
+	tminus=time_series[ires-1];
+	tplus=time_series[ires+1];
+	beta=get_obs_pos(traj,tminus);
+	thetas=invmap(beta);
+	mgminus=mag(thetas);
+	beta=get_obs_pos(traj,tplus);
+	thetas=invmap(beta);
+	mgplus=mag(thetas);
+      }
+
+      if(abs(mgtest-mgres)/mgtest>test_result_tol)
+#pragma omp critical
+	{
+	cout<<"\ncompute_trajectory: test failed. test/res:\nindex="<<i<<","<<ires<<"\ntime="<<ttest<<","<<tres<<"\nmag="<<mgtest<<","<<mgres<<" -> "<<abs(mgtest-mgres)<<"["<<nimages<<" images]"<<endl;
+	cout<<"beta=("<<beta.x<<","<<beta.y<<")"<<endl;
+	if(ires>0&&ires<time_series.size()-1){
+	  cout<<"nearby times  :"<<tminus<<" < t < "<<tplus<<endl;
+	  cout<<"   with mags  :"<<mgminus<<" < mg < "<<mgplus<<endl;
+	}
+	//if(i>0&&ires<index_series.size()-1)cout<<"nearby idx times:"<<time_series[index_series[i-1]]<<" < t < "<<time_series[index_series[i+1]]<<endl;
+      }
+    }
+  }
+
+}
+*/
+
 //This version seems no longer used 04.02.2016..
 int GLens::GSL_integration_func (double t, const double theta[], double thetadot[], void *instance){
   //We make the following cast static, thinking that that should realize faster integration
@@ -3457,6 +3665,14 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p,bool no_check){
     };
   }
   if(test_images){
+    ///After first pass application of the lens map test to each images we apply checks on the
+    ///overall set of images.  There should be at least NimageMin and no fewer than NimageMax
+    ///images and the count of any images in excess of NimageMin should be even.
+    ///If there are too many images, then we discard the one which most-marginally passed the map
+    ///test.  If there is one too few, then we add back a candidate image which moderately failed the map test (within a factor of 100), if present.  We could potentially do better by checking
+    ///the parities of the images to be added or deleted.
+    ///Note, that later, for finite source cases, we may add back more images deemed to be
+    ///missing extremely near the lens points.  That logic could be applied here as well.
     int ni=result.size();
     bool pass1=( ni >= NimageMin );
     bool pass2=(ni <= NimageMax);
