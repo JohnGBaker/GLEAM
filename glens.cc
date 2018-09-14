@@ -3047,7 +3047,7 @@ void GLens::addOptions(Options &opt,const string &prefix){
 };
 
 void GLens::setup(){
-  set_integrate(!optSet("GL_poly")&&!optSet("poly"));
+  set_integrate(!optSet("GL_poly"));
   *optValue("GL_int_tol")>>GL_int_tol;
   *optValue("GL_int_mag_limit")>>GL_int_mag_limit;
   *optValue("GL_int_kappa")>>kappa;
@@ -3184,7 +3184,7 @@ GLensBinary::GLensBinary(double q,double L,double phi0):q(q),L(L),phi0(phi0),sin
 };
 
 void GLensBinary::setup(){
-  set_integrate(!optSet("GL_poly")&&!optSet("poly"));
+  set_integrate(!optSet("GL_poly"));
   *optValue("GL_int_tol")>>GL_int_tol;
   *optValue("GL_int_mag_limit")>>GL_int_mag_limit;
   *optValue("GL_int_kappa")>>kappa;
