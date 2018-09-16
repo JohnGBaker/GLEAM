@@ -2215,7 +2215,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   const bool debug=false;
   //const int Npoly_max=finite_source_Npoly_max;        //Part of magnification-based estimate for polygon order.
   const int Npoly_max=finite_source_Npoly_max*(1+16*(source_radius<1?source_radius:1));  //Empirical hack based on limited example
-  const double Npoly_Asat=2.0;   //Saturate at Npoly_max when image_area/pi = Npoly_Asat 
+  //const double Npoly_Asat=2.0;   //Saturate at Npoly_max when image_area/pi = Npoly_Asat 
   bool dont_mix= false;
   bool do_laplacian = false;
   bool do_polygon = false;
@@ -2237,7 +2237,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
 
   //diagnostics
   bool diagnose=false;
-  static int d_count=0,d_N=0,d_every=5000;
+  static int d_count=0,d_N=0,d_every=500000;
   static double d_time=0,d_rho,t_rho,t_N;
   double tstart=omp_get_wtime();
   int Nsum=0;
@@ -2396,19 +2396,26 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       //  -max of Npoly_max  as  Area/pi >= Npoly_Asat
       //  -always even (to preserve time symmetry)
       const double N2scale=Npoly_max*Npoly_max/16.0-1.0;//4*sqrt(N2scale+1)=Npoly_max
-      double extra_area = (mg0-1)/Npoly_Asat;
-      if(extra_area>1.0)extra_area=1.0;       //extra_area ranges from 0 to 1
+      //double extra_area = (mg0-1)/Npoly_Asat;
+      //if(extra_area>1.0)extra_area=1.0;       //extra_area ranges from 0 to 1
       //int Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*N2scale));
-      Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*extra_area*N2scale));
-      Npoly*=30;
-      if(debug)cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" N2scale="<<N2scale<<" extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
-      //results go in Amag and CoM
-      //cout<<" mu_i={ ";for(auto mui : mu0s)cout<<mui<<" ";cout<<"}"<<endl;
-      //cout<<"source_radius="<<source_radius<<endl;
-      image_area_mag(b, source_radius, Npoly, Amag, variance, out);  
+      //Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*extra_area*N2scale));
+      double Npolyold=0;
+      //Npoly = 2 * (int)(2*sqrt(1.0 +(Amag-1)/finite_source_tol));{
+      while( (Npoly = (int)4*sqrt(fmin(100,finite_source_tol + (Amag-1))/finite_source_tol)) > Npolyold*4){
+      //while( (Npoly = 4+(int)sqrt(fmin(100,4*(Amag-1)*(Amag-1))/finite_source_tol)) > Npolyold*4){
+      //Npoly*=30;
+	if(Npolyold>0)cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" Npolyold="<<Npolyold<<" Amag="<<Amag<<endl;
+	//results go in Amag and CoM
+	//cout<<" mu_i={ ";for(auto mui : mu0s)cout<<mui<<" ";cout<<"}"<<endl;
+	//cout<<"source_radius="<<source_radius<<endl;
+	Point btmp=b;
+	Npolyold=Npoly;
+	image_area_mag(btmp, source_radius, Npoly, Amag, variance, out);  
+	CoM=btmp;
+	Nsum+=Npoly;
+      }
       //if(Npoly>Npoly_max*5)cout<<"Npoly="<<Npoly<<endl;
-      CoM=b;
-      Nsum+=Npoly;
     }
     //Sanity check
     if(Amag<1){
@@ -3042,7 +3049,7 @@ void GLens::addOptions(Options &opt,const string &prefix){
   opt.add(Option("GL_finite_source_log_rho_max","Set max uniform prior range for log_rho. (-100->gaussian prior default)","-100"));
   opt.add(Option("GL_finite_source_log_rho_min","Set min if uniform prior for log_rho. (-6.0 default)","-6"));
   opt.add(Option("GL_finite_source_refine_limit","Maximum refinement factor. (100.0 default)","100.0"));
-  opt.add(Option("GL_finite_source_tol","Magnitude tolerance target. (1e-4 default)","1e-5"));
+  opt.add(Option("GL_finite_source_tol","Magnitude tolerance target. (1e-5 default)","1e-5"));
   opt.add(Option("GL_finite_source_decimate_dtmin","Interpolate time-steps closer than this fraction of source size. (default sqrt(GL_finite_source_tol))","-1"));
 };
 
