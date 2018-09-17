@@ -20,6 +20,8 @@ using namespace std;
 #include "options.hh"
 #include "bayesian.hh"
 
+bool report_nan=true;
+
 class ML_photometry_likelihood: public bayes_likelihood{
   const sampleable_probability_function * prior;
   int count;
@@ -86,8 +88,8 @@ public:
         best=state(s);
       }
       //cout<<"loglike="<<result<<endl;   
-      if(!isfinite(result)){
-        cout<<"Whoa dude, loglike is NAN! What's up with that?"<<endl;
+      if(report_nan and !isfinite(result)){
+        cout<<"Loglike is NAN!"<<endl;
         cout<<"params="<<s.get_string()<<endl;
 	result=-INFINITY;
       }
