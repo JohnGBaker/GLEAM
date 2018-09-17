@@ -812,9 +812,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   ///Controls
   //const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
-  //const double expansion_limit=10.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double maxnorm_limit=finite_source_tol+pow(expansion_limit*2*M_PI*radius/N,2.0);
-  //const double maxnorm_limit=finite_source_tol;
   const int nadd_max=3;
   const bool refine_sphere=false;
   const double refine_prec_limit=1e-12;
@@ -897,7 +895,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 	    }
 	  }
 	  Point cmiss=getCenter(kmiss);
-	  cout<<"VERTEX lens_center "<<kmiss<<" at ("<<cmiss.x<<","<<cmiss.y<<") seems to be missing its image; adding an image at this center!"<<endl;	
+	  //cout<<"VERTEX lens_center "<<kmiss<<" at ("<<cmiss.x<<","<<cmiss.y<<") seems to be missing its image; adding an image at this center!"<<endl;	
 	  thetas.push_back(cmiss);
 	  mags.push_back(-1e-100);
 	}
@@ -1077,7 +1075,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
     //cout<<"  pass=( "<<(ni >= NimageMin)<<" && "<<(ni <= NimageMax)<<" && "<<((ni-NimageMin)%2==0)<<" && "<<(-netp==NimageMin%2)<<" )"<<endl;
     if(not pass){
       //cout<<"not pass."<<endl;
-      if(NimageMin-ni==1 and netp==0){//Detect lost an image point near one of the point lenses
+      if(fix_vertex_images and NimageMin-ni==1 and netp==0){//Detect lost an image point near one of the point lenses
 	//Try to detect which lens center is farthest from any of the odd images:
 	int kmiss=-1;
 	double rknormfar=0;
@@ -1723,21 +1721,35 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
 
   }
   Point c0;
-  double area0=getPolygonAreaCoM(curve,p,c0);
+  double area0=0;
+
+  if(true){//subtract mean point.
+    Point p0;
+    for(auto p:curve)p0=p0+p;
+    p0=p0*(1.0/curve.size());
+    area0=getPolygonAreaCoM(curve,c0,p0);
+  } else area0=getPolygonAreaCoM(curve,c0,p);
+
   magnification=area/area0;
-  p=cent*(1.0/area)+c0*(-1.0/area0);//we are recycling this to use as the overall image centroid offset now.
   //cout<<"total area="<<area<<" > "<<area0<<endl;
   //cout<<"centroid shift=("<<p.x<<","<<p.y<<")"<<endl;
-
+  //if(not isfinite(magnification))cout<<"magnification weird area0="<<area0<<" mag="<<magnification<<" curve.size="<<curve.size()<<endl;
+  //if(area0==0){
+  //cout<<"area="<<area<<endl;
+  //}
   // Step 8: Compute variance, trimming excesses
+  p=cent*(1.0/area)+c0*(-1.0/area0);//we are recycling this to use as the overall image centroid offset now.
   var=0;
   for( auto mg : vertex_mags){
     double dmg=mg-magnification;
     if(dmg>magnification)dmg=magnification;
     dmg*=source_var;
     var+=dmg*dmg;
+    //if(not isfinite(dmg))cout<<"dmg weird dmg="<<dmg<<" mg="<<mg<<" mag="<<magnification<<endl;
   }
   var/=vertex_mags.size();
+  
+  //if(var<0 or not isfinite(var))cout<<"variance weird in image_area_mag, size="<<vertex_mags.size()<<" var="<<var<<endl;
   //cout<<"var="<<var<<" n="<<vertex_mags.size()<<endl;
   //cout<<"sqrt(var)="<<sqrt(var)<<endl;
   
@@ -2202,7 +2214,7 @@ int GLens::brute_force_map_mag(const Point &p, const double radius, double &magn
     }
   }
   magnification=sum*h*h/radius2/M_PI;
-  double dmag=magnification-Amag;
+  //double dmag=magnification-Amag;
   //cout<<"mag dmag:"<<magnification<<" "<<dmag<<endl;
 }
 
@@ -2213,8 +2225,8 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
 
   //Controls
   const bool debug=false;
-  //const int Npoly_max=finite_source_Npoly_max;        //Part of magnification-based estimate for polygon order.
-  const int Npoly_max=finite_source_Npoly_max*(1+16*(source_radius<1?source_radius:1));  //Empirical hack based on limited example
+  const int Npoly_max=finite_source_Npoly_max;        //Part of magnification-based estimate for polygon order.
+  //const int Npoly_max=finite_source_Npoly_max*(1+16*(source_radius<1?source_radius:1));  //Empirical hack based on limited example
   //const double Npoly_Asat=2.0;   //Saturate at Npoly_max when image_area/pi = Npoly_Asat 
   bool dont_mix= false;
   bool do_laplacian = false;
@@ -2222,10 +2234,9 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   bool do_brute = false;
 
   const double rho2=source_radius*source_radius;
-  //const double mtol=1e-5;
-  //const double ftol=1e-2*source_radius;
-  const double mtol=1e-6;
-  const double ftol=1e-2*source_radius;
+  const double mtol=1e-5+finite_source_tol;
+  //const double mtol=1e-6;
+  const double ftol=1e-2*source_radius+finite_source_tol;
   const double mag_lcut=mtol/rho2;
   double mag_pcut=mtol/rho2/rho2;
   const double shear_cut=0.25/rho2/rho2;
@@ -2395,17 +2406,17 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       //  -min of 4          as  Area/pi -> rho^2
       //  -max of Npoly_max  as  Area/pi >= Npoly_Asat
       //  -always even (to preserve time symmetry)
-      const double N2scale=Npoly_max*Npoly_max/16.0-1.0;//4*sqrt(N2scale+1)=Npoly_max
+      //const double N2scale=Npoly_max*Npoly_max/16.0-1.0;//4*sqrt(N2scale+1)=Npoly_max
       //double extra_area = (mg0-1)/Npoly_Asat;
       //if(extra_area>1.0)extra_area=1.0;       //extra_area ranges from 0 to 1
       //int Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*N2scale));
       //Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*extra_area*N2scale));
       double Npolyold=0;
       //Npoly = 2 * (int)(2*sqrt(1.0 +(Amag-1)/finite_source_tol));{
-      while( (Npoly = (int)4*sqrt(fmin(100,finite_source_tol + (Amag-1))/finite_source_tol)) > Npolyold*4){
+      while( (Npoly = fmin(Npoly_max,4+(int)4*sqrt(fmin(0.1,(Amag-1))/finite_source_tol))) > Npolyold*4){
       //while( (Npoly = 4+(int)sqrt(fmin(100,4*(Amag-1)*(Amag-1))/finite_source_tol)) > Npolyold*4){
       //Npoly*=30;
-	if(Npolyold>0)cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" Npolyold="<<Npolyold<<" Amag="<<Amag<<endl;
+	//if(Npolyold>0)cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" Npolyold="<<Npolyold<<" Amag="<<Amag<<endl;
 	//results go in Amag and CoM
 	//cout<<" mu_i={ ";for(auto mui : mu0s)cout<<mui<<" ";cout<<"}"<<endl;
 	//cout<<"source_radius="<<source_radius<<endl;
@@ -2415,6 +2426,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
 	CoM=btmp;
 	Nsum+=Npoly;
       }
+      //if(debug)cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" N2scale="<<N2scale<<" extra_area="<<extra_area<<" Npoly="<<Npoly<<endl;
       //if(Npoly>Npoly_max*5)cout<<"Npoly="<<Npoly<<endl;
     }
     //Sanity check
@@ -2428,15 +2440,16 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
     //cout<<"COM="<<CoM.x<<" "<<CoM.y<<endl;
     thetas_series[i]=vector<Point>(1,CoM-b); //Note we return lenght-1 vector with the overall image centroid offset.
     mag_series[i]=Amag;
+    //if(variance<0 or not isfinite(variance)){cout<<"variance weird after image_area_mag"<<endl;exit(0);}
     dmag_series[i]=sqrt(variance)*source_var;
     //cout<<i<<" mg0="<<mg0<<" Amag="<<Amag<<endl;
 
     //cout<<Npoly<<" "<<tgrid<<" "<<Amag<<endl;
     
-    if(debug and do_polygon_test){
-#pragma omp critical    
-      cout<<"Npoly="<<Npoly<<" Amag="<<Amag<<" var="<<variance<<endl;
-    }
+    //if(not isfinite(variance) or debug and do_polygon_test){
+    //#pragma omp critical    
+      //cout<<"Npoly="<<Npoly<<" Amag="<<Amag<<" var="<<variance<<endl;
+    //}
   }
 
   if(debug){
@@ -3044,12 +3057,12 @@ void GLens::addOptions(Options &opt,const string &prefix){
   opt.add(Option("GL_int_mag_limit","Magnitude where GLens inversion integration reverts to poly. (1.5)","1.5"));
   opt.add(Option("GL_int_kappa","Strength of driving term for GLens inversion. (0.1)","0.1"));
   opt.add(Option("GL_finite_source","Flag to turn on finite source fitting. Optional argument to provide method [leading,laplacian,polygon,(no arg default), uses fastest appropriate, up to specification or use eg 'strict_polygon']"));
-  opt.add(Option("GL_finite_source_Npoly_max","Max number of sides in polygon source approximation.(10 default)","10"));
+  opt.add(Option("GL_finite_source_Npoly_max","Max number of sides in polygon source approximation.(20 default)","20"));
   opt.add(Option("GL_finite_source_var","Factor (roughly) for variance in surface brightness from uniformity.(0.01 default)","0.01"));
   opt.add(Option("GL_finite_source_log_rho_max","Set max uniform prior range for log_rho. (-100->gaussian prior default)","-100"));
   opt.add(Option("GL_finite_source_log_rho_min","Set min if uniform prior for log_rho. (-6.0 default)","-6"));
   opt.add(Option("GL_finite_source_refine_limit","Maximum refinement factor. (100.0 default)","100.0"));
-  opt.add(Option("GL_finite_source_tol","Magnitude tolerance target. (1e-5 default)","1e-5"));
+  opt.add(Option("GL_finite_source_tol","Magnitude tolerance target. (1e-3 default)","1e-3"));
   opt.add(Option("GL_finite_source_decimate_dtmin","Interpolate time-steps closer than this fraction of source size. (default sqrt(GL_finite_source_tol))","-1"));
 };
 
@@ -3697,8 +3710,42 @@ vector<Point> GLensBinary::invmapWittMao(const Point &p,bool no_check){
 	  newp=Point(real(roots[i]),imag(roots[i]));
 	double mg=mag(newp);
 	if(mg<0)result.push_back(newp);
-      }else {
-	cout<<"something wrong with the image set "<<pass1<<" "<<pass2<<" "<<pass3<<", but we forge on"<<endl;
+      } else if(false and NimageMin==ni+1){
+	//Seem to be missing one of the near-point-lens images.
+	//First we compute image polarizations, listing the odd images
+	int netp=0;
+	vector<Point>odds;
+	for(int j=0;j<result.size();j++){
+	  double mg=mag(result[j]);
+	  int p=copysign(1.0,mg);
+	  if(mg==0)p=-1;
+	  netp+=p;
+	  if(p<0)odds.push_back(result[j]);
+	}
+	if(netp==0){//Consistent with a near-lens image missing.
+	  //Find lens center farthest from any of the odd images:
+	  int kmiss=-1;
+	  double rknormfar=0;
+	  for(int k=1;k<NimageMin;k++){
+	    Point c=getCenter(k);
+	    //find closest odd image to this center
+	    double rknormmin=INFINITY;
+	    for(auto b:odds){
+	      Point rk=b+c*(-1.0);
+	      double rknorm=rk.x*rk.x+rk.y*rk.y;
+	      if(rknorm<rknormmin)rknormmin=rknorm;
+	    }
+	    if(rknormfar<rknormmin){
+	      rknormfar=rknormmin;
+	      kmiss=k;
+	    }
+	  }
+	  Point cmiss=getCenter(kmiss);
+	  //cout<<"polyn lens_center "<<kmiss<<" at ("<<cmiss.x<<","<<cmiss.y<<") seems to be missing its image; adding an image at this center!"<<endl;	
+	  result.push_back(cmiss);
+	} 
+      } else {
+	//cout<<"Something wrong with the image set (tests:"<<pass1<<" "<<pass2<<" "<<pass3<<",ni="<<ni<<",p=("<<p.x<<","<<p.y<<"),this="<<print_info()<<"), but we forge on..."<<endl;
       }
     }
   }
