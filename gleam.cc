@@ -284,7 +284,7 @@ int main(int argc, char*argv[]){
     outmock.precision(output_precision);    
     outmock<<"#mock data\n#"<<instate.get_string()<<endl;
     ofstream *outimagecurve=NULL;
-    if(true){
+    if(false){
       ss.str("");ss<<outname<<"_images.dat";
       cout<<"Writing images to file '"<<ss.str()<<"'"<<endl;
       outimagecurve = new ofstream(ss.str().c_str());

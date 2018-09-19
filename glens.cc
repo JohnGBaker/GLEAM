@@ -813,6 +813,7 @@ void GLens::image_area_mag(Point &p, double radius, int & N, double &magnificati
   //const double expansion_limit=1.05;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double expansion_limit=2.0;//we will refine if an image edge is more than this much times longer than the original polygon edge.
   const double maxnorm_limit=finite_source_tol+pow(expansion_limit*2*M_PI*radius/N,2.0);
+  //const double maxnorm_limit=finite_source_tol/3.0;
   const int nadd_max=3;
   const bool refine_sphere=false;
   const double refine_prec_limit=1e-12;
@@ -2234,11 +2235,11 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
   bool do_brute = false;
 
   const double rho2=source_radius*source_radius;
-  const double mtol=1e-5+finite_source_tol;
+  const double mtol=finite_source_tol;
   //const double mtol=1e-6;
-  const double ftol=1e-2*source_radius+finite_source_tol;
+  const double ftol=(sqrt(mtol)*source_radius+mtol)/5.0;
   const double mag_lcut=mtol/rho2;
-  double mag_pcut=mtol/rho2/rho2;
+  double mag_pcut=sqrt(mtol)*fmax(1,1/rho2/rho2);
   const double shear_cut=0.25/rho2/rho2;
   bool do_shear_test=false;
   //if(mag_pcut>1) mag_pcut=1.0;
@@ -2413,7 +2414,11 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
       //Npoly = 2 * (int)(2*sqrt(1.0 + extra_area*extra_area*N2scale));
       double Npolyold=0;
       //Npoly = 2 * (int)(2*sqrt(1.0 +(Amag-1)/finite_source_tol));{
-      while( (Npoly = fmin(Npoly_max,4+(int)4*sqrt(fmin(0.1,(Amag-1))/finite_source_tol))) > Npolyold*4){
+      double Atest=fmax(mg0,Amag);
+      //Npoly = fmin(Npoly_max,4+(int)sqrt(fmin(0.1,(Atest-1))/finite_source_tol));
+      //cout<<"stats: t,Amg,Atest,Npoly: "<<traj.get_phys_time(tgrid)<<", "<<Amag<<", "<<Atest<<", "<<Npoly<<endl;
+      //while( (Npoly = (int)4*sqrt(fmin(100,finite_source_tol + (Atest-1))/finite_source_tol)) > Npolyold*4){
+      while( (Npoly = fmin(Npoly_max,4+(int)4*sqrt(fmin(0.1,(Atest-1))/finite_source_tol))) > Npolyold*4){
       //while( (Npoly = 4+(int)sqrt(fmin(100,4*(Amag-1)*(Amag-1))/finite_source_tol)) > Npolyold*4){
       //Npoly*=30;
 	//if(Npolyold>0)cout<<" Npoly="<<Npoly<<" < "<<Npoly_max<<" Npolyold="<<Npolyold<<" Amag="<<Amag<<endl;
@@ -2422,6 +2427,7 @@ void GLens::finite_source_compute_trajectory (const Trajectory &traj, vector<dou
 	//cout<<"source_radius="<<source_radius<<endl;
 	Point btmp=b;
 	Npolyold=Npoly;
+	Atest=fmax(mg0,Amag);
 	image_area_mag(btmp, source_radius, Npoly, Amag, variance, out);  
 	CoM=btmp;
 	Nsum+=Npoly;
