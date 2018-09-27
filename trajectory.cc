@@ -6,6 +6,7 @@
 using namespace std;
 
 bool Trajectory::verbose=false;
+bool use_old_labels=true;
 
 //
 // ******************************************************************

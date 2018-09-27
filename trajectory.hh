@@ -12,6 +12,8 @@
 using namespace std;
 extern bool debug;
 
+extern bool use_old_labels;
+
 ///Code for computing observer/source trajectories in relation to
 /// microlensing light curves and images.
 
@@ -213,8 +215,13 @@ public:
   //For bayes_component/stateSpaceInterface
   virtual void defWorkingStateSpace(const stateSpace &sp){
     checkSetup();//Call this assert whenever we need options to have been processed.
-    if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");
-    else idx_r0=sp.requireIndex("r0");
+    if(use_old_labels){
+      if(do_remap_r0)idx_r0=sp.requireIndex("s(r0)");
+      else idx_r0=sp.requireIndex("r0");
+    } else {
+      if(do_remap_r0)idx_r0=sp.requireIndex("f(u0)");
+      else idx_r0=sp.requireIndex("u0");
+    }
     if(do_log_tE)idx_tE=sp.requireIndex("log(tE)");
 
     else idx_tE=sp.requireIndex("tE");

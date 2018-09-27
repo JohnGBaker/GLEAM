@@ -48,16 +48,23 @@ protected:
   ofstream *finite_source_image_ofstream;
   //StateSpace and Prior
   stateSpace GLSpace;
+  bool time_dependent,have_time_dependent_values;
 
   ///For temporary association with a trajectory;
   const Trajectory *trajectory;
   ///Transform from trajectory frame to lens frame
+  ///Time is relevant only for time-varying lens
   virtual Point traj2lens(const Point tp)const {return tp;};
   virtual Point lens2traj(const Point tp)const {return tp;};
-  virtual Point traj2lensdot(const Point tp)const {return tp;};
+  virtual Point traj2lensdot(const Point tv, const Point tp)const {return tv;};//Derivative of linear traj2lens transform
 public:
-  virtual Point get_obs_pos(const Trajectory & traj,double time)const{return traj2lens(traj.get_obs_pos(time));};
-  virtual Point get_obs_vel(const Trajectory & traj,double time)const{return traj2lensdot(traj.get_obs_vel(time));};
+  virtual Point get_obs_pos(const Trajectory & traj,const double time)const{return traj2lens(traj.get_obs_pos(time));};//time=(t-tpass)/tE is relevant only with time-varying lens
+  ///Call this function before anything which may be time dependent
+  virtual void set_time_dependent_values(const double time){have_time_dependent_values=true;};
+  virtual void require_time_dependent_values()const{if(not have_time_dependent_values)cout<<"GLens:Error time depended values required but not set"<<this->print_info()<<endl;};
+  ///Call this function after finishing specific-time calculations before the time of interest may go out of scope
+  virtual void unset_time_dependent_values(){if(time_dependent)have_time_dependent_values=false;};
+  virtual Point get_obs_vel(const Trajectory & traj,const double time)const{return traj2lensdot(traj.get_obs_vel(time),traj.get_obs_pos(time));};
 protected:
   ///static access for use with non-member GSL integration routines
   static int GSL_integration_func (double t, const double theta[], double thetadot[], void *instance);
@@ -76,7 +83,7 @@ protected:
   bool have_saved_soln;
 public:
   virtual ~GLens(){};//Need virtual destructor to allow derived class objects to be deleted from pointer to base.
-  GLens(){typestring="GLens";option_name="SingleLens";option_info="Single point-mass lens";have_integrate=false;do_verbose_write=false;have_saved_soln=false;NimageMax=2;NimageMin=2;do_finite_source=false;idx_log_rho_star=-1;source_var=0;finite_source_image_ofstream=NULL;};
+  GLens(){typestring="GLens";option_name="SingleLens";option_info="Single point-mass lens";have_integrate=false;do_verbose_write=false;have_saved_soln=false;NimageMax=2;NimageMin=2;do_finite_source=false;idx_log_rho_star=-1;source_var=0;finite_source_image_ofstream=NULL;time_dependent=false;set_time_dependent_values(0);};
   virtual GLens* clone(){return new GLens(*this);};
   ///Lens map: map returns a point in the observer plane from a point in the lens plane.
   virtual Point map(const Point &p){
@@ -161,6 +168,7 @@ public:
   //getCenter provides *trajectory frame* coordinates for the center. Except for with -2, which give the lens frame CM. 
   //option=0 should return COM
   //option=n>0 should return point lens locations
+  ///Returns information about the lens centers, for evolving lenses this may be time dependent
   virtual Point getCenter(int option=-2)const{return Point(0,0);};
   //Write a magnitude map to file.  
   //Points in this function and its arguments are in *trajectory frame* coordinates 
@@ -179,7 +187,7 @@ public:
       vector<int> indices;
       vector<double> times,mags;
       vector<vector<Point> >thetas;
-      compute_trajectory(traj,times,thetas,indices,mags);//2TRAJ:Check that the new interface doesn't break this.
+      compute_trajectory(traj,times,thetas,indices,mags);
       for(int i : indices){
 	Point b=traj.get_obs_pos(times[i]);//we want the result in traj frame, to match the dump_trajectory output
 	double mtruc=floor(mags[i]*ten2prec)/ten2prec;
@@ -211,14 +219,14 @@ class GLensBinary : public GLens{
   shared_ptr<const sampleable_probability_function> binaryPrior;
   stateSpace GLBinarySpace;
   double q;
-  double L;
-  double phi0,sin_phi0,cos_phi0;
+  double aL,sL;
+  double phi0,sin_phi0,cos_phi0,sin_phit,cos_phit;
   Point cm;//center of mass in lens frame
   //mass fractions
   double nu;
   vector<Point> invmapAsaka(const Point &p);
   vector<Point> invmapWittMao(const Point &p,bool no_check=false);
-  virtual int poly_root_integration_func_vec (double t, const double theta[], double thetadot[], void *instance);
+  //virtual int poly_root_integration_func_vec (double t, const double theta[], double thetadot[], void *instance);
   //complex<double> saved_roots[6];
   vector<Point> theta_save;
   double rWide;
@@ -226,21 +234,39 @@ class GLensBinary : public GLens{
   double q_ref;
   bool do_remap_q;
   int idx_q,idx_L,idx_phi0;
+  bool circular_orbit;
+  double orbital_omega;
+  double lona,chi;
+  double sininc,cosinc,sinphiorb,cosphiorb,sinalpha,cosalpha;
+  int idx_lona, idx_inc, idx_chi;
   virtual Point traj2lens(const Point tp)const {
-    //Note: this looks like a -phi0 rotation here because phi0 is the rotation from the observer to lens *frame axis* and here we transform the ccordinates
-    return Point(cm.x+tp.x*cos_phi0-tp.y*sin_phi0,cm.y+tp.x*sin_phi0+tp.y*cos_phi0);};
+    //Note: Generally this looks like a -phi(t) rotation here because phi(t) is the rotation from the observer to lens *frame axis* and here we transform the ccordinates
+    require_time_dependent_values();
+    return Point(cm.x+tp.x*cos_phit-tp.y*sin_phit,cm.y+tp.x*sin_phit+tp.y*cos_phit);
+  };
   virtual Point lens2traj(const Point tp)const {
-    return Point((tp.x-cm.x)*cos_phi0+(tp.y-cm.y)*sin_phi0,-(tp.x-cm.x)*sin_phi0+(tp.y-cm.y)*cos_phi0);};
-  virtual Point traj2lensdot(const Point tp)const {
-    return Point(tp.x*cos_phi0-tp.y*sin_phi0,cm.y+tp.x*sin_phi0+tp.y*cos_phi0);};
+    require_time_dependent_values();
+    return Point((tp.x-cm.x)*cos_phit+(tp.y-cm.y)*sin_phit,-(tp.x-cm.x)*sin_phit+(tp.y-cm.y)*cos_phit);;
+  };
+  virtual Point traj2lensdot(const Point tv, const Point tp)const {//Derivative of traj2lens map
+    Point dp(tv.x*cos_phit-tv.y*sin_phit,cm.y+tv.x*sin_phit+tv.y*cos_phit);
+    if(circular_orbit){
+      require_time_dependent_values();
+      double dsinalpha=cosinc*cosphiorb*orbital_omega;
+      double dcosalpha=-sinphiorb*orbital_omega;
+      dp = dp + Point(tp.x*dcosalpha+tp.y*dsinalpha,-tp.x*dsinalpha+tp.y*dcosalpha);
+    }
+    return dp;
+  };
   ///test conditions to revert to perturbative inversion
   bool testWide(const Point & p,double scale)const{
+    require_time_dependent_values();
     double rs=rWide*scale;
     if(rs<=0)return false;
     double r2=p.x*p.x+p.y*p.y;
     //if(( L>rs||r2>rs*rs)&&scale!=1.0)cout<<sqrt(r2)<<" <> "<<rs<<" <> "<<L<<endl;
     //return L>rs||r2>rs*rs;
-    return L>rs||r2>rs*rs||(q+1/q)>2*rs*rs;
+    return sL>rs||r2>rs*rs||(q+1/q)>2*rs*rs;
   };  
 public:
   GLensBinary(double q=1,double L=1,double phi0=0);
@@ -260,18 +286,23 @@ public:
   vector<complex<double> > compute_shear(const Point &p, int nder)const;
   //specific to this class:
   double get_q(){return q;};
-  double get_L(){return L;};
+  double get_s(){return sL;};
   double set_WideBinaryR(double r){rWide=r;};
-  virtual string print_info(int prec=-1)const{ostringstream s;if(prec>0)s.precision(prec);s<<"GLensBinary(q="<<q<<",L="<<L<<")"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
-  //virtual string print_info()const{ostringstream s;s<<"GLensBinary(q="<<q<<",L="<<L<<")"<<endl;return s.str();};
+  virtual string print_info(int prec=-1)const{ostringstream s;if(prec>0)s.precision(prec);s<<"GLensBinary(q="<<q<<",s="<<sL<<")"<<(have_integrate?(string("\nintegrate=")+(use_integrate?"true":"false")):"")<<endl;return s.str();};
 
   ///From StateSpaceInterface (via bayes_component)
   ///
   void defWorkingStateSpace(const stateSpace &sp){
     checkSetup();
-    if(do_remap_q)idx_q=sp.requireIndex("s(1+q)");
-    else idx_q=sp.requireIndex("logq");
-    idx_L=sp.requireIndex("logL");
+    if(use_old_labels){
+      if(do_remap_q)idx_q=sp.requireIndex("s(1+q)");
+      else idx_q=sp.requireIndex("logq");
+      idx_L=sp.requireIndex("logL");
+    } else {
+      if(do_remap_q)idx_q=sp.requireIndex("f(1+q)");
+      else idx_q=sp.requireIndex("log(q)");
+      idx_L=sp.requireIndex("log(s)");
+    }
     idx_phi0=sp.requireIndex("phi0");
     GLens::defWorkingStateSpace(sp);
   };  
@@ -295,23 +326,65 @@ public:
     double f_of_q=st.get_param(idx_q);//either log_q or remapped q
     double logL=st.get_param(idx_L);
     phi0=st.get_param(idx_phi0);
-
-    L=pow(10.0,logL);
+    sL=aL=pow(10.0,logL);
     //(See discussion in remap_q() above.) otherwise sofq==ln_q.
     if(do_remap_q)q=-1.0+(q_ref+1.0)/sqrt(1.0/f_of_q-1.0);
     else q=pow(10.0,f_of_q);
-    cos_phi0=cos(phi0);
-    sin_phi0=sin(phi0);
+    cos_phit=cos_phi0=cos(phi0);
+    sin_phit=sin_phi0=sin(phi0);
     nu=1/(1+q);
-    cm=Point((q/(1.0+q)-0.5)*L,0);
+    cm=Point((q/(1.0+q)-0.5)*sL,0);
+    if(circular_orbit){
+      //Note that we assume a Keplerian system with
+      //semimajor-axis a (const)
+      //omega = orbital freq (const for circular, else at periastron)
+      //lona = Long. of ascending node (rel to phase at t0 = time of closest approach)
+      //inc   = inclination of +axis rel to line-of-sight
+      //mass  = total mass
+      //But here we work with quantities all scaled by the Einstein ring:
+      //a = aL*rE
+      //omega = chi * (rE/a)^(3/2); chi = velocity ratio of v_orb(rE)/v_Lens
+      //phi_orb = lona + omega * ( t - t0 )
+      //
+      //Parameters: log_chi
+      //log_chi;  chi = 10^(log_chi)
+      //lona
+      //inc
+      //log_a; aL == L = 10^(log_aLens)
+      lona=st.get_param(idx_lona);
+      double inc=st.get_param(idx_inc);
+      chi=pow(10,st.get_param(idx_chi));
+      orbital_omega = chi * pow(aL,-1.5);
+      cosinc=cos(inc);
+      sininc=sin(inc);
+    }
+    set_time_dependent_values(0);
   };
+  //Separation may be time dependent 
+  void set_time_dependent_values(const double time){
+    if(circular_orbit){
+      double phiorb =  lona + orbital_omega * time;
+      sinphiorb=sin(phiorb);
+      cosphiorb=cos(phiorb);
+      //alpha is the angle we need to rotate the lens-plane through to align the orbital separation vector with the x-axis
+      //phit = phi0 - alpha
+      sL=sqrt(1-sininc*sininc*sinphiorb*sinphiorb);
+      double sinalpha=cosinc*sin(phiorb)/sL;
+      double cosalpha=cos(phiorb)/sL;
+      sin_phit=cosalpha*sin_phi0-sinalpha*cos_phi0;
+      cos_phit=cosalpha*cos_phi0+sinalpha*sin_phi0;
+      cm=Point((q/(1.0+q)-0.5)*sL,0);
+    }
+    have_time_dependent_values=true;
+  };
+    
   ///This is a class-specific variant which (probably no longer needed)
   void setState(double q_, double L_){;
-    checkWorkingStateSpace();
-    q=q_;
-    L=L_;
-    nu=1/(1+q);
-    cm=Point((q/(1.0+q)-0.5)*L,0);
+  checkWorkingStateSpace();
+  q=q_;
+  aL=sL=L_;
+  nu=1/(1+q);
+  cm=Point((q/(1.0+q)-0.5)*sL,0);
   };
 
   //getCenter provides *trajectory frame* coordinates for the center.  //be consistent with traj2lens
@@ -321,23 +394,23 @@ public:
     //center on {rminus-CoM,CoM-CoM,rplus-CoM}, when cent={-1,0,1} otherwise CoM-nominalorigin;
     switch(option){
     case -1://minus lens rel to CoM  (this is specific to GLensBinary)
-      x0=-0.5*L;
+      x0=-0.5*sL;
       break;
     case 0:
       x0=0;
       break;
     case 1:
-      x0=0.5*L;//plus lens rel to CoM
+      x0=0.5*sL;//plus lens rel to CoM
       break;
     case 2:
-      x0=-0.5*L;//minus lens (newer standard is that each lens-point is included at least to NimageMin; generalizes to n-lenses)
+      x0=-0.5*sL;//minus lens (newer standard is that each lens-point is included at least to NimageMin; generalizes to n-lenses)
       break;
     default:
       x0=cm.x;
       //cout<<"case def"<<endl;
     }
     //cout<<" GLensBinary::getCenter("<<option<<"):Returning x0="<<x0<<endl;
-    //This returns the result in lens frame
+    //This returns the result in lens frame, need to add explicit time ref here, or redef this ...
     return lens2traj(Point(x0,0));
   };
   
